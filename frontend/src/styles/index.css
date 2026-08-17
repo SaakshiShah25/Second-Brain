@@ -1,0 +1,128 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+/*
+Same palette as the Streamlit app's assets/style.css - cool/modern dark
+theme, indigo-violet accent - kept for visual continuity across the
+migration. Exposed as CSS variables here and mapped into Tailwind's
+theme below via @theme, so both plain CSS and Tailwind utility classes
+(bg-surface, text-muted, etc.) can use them.
+*/
+:root {
+  --sb-bg: #0a0c12;
+  --sb-bg-elevated: #12151e;
+  --sb-bg-card: #161a24;
+  --sb-bg-hover: #1c212e;
+  --sb-border: rgba(255, 255, 255, 0.08);
+  --sb-border-strong: rgba(255, 255, 255, 0.16);
+  --sb-text: #e8eaf0;
+  --sb-text-muted: #9098a8;
+  --sb-text-faint: #6b7280;
+  --sb-accent: #7c6cf6;
+  --sb-accent-hover: #6c5ce8;
+  --sb-accent-soft: rgba(124, 108, 246, 0.16);
+  --sb-danger: #f27272;
+  --sb-success: #4ade80;
+}
+
+@theme {
+  --color-bg: var(--sb-bg);
+  --color-bg-elevated: var(--sb-bg-elevated);
+  --color-bg-card: var(--sb-bg-card);
+  --color-bg-hover: var(--sb-bg-hover);
+  --color-border: var(--sb-border);
+  --color-border-strong: var(--sb-border-strong);
+  --color-text: var(--sb-text);
+  --color-text-muted: var(--sb-text-muted);
+  --color-text-faint: var(--sb-text-faint);
+  --color-accent: var(--sb-accent);
+  --color-accent-hover: var(--sb-accent-hover);
+  --color-accent-soft: var(--sb-accent-soft);
+  --color-danger: var(--sb-danger);
+  --color-success: var(--sb-success);
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background: var(--sb-bg);
+  color: var(--sb-text);
+  font-family: var(--font-sans);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--sb-border-strong);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sb-text-faint);
+}
+
+/* Minimal markdown styling for assistant chat messages (ChatBubble) -
+   just the elements formatSavedMessage()/synthesize_answer() output
+   actually produce (paragraphs, bold, bullet lists), not a full
+   typography-plugin reset. */
+.prose-chat p {
+  margin-bottom: 0.6em;
+}
+.prose-chat p:last-child {
+  margin-bottom: 0;
+}
+.prose-chat strong {
+  font-weight: 600;
+  color: var(--sb-text);
+}
+.prose-chat em {
+  color: var(--sb-text-muted);
+  font-style: italic;
+}
+.prose-chat ul,
+.prose-chat ol {
+  margin: 0.3em 0 0.6em;
+  padding-left: 1.3em;
+}
+.prose-chat ul {
+  list-style: disc;
+}
+.prose-chat ol {
+  list-style: decimal;
+}
+.prose-chat li {
+  margin-bottom: 0.2em;
+}
+.prose-chat li:last-child {
+  margin-bottom: 0;
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-rec {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}

@@ -1,0 +1,93 @@
+"""
+api/routers/people.py — REST equivalent of views/people_view.py (browse/
+edit/merge a person, edit/delete an interaction, get a briefing), plus
+the "relationships gone quiet" half of views/digest_view.py (belongs
+here since it's fundamentally a /people query, not a /tasks one).
+"""
+
+from datetime import date, datetime
+
+from fastapi import APIRouter, Depends, HTTPException
+
+import db
+import retrieval
+from api.auth import get_current_user_id
+from api.schemas import InteractionUpdate, MergeRequest, PersonUpdate
+
+router = APIRouter()
+
+
+def _days_ago(date_str: str) -> int:
+    return (date.today() - datetime.fromisoformat(date_str).date()).days
+
+
+@router.get("")
+def list_people(user_id: str = Depends(get_current_user_id)):
+    return db.get_all_people(user_id)
+
+
+@router.get("/stale")
+def stale_people(threshold_days: int = 30, user_id: str = Depends(get_current_user_id)):
+    people = db.get_people_with_last_interaction(user_id)
+    stale = [
+        {**p, "days_ago": _days_ago(p["last_interaction_date"])}
+        for p in people
+        if p.get("last_interaction_date") and _days_ago(p["last_interaction_date"]) >= threshold_days
+    ]
+    stale.sort(key=lambda p: p["last_interaction_date"])
+    return stale
+
+
+@router.get("/{person_id}")
+def get_person(person_id: int, user_id: str = Depends(get_current_user_id)):
+    # db.get_person() uses a Supabase .single() query, which raises
+    # (rather than returning None) when no row matches - convert that
+    # into a proper 404 instead of letting it fall through as a 500.
+    try:
+        person = db.get_person(user_id, person_id)
+    except Exception:
+        raise HTTPException(404, "Person not found")
+    if not person:
+        raise HTTPException(404, "Person not found")
+    interactions = retrieval.attach_tasks(user_id, db.get_interactions_for_person(user_id, person_id))
+    secondary = db.get_secondary_interactions_for_person(user_id, person_id)
+    return {"person": person, "interactions": interactions, "mentioned_in": secondary}
+
+
+@router.patch("/{person_id}")
+def update_person(person_id: int, body: PersonUpdate, user_id: str = Depends(get_current_user_id)):
+    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    if fields:
+        db.update_person(user_id, person_id, **fields)
+    return db.get_person(user_id, person_id)
+
+
+@router.delete("/{person_id}")
+def delete_person(person_id: int, user_id: str = Depends(get_current_user_id)):
+    db.delete_person(user_id, person_id)
+    return {"ok": True}
+
+
+@router.post("/{person_id}/merge")
+def merge_person(person_id: int, body: MergeRequest, user_id: str = Depends(get_current_user_id)):
+    new_id = db.merge_persons(user_id, person_id, body.target_id)
+    return {"person_id": new_id}
+
+
+@router.get("/{person_id}/briefing")
+def get_briefing(person_id: int, user_id: str = Depends(get_current_user_id)):
+    return {"briefing": retrieval.generate_briefing(user_id, person_id)}
+
+
+@router.patch("/interactions/{interaction_id}")
+def update_interaction(interaction_id: int, body: InteractionUpdate, user_id: str = Depends(get_current_user_id)):
+    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    if fields:
+        db.update_interaction(user_id, interaction_id, **fields)
+    return {"ok": True}
+
+
+@router.delete("/interactions/{interaction_id}")
+def delete_interaction(interaction_id: int, user_id: str = Depends(get_current_user_id)):
+    db.delete_interaction(user_id, interaction_id)
+    return {"ok": True}

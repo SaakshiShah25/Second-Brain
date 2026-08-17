@@ -1,0 +1,23 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Secrets / local env
+.env
+frontend/.env.development.local
+frontend/.env.production.local
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Stale pre-Supabase SQLite file - left on disk, not tracked
+second_brain.db
+
+# OS
+.DS_Store
+
+# Local tooling config / generated deliverables - not app source
+.claude/
+Documents/
