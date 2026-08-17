@@ -38,8 +38,8 @@ from the repo-root `.env` via `python-dotenv`. The frontend needs its own
 Current status: Digest (with per-task Google Calendar sync), Chat
 (text/voice/business-card capture with opt-in location, ask, with the
 same person-disambiguation flow as Streamlit), People (list + detail +
-edit + merge + briefing), and auth (multi-user login/signup) all work
-end-to-end against the real API. Not yet done: deployment.
+edit + merge + briefing), auth (multi-user login/signup), and deployment
+(Vercel + Render) all work end-to-end against the real API.
 
 ### Auth setup (Supabase Auth, multi-user)
 
@@ -113,6 +113,50 @@ key at all):
   an API key (Credentials -> Create credentials -> API key), and set
   `GOOGLE_MAPS_API_KEY` in `.env`. Without it, location capture still
   works - it just shows coordinates instead of an address.
+
+### Deployment (Vercel + Render)
+
+**Backend needs Docker** (not the plain Python buildpack) - `card_scan.py`
+needs the Tesseract OCR *binary* (`apt-get install tesseract-ocr`, not
+just the `pytesseract` pip package) and `embeddings.py`'s
+sentence-transformers/torch are memory-hungry, both of which the
+`Dockerfile` at the repo root already handles.
+
+1. **Get the code on GitHub** - create an empty repo at github.com/new
+   (no README/license, so the push isn't a merge conflict), then:
+   ```bash
+   git remote add origin <your-repo-url>
+   git branch -M main
+   git push -u origin main
+   ```
+2. **Render (backend)** - New Web Service -> connect the repo -> Render
+   auto-detects the `Dockerfile` (environment = Docker). `render.yaml`
+   documents the service config and the full env var checklist (values
+   are secrets - set them in the Render dashboard, not in the file):
+   `GROQ_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`, `FRONTEND_URL` (set
+   this after step 3), and - only if you want Calendar/location working
+   in production - `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/
+   `GOOGLE_OAUTH_REDIRECT_URI`/`GOOGLE_MAPS_API_KEY`. The free tier's
+   memory limit is a real OOM risk with torch loaded - at least the
+   smallest paid tier is recommended.
+3. **Vercel (frontend)** - Import the same repo, set **Root Directory to
+   `frontend`** (framework preset auto-detects as Vite), and set
+   `VITE_API_URL` (the Render URL from step 2), `VITE_SUPABASE_URL`,
+   `VITE_SUPABASE_ANON_KEY` (same values as `frontend/.env.development`).
+   `frontend/vercel.json` handles the SPA routing fallback so client-side
+   routes like `/people/5` don't 404 on refresh.
+4. **Close the loop** - back in Render, set `FRONTEND_URL` to the Vercel
+   URL from step 3 and redeploy (env var changes need a redeploy to take
+   effect) - this is what `api/main.py`'s CORS config and the Calendar
+   OAuth redirect both key off.
+5. **Supabase dashboard** - Authentication -> URL Configuration -> add
+   the Vercel URL to Site URL / Redirect URLs (only localhost is allowed
+   by default; without this, signup confirmation emails link back to
+   localhost instead of your live site).
+6. *(Only if enabling Calendar in production)* **Google Cloud Console** -
+   add `https://<your-render-url>/api/calendar/oauth/callback` as an
+   additional Authorized redirect URI on the existing OAuth client
+   (Google allows more than one; localhost can stay for local dev).
 
 ## UI (Streamlit - being replaced, see above)
 

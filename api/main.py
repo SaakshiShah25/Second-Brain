@@ -9,6 +9,8 @@ views/*.py already relies on):
 Swagger UI at http://localhost:8000/docs.
 """
 
+import os
+
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -23,11 +25,18 @@ from api.routers import ask, calendar, capture, people, tasks
 
 app = FastAPI(title="Second Brain API")
 
-# Vite's default dev server port - the production frontend origin gets
-# added here once it exists (deploy phase).
+# Vite's default dev server port always allowed (local dev); the deployed
+# frontend origin is added on top of that via FRONTEND_URL (the same env
+# var api/routers/calendar.py already uses for the OAuth redirect), so
+# this doesn't need a second, separate env var to configure.
+_origins = ["http://localhost:5173"]
+_frontend_url = os.environ.get("FRONTEND_URL")
+if _frontend_url and _frontend_url not in _origins:
+    _origins.append(_frontend_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

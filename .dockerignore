@@ -1,0 +1,15 @@
+# The backend image never needs the frontend source or local dev
+# artifacts - keeps the build context small and fast.
+frontend/
+venv/
+.git/
+.env
+__pycache__/
+*.pyc
+.DS_Store
+second_brain.db
+.streamlit/
+Documents/
+.claude/
+views/
+app.py

@@ -1,0 +1,33 @@
+# Render Blueprint - documents the backend service config so it's
+# reproducible from the repo rather than only living in dashboard clicks.
+# Secret values are NOT here (sync: false means "set this in the Render
+# dashboard, don't read a value from this file") - see README.md's
+# deployment section for what each one is.
+services:
+  - type: web
+    name: second-brain-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # sentence-transformers/torch (embeddings.py) are memory-hungry -
+    # the free tier's RAM limit is a real risk of OOM crashes. Switch to
+    # "free" in the dashboard if you want to try it anyway.
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_REDIRECT_URI
+        sync: false
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
