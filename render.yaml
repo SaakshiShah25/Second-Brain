@@ -9,10 +9,12 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    # sentence-transformers/torch (embeddings.py) are memory-hungry -
-    # the free tier's RAM limit is a real risk of OOM crashes. Switch to
-    # "free" in the dashboard if you want to try it anyway.
-    plan: starter
+    # sentence-transformers/torch (embeddings.py) are memory-hungry - free
+    # tier's 512MB is a real OOM risk, especially on first model load.
+    # Fine for light solo testing; upgrade to "starter" in the dashboard
+    # if it crashes under real usage. Free tier also sleeps after 15min
+    # idle, so the first request after a gap is slow (30-60s cold start).
+    plan: free
     healthCheckPath: /api/health
     envVars:
       - key: GROQ_API_KEY
