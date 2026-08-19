@@ -7,13 +7,14 @@ belongs with the other /api/people/* routes.
 """
 
 from datetime import date, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
 import db
 import google_calendar
 from api.auth import get_current_user_id
-from api.schemas import TaskStatusUpdate
+from api.schemas import ScheduleCalendarRequest, TaskStatusUpdate
 
 router = APIRouter()
 
@@ -66,15 +67,18 @@ def update_task(task_id: int, body: TaskStatusUpdate, user_id: str = Depends(get
 
 
 @router.post("/{task_id}/calendar")
-def add_task_to_calendar(task_id: int, user_id: str = Depends(get_current_user_id)):
+def add_task_to_calendar(
+    task_id: int, body: Optional[ScheduleCalendarRequest] = None, user_id: str = Depends(get_current_user_id)
+):
     task = db.get_task(user_id, task_id)
     if not task:
         raise HTTPException(404, "Task not found")
-    if not task.get("due_date"):
+    event_date = body.event_date if body else None
+    if not event_date and not task.get("due_date"):
         raise HTTPException(400, "This task has no due date - nothing to put on a calendar.")
 
     try:
-        result = google_calendar.create_event(user_id, task)
+        result = google_calendar.create_event(user_id, task, event_date=event_date)
     except google_calendar.NotConnectedError:
         raise HTTPException(409, "Google Calendar isn't connected yet.")
     except Exception as e:

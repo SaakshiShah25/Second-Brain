@@ -2,6 +2,7 @@ import { Brain } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ChatMessage } from '../../api/types'
+import SpeakButton from '../SpeakButton'
 
 export default function ChatBubble({ message }: { message: ChatMessage }) {
   if (message.role === 'user') {
@@ -19,8 +20,13 @@ export default function ChatBubble({ message }: { message: ChatMessage }) {
       <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
         <Brain size={15} strokeWidth={2} />
       </div>
-      <div className="prose-chat min-w-0 flex-1 pt-1 text-sm leading-relaxed text-text">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+      <div className="min-w-0 flex-1 pt-1">
+        <div className="prose-chat text-sm leading-relaxed text-text">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+        </div>
+        <div className="mt-1.5">
+          <SpeakButton text={message.content} />
+        </div>
       </div>
     </div>
   )

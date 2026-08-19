@@ -275,3 +275,90 @@ alter table interaction add column if not exists decisions jsonb default '[]'::j
 -- interaction.concerns: specific objections/hesitations raised, distinct
 -- from the general topic-level `sentiment` column.
 alter table interaction add column if not exists concerns jsonb default '[]'::jsonb;
+
+-- 15. Phase 10: Clients dashboard. Once a deal closes, the finalized
+--     agreement (PDF/.docx/scanned photo) is uploaded, structured into
+--     these fields by document_extract.py, and the original file is kept
+--     in Supabase Storage (see storage.py) - client.document_path is a
+--     storage path, not the file itself; the file is only ever served
+--     back out via a short-lived signed URL.
+
+create table if not exists client (
+    id bigint generated always as identity primary key,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    company text not null default '',
+    client_legal_name text default '',
+    provider_legal_name text default '',
+    effective_date date,
+    term_months integer,
+    end_date date,                            -- explicit from the doc, or effective_date + term_months
+    auto_renews boolean default false,
+    renewal_notice_days integer,
+    fee_amount numeric,
+    fee_currency text default '',
+    fee_frequency text default '',            -- monthly/quarterly/annual/one-time/other
+    payment_terms text default '',
+    termination_terms text default '',
+    other_terms text default '',              -- catch-all: confidentiality, exclusivity, SLAs, governing law, etc.
+    status text default 'active',             -- active/expired/terminated - plain text like task.status
+    document_path text,                       -- Supabase Storage path, null if no document was attached
+    document_filename text default '',
+    created_at timestamptz default now()
+);
+
+-- client_signatory: the people named in the agreement (both sides), one
+-- row per person. `person_id` links to an existing Person record when a
+-- confident name match was found (same person_match.find_confident_match
+-- auto-link pattern capture.py's resolve_and_link_other_people already
+-- uses for secondary mentions) - null if no confident match, so the name
+-- is still kept even when it can't be tied to a Person yet.
+create table if not exists client_signatory (
+    id bigint generated always as identity primary key,
+    client_id bigint not null references client(id) on delete cascade,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    name text not null,
+    role text default '',
+    side text default 'client',               -- 'client' or 'provider'
+    person_id bigint references person(id) on delete set null,
+    created_at timestamptz default now()
+);
+
+create index if not exists idx_client_user on client(user_id);
+create index if not exists idx_client_signatory_client on client_signatory(client_id);
+
+alter table client enable row level security;
+alter table client_signatory enable row level security;
+
+drop policy if exists "Users manage their own clients" on client;
+create policy "Users manage their own clients" on client
+    for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "Users manage their own client signatories" on client_signatory;
+create policy "Users manage their own client signatories" on client_signatory
+    for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- 16. person.personal_notes: migrated from a single append-only text blob
+--     to a dated timeline (jsonb array of {"date":..., "note":...}
+--     objects). The old flat-text version conflated permanent facts
+--     ("from Bangalore") with point-in-time ones ("expecting a baby next
+--     month") with no way to tell how stale a fact is - a briefing
+--     6 months later would state the pregnancy as still-current. Dated
+--     entries let both the UI and the briefing LLM reason about recency.
+--     Existing text (if any) is migrated into a single entry dated at
+--     migration time, since the old format didn't preserve per-note dates.
+do $$
+begin
+    if exists (
+        select 1 from information_schema.columns
+        where table_name = 'person' and column_name = 'personal_notes' and data_type = 'text'
+    ) then
+        alter table person rename column personal_notes to personal_notes_old;
+        alter table person add column personal_notes jsonb default '[]'::jsonb;
+        update person set personal_notes = case
+            when personal_notes_old is not null and personal_notes_old != ''
+                then jsonb_build_array(jsonb_build_object('date', current_date, 'note', personal_notes_old))
+            else '[]'::jsonb
+        end;
+        alter table person drop column personal_notes_old;
+    end if;
+end $$;

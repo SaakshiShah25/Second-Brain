@@ -38,11 +38,17 @@ export function useStalePeople(thresholdDays: number) {
   })
 }
 
+// eventDate lets the actual meeting land on a different day than the
+// task's due_date (e.g. "schedule a meeting with X, due by the 24th" ->
+// the meeting itself goes on the calendar for the 21st) - omitted, it
+// falls back to the due date server-side (the original behavior).
 export function useAddTaskToCalendar() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (taskId: number) =>
-      api.post<{ calendar_event_id: string; html_link: string | null }>(`/api/tasks/${taskId}/calendar`),
+    mutationFn: ({ taskId, eventDate }: { taskId: number; eventDate?: string }) =>
+      api.post<{ calendar_event_id: string; html_link: string | null }>(`/api/tasks/${taskId}/calendar`, {
+        event_date: eventDate ?? null,
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
   })
 }

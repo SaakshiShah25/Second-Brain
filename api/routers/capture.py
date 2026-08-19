@@ -30,7 +30,7 @@ import person_match
 import voice
 from api.auth import get_current_user_id
 from api.schemas import CandidateEnvelope, CaptureConfirmRequest, CaptureRequest, CardConfirmRequest
-from date_utils import to_valid_date
+from date_utils import resolve_relative_phrase
 
 router = APIRouter()
 
@@ -39,10 +39,10 @@ router = APIRouter()
 
 def _resolve_interaction_date(extracted: dict):
     raw_date = extracted.get("date_mentioned")
-    resolved = to_valid_date(raw_date) or date.today().isoformat()
+    resolved = resolve_relative_phrase(raw_date) or date.today().isoformat()
     warning = None
-    if raw_date and not to_valid_date(raw_date):
-        warning = f"note: extracted date '{raw_date}' wasn't complete, used {resolved} instead"
+    if raw_date and not resolve_relative_phrase(raw_date):
+        warning = f"note: extracted date '{raw_date}' wasn't understood, used {resolved} instead"
     return resolved, warning
 
 
@@ -102,7 +102,7 @@ def _finish_capture_storage(user_id: str, person_id: int, resolved_name: str, cr
             continue
         if owner not in ("me", "them"):
             owner = "me"
-        due_date = to_valid_date(raw_due_date)
+        due_date = resolve_relative_phrase(raw_due_date)
         if raw_due_date and not due_date:
             skipped_due_dates.append({"description": task_desc, "raw_due_date": raw_due_date})
         db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner)
@@ -136,6 +136,7 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
     phone = primary.get("phone") or ""
     email = primary.get("email") or ""
     personal_notes = primary.get("personal_notes") or ""
+    aliases = primary.get("aliases") or []
 
     interaction_date, date_warning = _resolve_interaction_date(extracted)
 
@@ -145,7 +146,9 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
     if not candidates:
         person_id = db.create_person(
             user_id, name=name, description=description, role=role, company=company,
-            phone=phone, email=email, first_met_date=interaction_date, personal_notes=personal_notes,
+            phone=phone, email=email, first_met_date=interaction_date,
+            personal_notes=[{"date": interaction_date, "note": personal_notes}] if personal_notes else [],
+            aliases=aliases,
         )
         return _finish_capture_storage(
             user_id, person_id, name, True, raw_text, extracted, interaction_date, date_warning,
@@ -190,11 +193,14 @@ def capture_confirm(body: CaptureConfirmRequest, user_id: str = Depends(get_curr
     phone = primary.get("phone") or ""
     email = primary.get("email") or ""
     personal_notes = primary.get("personal_notes") or ""
+    aliases = primary.get("aliases") or []
 
     if body.choice is None:
         person_id = db.create_person(
             user_id, name=name, description=description, role=role, company=company,
-            phone=phone, email=email, first_met_date=body.interaction_date, personal_notes=personal_notes,
+            phone=phone, email=email, first_met_date=body.interaction_date,
+            personal_notes=[{"date": body.interaction_date, "note": personal_notes}] if personal_notes else [],
+            aliases=aliases,
         )
         resolved_name, created_new = name, True
     else:
@@ -204,10 +210,13 @@ def capture_confirm(body: CaptureConfirmRequest, user_id: str = Depends(get_curr
         person_id = chosen["id"]
         if name != chosen["name"]:
             db.add_alias(user_id, person_id, name)
+        for alias in aliases:
+            if alias and alias != chosen["name"]:
+                db.add_alias(user_id, person_id, alias)
         if description:
             db.update_person_description(user_id, person_id, description)
         if personal_notes:
-            db.update_person_personal_notes(user_id, person_id, personal_notes)
+            db.update_person_personal_notes(user_id, person_id, personal_notes, body.interaction_date)
         if role or company:
             db.update_person_role_company(user_id, person_id, role=role, company=company)
         if phone or email:

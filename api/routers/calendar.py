@@ -40,7 +40,7 @@ def connect_start(user_id: str = Depends(get_current_user_id)):
 @router.get("/oauth/callback")
 def oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
     if error:
-        return RedirectResponse(f"{FRONTEND_URL}/?calendar=error")
+        return RedirectResponse(f"{FRONTEND_URL}/digest?calendar=error")
     if not code or not state:
         raise HTTPException(400, "Missing code or state")
 
@@ -51,8 +51,8 @@ def oauth_callback(code: Optional[str] = None, state: Optional[str] = None, erro
     try:
         google_calendar.exchange_code(user_id, code)
     except Exception:
-        return RedirectResponse(f"{FRONTEND_URL}/?calendar=error")
-    return RedirectResponse(f"{FRONTEND_URL}/?calendar=connected")
+        return RedirectResponse(f"{FRONTEND_URL}/digest?calendar=error")
+    return RedirectResponse(f"{FRONTEND_URL}/digest?calendar=connected")
 
 
 @router.get("/status")

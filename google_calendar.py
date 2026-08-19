@@ -13,6 +13,7 @@ Console setup this depends on (OAuth client id/secret, redirect URI).
 """
 
 from datetime import date, datetime, timedelta, timezone
+from typing import Optional
 
 import requests
 
@@ -93,28 +94,38 @@ def get_valid_access_token(user_id: str) -> str:
     return creds["access_token"]
 
 
-def create_event(user_id: str, task: dict) -> dict:
+def create_event(user_id: str, task: dict, event_date: Optional[str] = None) -> dict:
     """Creates an all-day Google Calendar event for `task` (a row shaped
     like db.get_task()'s return value - description, due_date, and the
     nested interaction->person for a human name in the summary). Returns
     {"calendar_event_id": ..., "html_link": ...}. Caller is responsible
-    for persisting calendar_event_id onto the task row."""
-    if not task.get("due_date"):
+    for persisting calendar_event_id onto the task row.
+
+    `event_date` lets the actual calendar event land on a different day
+    than the task's due_date - e.g. a "schedule a meeting with X" task due
+    by the 24th, where the meeting itself should go on the calendar for
+    the 21st. Defaults to due_date when not given (the original
+    "reminder on the due date" behavior)."""
+    target_date = event_date or task.get("due_date")
+    if not target_date:
         raise ValueError("Task has no due_date - nothing to put on a calendar.")
 
     access_token = get_valid_access_token(user_id)
-    start = date.fromisoformat(task["due_date"])
+    start = date.fromisoformat(target_date)
     end = start + timedelta(days=1)  # Google's all-day events use an exclusive end date
 
     person_name = ((task.get("interaction") or {}).get("person") or {}).get("name")
     summary = f"{person_name}: {task['description']}" if person_name else task["description"]
+    description = "Created from Second Brain."
+    if event_date and task.get("due_date") and event_date != task["due_date"]:
+        description += f" (Task due date: {task['due_date']})"
 
     resp = requests.post(
         EVENTS_URL,
         headers={"Authorization": f"Bearer {access_token}"},
         json={
             "summary": summary,
-            "description": "Created from Second Brain.",
+            "description": description,
             "start": {"date": start.isoformat()},
             "end": {"date": end.isoformat()},
         },

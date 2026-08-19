@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Calendar, CalendarCheck, CalendarPlus, CheckCircle2, Sunrise, TriangleAlert } from 'lucide-react'
+import { Calendar, CalendarCheck, CalendarPlus, CheckCircle2, ChevronDown, Sunrise, TriangleAlert } from 'lucide-react'
 import { useCalendarStatus, useStartCalendarConnect } from '../api/calendar'
 import {
   useAddTaskToCalendar,
@@ -28,11 +28,31 @@ function dueLabel(dueDate: string | null, status: 'open' | 'done'): { text: stri
   return { text: overdue ? `overdue (${dueDate})` : `due ${dueDate}`, overdue }
 }
 
+type OwnerFilter = 'all' | 'me' | 'them'
+
+const OWNER_FILTERS: { value: OwnerFilter; label: string }[] = [
+  { value: 'all', label: 'All open tasks' },
+  { value: 'me', label: 'My tasks' },
+  { value: 'them', label: 'Their tasks' },
+]
+
 export default function DigestPage() {
   const [filter, setFilter] = useState<TaskFilter>('open')
+  const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('all')
   const [threshold, setThreshold] = useState(30)
+  // Which task's inline "pick a date" picker is open, and the date chosen
+  // so far - lets scheduling a meeting land on a date other than the
+  // task's own due_date (e.g. due-by-24th, meeting itself on the 21st).
+  const [schedulingTaskId, setSchedulingTaskId] = useState<number | null>(null)
+  const [scheduleDate, setScheduleDate] = useState('')
+  // Task descriptions get truncated to one line by default - click to see
+  // the full text when it's cut off.
+  const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null)
 
   const { data, isLoading, error } = useTasks(filter)
+  const visibleTasks = (data?.tasks ?? []).filter(
+    (task) => filter !== 'open' || ownerFilter === 'all' || task.owner === ownerFilter,
+  )
   const updateStatus = useUpdateTaskStatus()
   const updateOwner = useUpdateTaskOwner()
   const { data: stalePeople, isLoading: staleLoading } = useStalePeople(threshold)
@@ -79,7 +99,7 @@ export default function DigestPage() {
       {calendarStatus && !calendarStatus.connected && (
         <Card className="mb-4 flex items-center justify-between gap-3">
           <p className="text-sm text-text-muted">
-            Connect Google Calendar to add due-date reminders for individual tasks.
+            Connect Google Calendar to schedule meetings for individual tasks - on the due date or any date before it.
           </p>
           <Button variant="primary" onClick={() => startConnect.mutate()} disabled={startConnect.isPending}>
             <span className="flex items-center gap-1.5">
@@ -125,72 +145,154 @@ export default function DigestPage() {
         ))}
       </div>
 
-      {error && <p className="text-sm text-danger">Couldn't load tasks: {String(error)}</p>}
-      {isLoading && <p className="text-sm text-text-muted">Loading…</p>}
-      {!isLoading && data?.tasks.length === 0 && <p className="text-sm text-text-muted">Nothing here.</p>}
-
-      <div className="mb-8 flex flex-col gap-2">
-        {data?.tasks.map((task) => {
-          const due = dueLabel(task.due_date, task.status)
-          return (
-            <Card key={task.id} className="flex items-center justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{task.description}</p>
-                <p className="text-xs text-text-muted">
-                  {task.interaction?.person?.name ?? 'Unknown'}
-                  {task.interaction?.date ? ` · ${task.interaction.date}` : ''}
-                </p>
-              </div>
+      {filter === 'open' && (
+        <div className="mb-4">
+          <p className="mb-1.5 text-xs font-medium text-text-muted">Who owns it</p>
+          <div className="flex flex-wrap gap-2">
+            {OWNER_FILTERS.map((f) => (
               <button
-                type="button"
-                title="Click to toggle who owns this follow-up"
-                onClick={() =>
-                  updateOwner.mutate({ taskId: task.id, owner: task.owner === 'them' ? 'me' : 'them' })
-                }
-                disabled={updateOwner.isPending}
-                className={`flex-shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                  task.owner === 'them'
-                    ? 'border-border-strong bg-bg-card text-text-muted hover:text-text'
-                    : 'border-accent bg-accent-soft text-accent'
+                key={f.value}
+                onClick={() => setOwnerFilter(f.value)}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  ownerFilter === f.value
+                    ? f.value === 'them'
+                      ? 'border-amber-400/50 bg-amber-400/10 text-amber-500'
+                      : 'border-accent bg-accent-soft text-accent'
+                    : 'border-border-strong bg-bg-card text-text-muted hover:text-text'
                 }`}
               >
-                {task.owner === 'them' ? 'Them' : 'Me'}
+                {f.label}
               </button>
-              <span className={`flex items-center gap-1 whitespace-nowrap text-xs ${due.overdue ? 'font-medium text-danger' : 'text-text-muted'}`}>
-                {due.overdue && <TriangleAlert size={13} strokeWidth={2} />}
-                {due.text}
-              </span>
-              {calendarStatus?.connected && task.due_date && (
-                task.calendar_event_id ? (
-                  <Button
-                    onClick={() => removeFromCalendar.mutate(task.id)}
-                    disabled={removeFromCalendar.isPending}
-                    title="Remove from Google Calendar"
-                  >
-                    <span className="flex items-center gap-1">
-                      <CalendarCheck size={14} strokeWidth={2} /> On Calendar
+            ))}
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-sm text-danger">Couldn't load tasks: {String(error)}</p>}
+      {isLoading && <p className="text-sm text-text-muted">Loading…</p>}
+      {!isLoading && visibleTasks.length === 0 && <p className="text-sm text-text-muted">Nothing here.</p>}
+
+      <div className="mb-8 flex flex-col gap-2">
+        {visibleTasks.map((task) => {
+          const due = dueLabel(task.due_date, task.status)
+          return (
+            <Card key={task.id} className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                  className="min-w-0 flex-1 cursor-pointer text-left"
+                  title={expandedTaskId === task.id ? 'Click to collapse' : 'Click to view full text'}
+                >
+                  <span className="flex items-start gap-1">
+                    <span className={`font-medium ${expandedTaskId === task.id ? 'whitespace-pre-wrap' : 'truncate'}`}>
+                      {task.description}
                     </span>
-                  </Button>
-                ) : (
+                    <ChevronDown
+                      size={13}
+                      strokeWidth={2}
+                      className={`mt-1 flex-shrink-0 text-text-faint transition-transform ${
+                        expandedTaskId === task.id ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </span>
+                  <p className="text-xs text-text-muted">
+                    {task.interaction?.person?.name ?? 'Unknown'}
+                    {task.interaction?.date ? ` · ${task.interaction.date}` : ''}
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  title="Click to toggle who owns this follow-up"
+                  onClick={() =>
+                    updateOwner.mutate({ taskId: task.id, owner: task.owner === 'them' ? 'me' : 'them' })
+                  }
+                  disabled={updateOwner.isPending}
+                  className={`flex-shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    task.owner === 'them'
+                      ? 'border-amber-400/40 bg-amber-400/10 text-amber-500 hover:border-amber-400/60'
+                      : 'border-accent bg-accent-soft text-accent'
+                  }`}
+                >
+                  {task.owner === 'them' ? 'Them' : 'Me'}
+                </button>
+                <span className={`flex items-center gap-1 whitespace-nowrap text-xs ${due.overdue ? 'font-medium text-danger' : 'text-text-muted'}`}>
+                  {due.overdue && <TriangleAlert size={13} strokeWidth={2} />}
+                  {due.text}
+                </span>
+                {calendarStatus?.connected && task.due_date && (
+                  task.calendar_event_id ? (
+                    <Button
+                      onClick={() => removeFromCalendar.mutate(task.id)}
+                      disabled={removeFromCalendar.isPending}
+                      title="Remove from Google Calendar"
+                    >
+                      <span className="flex items-center gap-1">
+                        <CalendarCheck size={14} strokeWidth={2} /> On Calendar
+                      </span>
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={() => {
+                        if (schedulingTaskId === task.id) {
+                          setSchedulingTaskId(null)
+                        } else {
+                          setSchedulingTaskId(task.id)
+                          setScheduleDate(task.due_date ?? '')
+                        }
+                      }}
+                      title="Schedule this meeting on Google Calendar"
+                    >
+                      <span className="flex items-center gap-1">
+                        <CalendarPlus size={14} strokeWidth={2} /> Schedule meet
+                      </span>
+                    </Button>
+                  )
+                )}
+                <Button
+                  onClick={() =>
+                    updateStatus.mutate({ taskId: task.id, status: task.status === 'open' ? 'done' : 'open' })
+                  }
+                  disabled={updateStatus.isPending}
+                  className={
+                    task.status === 'open'
+                      ? 'border-success/40 bg-success/10 text-success hover:border-success/60'
+                      : 'border-border-strong bg-bg-card text-text-muted hover:text-text'
+                  }
+                >
+                  {task.status === 'open' ? 'Mark done' : 'Reopen'}
+                </Button>
+              </div>
+
+              {schedulingTaskId === task.id && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                  <label className="text-xs text-text-muted">
+                    Meeting date
+                    {task.due_date && <span className="text-text-faint"> (due {task.due_date})</span>}:
+                  </label>
+                  <input
+                    type="date"
+                    value={scheduleDate}
+                    onChange={(e) => setScheduleDate(e.target.value)}
+                    className="rounded-lg border border-border-strong bg-bg-card px-2 py-1 text-sm"
+                  />
                   <Button
-                    onClick={() => addToCalendar.mutate(task.id)}
-                    disabled={addToCalendar.isPending}
-                    title="Add to Google Calendar"
+                    variant="primary"
+                    disabled={addToCalendar.isPending || !scheduleDate}
+                    onClick={() =>
+                      addToCalendar.mutate(
+                        { taskId: task.id, eventDate: scheduleDate },
+                        { onSuccess: () => setSchedulingTaskId(null) },
+                      )
+                    }
                   >
-                    <span className="flex items-center gap-1">
-                      <CalendarPlus size={14} strokeWidth={2} /> Add to Calendar
-                    </span>
+                    {addToCalendar.isPending ? 'Scheduling…' : 'Confirm'}
                   </Button>
-                )
+                  <Button type="button" onClick={() => setSchedulingTaskId(null)}>
+                    Cancel
+                  </Button>
+                </div>
               )}
-              <Button
-                onClick={() =>
-                  updateStatus.mutate({ taskId: task.id, status: task.status === 'open' ? 'done' : 'open' })
-                }
-                disabled={updateStatus.isPending}
-              >
-                {task.status === 'open' ? 'Mark done' : 'Reopen'}
-              </Button>
             </Card>
           )
         })}

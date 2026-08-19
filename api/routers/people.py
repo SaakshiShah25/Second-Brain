@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 import db
 import retrieval
 from api.auth import get_current_user_id
-from api.schemas import InteractionUpdate, MergeRequest, PersonUpdate
+from api.schemas import AddPersonalNoteRequest, InteractionUpdate, MergeRequest, PersonUpdate
 
 router = APIRouter()
 
@@ -36,6 +36,32 @@ def stale_people(threshold_days: int = 30, user_id: str = Depends(get_current_us
     ]
     stale.sort(key=lambda p: p["last_interaction_date"])
     return stale
+
+
+@router.get("/companies")
+def list_companies(user_id: str = Depends(get_current_user_id)):
+    """Groups people by their `company` field (case-sensitive grouping key
+    here, purely for display - db.get_people_by_company() does the actual
+    case-insensitive lookup when a briefing is requested for one)."""
+    people = db.get_all_people(user_id)
+    grouped: dict[str, list] = {}
+    for p in people:
+        company = (p.get("company") or "").strip()
+        if not company:
+            continue
+        grouped.setdefault(company, []).append(p)
+    return [
+        {
+            "company": name,
+            "people": [{"id": p["id"], "name": p["name"], "role": p.get("role") or ""} for p in members],
+        }
+        for name, members in sorted(grouped.items())
+    ]
+
+
+@router.get("/companies/{company}/briefing")
+def get_company_briefing(company: str, user_id: str = Depends(get_current_user_id)):
+    return {"briefing": retrieval.generate_company_briefing(user_id, company)}
 
 
 @router.get("/{person_id}")
@@ -77,6 +103,19 @@ def merge_person(person_id: int, body: MergeRequest, user_id: str = Depends(get_
 @router.get("/{person_id}/briefing")
 def get_briefing(person_id: int, user_id: str = Depends(get_current_user_id)):
     return {"briefing": retrieval.generate_briefing(user_id, person_id)}
+
+
+@router.post("/{person_id}/personal_notes")
+def add_personal_note(person_id: int, body: AddPersonalNoteRequest, user_id: str = Depends(get_current_user_id)):
+    entry_date = body.date or date.today().isoformat()
+    db.update_person_personal_notes(user_id, person_id, body.note, entry_date)
+    return db.get_person(user_id, person_id)
+
+
+@router.delete("/{person_id}/personal_notes/{entry_index}")
+def delete_personal_note(person_id: int, entry_index: int, user_id: str = Depends(get_current_user_id)):
+    db.delete_person_personal_note(user_id, person_id, entry_index)
+    return db.get_person(user_id, person_id)
 
 
 @router.patch("/interactions/{interaction_id}")

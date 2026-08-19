@@ -21,7 +21,7 @@ import db
 import voice
 from llm_client import get_client as get_llm_client
 from api.auth import get_current_user_id
-from api.routers import ask, calendar, capture, people, tasks
+from api.routers import ask, calendar, capture, clients, people, tasks
 
 app = FastAPI(title="Second Brain API")
 
@@ -47,6 +47,7 @@ app.include_router(people.router, prefix="/api/people", tags=["people"])
 app.include_router(capture.router, prefix="/api/capture", tags=["capture"])
 app.include_router(ask.router, prefix="/api/ask", tags=["ask"])
 app.include_router(calendar.router, prefix="/api/calendar", tags=["calendar"])
+app.include_router(clients.router, prefix="/api/clients", tags=["clients"])
 
 
 @app.get("/api/health")

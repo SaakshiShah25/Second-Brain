@@ -1,11 +1,12 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Brain, MessageSquare, Sunrise, Users, type LucideIcon } from 'lucide-react'
+import { Brain, Briefcase, MessageSquare, Sunrise, Users, type LucideIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 
 const navItems: { to: string; label: string; icon: LucideIcon; end: boolean }[] = [
-  { to: '/', label: 'Digest', icon: Sunrise, end: true },
-  { to: '/chat', label: 'Chat', icon: MessageSquare, end: false },
+  { to: '/', label: 'Chat', icon: MessageSquare, end: true },
+  { to: '/digest', label: 'Digest', icon: Sunrise, end: false },
   { to: '/people', label: 'People', icon: Users, end: false },
+  { to: '/clients', label: 'Clients', icon: Briefcase, end: false },
 ]
 
 export default function Layout() {

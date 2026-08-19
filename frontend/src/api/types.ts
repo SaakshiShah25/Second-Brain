@@ -1,15 +1,23 @@
 // Mirrors api/schemas.py + the response shapes verified live against the
 // Phase 1 API (see the plan/README for the endpoint list these map to).
 
+export interface PersonalNoteEntry {
+  date: string
+  note: string
+}
+
 export interface Person {
   id: number
   name: string
   aliases: string[]
   description: string
-  // Personal/non-professional details (family, hobbies, interests) -
-  // kept separate from `description` so briefings can draw on them
-  // without mixing personal and professional traits together.
-  personal_notes: string
+  // Personal/non-professional details (family, hobbies, interests) - a
+  // dated timeline, not a single blob, so a point-in-time fact (a
+  // pregnancy) can be told apart from a permanent one (hometown) and
+  // judged for staleness later. Kept separate from `description` so
+  // briefings can draw on them without mixing personal and professional
+  // traits together.
+  personal_notes: PersonalNoteEntry[]
   role: string
   company: string
   tags: string[]
@@ -22,6 +30,11 @@ export interface Person {
 export interface StalePerson extends Person {
   last_interaction_date: string
   days_ago: number
+}
+
+export interface CompanyGroup {
+  company: string
+  people: { id: number; name: string; role: string }[]
 }
 
 export type TaskOwner = 'me' | 'them'
@@ -199,3 +212,74 @@ export interface ChatMessage {
 }
 
 export type ChatMode = 'capture' | 'ask' | 'card'
+
+// ---------- Clients (Phase 10) ----------
+
+export type ExpiryState = 'active' | 'expiring_soon' | 'expired' | 'terminated'
+
+export interface Signatory {
+  name: string
+  role: string
+  side: 'client' | 'provider'
+}
+
+export interface ClientSignatory extends Signatory {
+  id: number
+  person_id: number | null
+  person: { id: number; name: string } | null
+}
+
+export interface Client {
+  id: number
+  company: string
+  client_legal_name: string
+  provider_legal_name: string
+  effective_date: string | null
+  term_months: number | null
+  end_date: string | null
+  auto_renews: boolean
+  renewal_notice_days: number | null
+  fee_amount: number | null
+  fee_currency: string
+  fee_frequency: string
+  payment_terms: string
+  termination_terms: string
+  other_terms: string
+  status: string
+  document_path: string | null
+  document_filename: string
+  created_at: string
+  expiry_state: ExpiryState
+}
+
+export interface ClientDetail extends Client {
+  signatories: ClientSignatory[]
+}
+
+// What POST /api/clients/upload returns - fields extracted from the
+// document for review, plus the original file round-tripped as base64
+// so /api/clients/confirm can save it without a second upload.
+export interface AgreementExtracted {
+  client_company: string
+  client_legal_name: string
+  provider_legal_name: string
+  effective_date: string | null
+  term_months: number | null
+  end_date: string | null
+  auto_renews: boolean
+  renewal_notice_days: number | null
+  fee_amount: number | null
+  fee_currency: string
+  fee_frequency: string
+  payment_terms: string
+  termination_terms: string
+  other_terms: string
+  signatories: Signatory[]
+}
+
+export interface AgreementUploadResult {
+  extracted: AgreementExtracted
+  file_base64: string
+  filename: string
+  content_type: string
+}

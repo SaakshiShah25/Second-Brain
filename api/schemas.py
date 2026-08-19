@@ -63,13 +63,20 @@ class AskConfirmRequest(BaseModel):
 class PersonUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    personal_notes: Optional[str] = None
+    # personal_notes is NOT here - it's a dated timeline (jsonb list), not
+    # a single overwritable field. See AddPersonalNoteRequest below and
+    # api/routers/people.py's dedicated add/delete endpoints.
     role: Optional[str] = None
     company: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
     tags: Optional[list[str]] = None
     first_met_date: Optional[str] = None
+
+
+class AddPersonalNoteRequest(BaseModel):
+    note: str
+    date: Optional[str] = None  # defaults to today server-side if not given
 
 
 class InteractionUpdate(BaseModel):
@@ -102,3 +109,67 @@ class CardConfirmRequest(BaseModel):
 class TaskStatusUpdate(BaseModel):
     status: Optional[str] = None  # "open" | "done"
     owner: Optional[str] = None  # "me" | "them"
+
+
+class ScheduleCalendarRequest(BaseModel):
+    # When to actually put the event, if different from the task's
+    # due_date (e.g. scheduling the meeting itself a few days before the
+    # due-date deadline). None keeps the original due-date behavior.
+    event_date: Optional[str] = None
+
+
+class SignatoryFields(BaseModel):
+    name: str
+    role: str = ""
+    side: str = "client"  # "client" | "provider"
+
+
+class ClientConfirmRequest(BaseModel):
+    """Submitted after the client reviews/edits the fields
+    POST /api/clients/upload extracted - contract data is higher-stakes
+    than a casual note, so (unlike voice capture) nothing is saved on the
+    initial upload, only previewed. `file_base64`/`filename`/`content_type`
+    round-trip the original document through this second call since there's
+    no server-side session to hold onto the upload between the two
+    requests (same reasoning as CaptureConfirmRequest's `candidates`
+    round-trip in api/routers/capture.py)."""
+    company: str
+    client_legal_name: str = ""
+    provider_legal_name: str = ""
+    effective_date: Optional[str] = None
+    term_months: Optional[int] = None
+    end_date: Optional[str] = None
+    auto_renews: bool = False
+    renewal_notice_days: Optional[int] = None
+    fee_amount: Optional[float] = None
+    fee_currency: str = ""
+    fee_frequency: str = ""
+    payment_terms: str = ""
+    termination_terms: str = ""
+    other_terms: str = ""
+    signatories: list[SignatoryFields] = []
+    file_base64: Optional[str] = None
+    filename: Optional[str] = None
+    content_type: Optional[str] = None
+
+
+class ClientUpdate(BaseModel):
+    company: Optional[str] = None
+    client_legal_name: Optional[str] = None
+    provider_legal_name: Optional[str] = None
+    effective_date: Optional[str] = None
+    term_months: Optional[int] = None
+    end_date: Optional[str] = None
+    auto_renews: Optional[bool] = None
+    renewal_notice_days: Optional[int] = None
+    fee_amount: Optional[float] = None
+    fee_currency: Optional[str] = None
+    fee_frequency: Optional[str] = None
+    payment_terms: Optional[str] = None
+    termination_terms: Optional[str] = None
+    other_terms: Optional[str] = None
+    status: Optional[str] = None
+
+
+class ExtendClientRequest(BaseModel):
+    months: int

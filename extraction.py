@@ -22,18 +22,31 @@ def _build_system_prompt(reference_date: str, reference_weekday: str) -> str:
 Given a raw note describing a conversation or interaction the user had with one or more people,
 extract structured information.
 
-Today's date is {reference_date} ({reference_weekday}). Use this to resolve any relative
-date/time references in the note (e.g. "today", "yesterday", "last week", "next Monday",
-"by Friday") into absolute ISO dates (YYYY-MM-DD). If a follow-up says "by Friday", resolve
-that to the date of the coming Friday relative to today's date. If no date/time reference is
-present at all, leave the relevant field null - do not guess.
+Today's date is {reference_date} ({reference_weekday}).
 
-CRITICAL: every date field must be either a COMPLETE date (YYYY-MM-DD) or null - NEVER a
-partial date like a year-month only (e.g. "2026-09"). If the note only vaguely mentions a
-month or a loose timeframe (e.g. "sometime in September", "later next month") without a
-specific day, pick a single reasonable specific day within that period (e.g. the 1st of that
-month) rather than leaving the date partial. Only use null when there is truly no time
-reference at all - never return a value that isn't a full YYYY-MM-DD date.
+IMPORTANT - for date/time references anchored to a WEEKDAY or to
+"today"/"tomorrow"/"yesterday" (e.g. "next Monday", "last Thursday", "by Friday",
+"this Wednesday"), do NOT calculate the resulting calendar date yourself - weekday
+arithmetic is handled in code instead, since it's error-prone to compute by hand.
+Just output the phrase normalized to one of: "today", "tomorrow", "yesterday",
+"next <weekday>", "last <weekday>", "this <weekday>", or a bare "<weekday>" with no
+qualifier (e.g. plain "Friday", meaning the upcoming one) - using the weekday name
+and qualifier exactly as the note implies (e.g. "he'll get back to us by next
+Monday" -> "next Monday"; "met him last Thursday" -> "last Thursday").
+
+For anything else - an explicit date the note states outright (e.g. "August 20th"),
+or a loose/vague timeframe (e.g. "sometime next month", "in a couple weeks") -
+resolve it yourself into an absolute YYYY-MM-DD using today's date above as your
+anchor. If no date/time reference is present at all, leave the relevant field null -
+do not guess.
+
+CRITICAL: every date field must be either a COMPLETE date (YYYY-MM-DD), one of the
+normalized relative phrases described above, or null - NEVER a partial date like a
+year-month only (e.g. "2026-09"). If the note only vaguely mentions a month or a
+loose timeframe without a specific day and it doesn't fit a normalized phrase, pick
+a single reasonable specific day within that period (e.g. the 1st of that month)
+rather than leaving the date partial. Only use null when there is truly no time
+reference at all.
 
 Return ONLY valid JSON (no markdown fences, no preamble) matching this exact schema:
 
@@ -41,7 +54,7 @@ Return ONLY valid JSON (no markdown fences, no preamble) matching this exact sch
   "primary_person": {{
     "name": "string - the main person's name as mentioned, or 'Unknown' if unclear",
     "aliases": ["any nicknames/short forms used"],
-    "description": "string - GENERAL, stable, PROFESSIONALLY-OBSERVABLE traits only: physical appearance (e.g. build, hair, glasses) and personality/demeanor (e.g. funny, sincere, analytical, reserved). Do NOT include their job title or company here - those go in separate fields below. Do NOT include personal-life details (family, hobbies, interests, life events) - those go in 'personal_notes' below instead. Empty string if nothing is mentioned. Do not invent traits that aren't stated or clearly implied.",
+    "description": "string - GENERAL, stable, PROFESSIONALLY-OBSERVABLE traits only: physical appearance (e.g. build, hair, glasses) and personality/demeanor (e.g. funny, sincere, analytical, reserved) that would still be true the next time you meet them. Do NOT include their job title or company here - those go in separate fields below. Do NOT include personal-life details (family, hobbies, interests, life events) - those go in 'personal_notes' below instead. Do NOT include a reaction or emotion about a specific thing discussed in THIS meeting (e.g. 'excited about the pricing change', 'skeptical about the timeline') - that is not a stable trait, it belongs in the 'sentiments' field below instead, tied to its specific topic. Empty string if nothing is mentioned. Do not invent traits that aren't stated or clearly implied.",
     "role": "string - their job title/role if mentioned (e.g. 'Procurement Manager'), else empty string",
     "company": "string - their company/organization if mentioned, else empty string",
     "personal_notes": "string - PERSONAL, non-professional details mentioned about them: family, hobbies/interests, alma mater, life events, upcoming personal plans (e.g. 'has two kids', 'into cycling on weekends', 'went to Stanford'). Kept separate from 'description' above, which is professional/stable demeanor and appearance only. Empty string if nothing personal was mentioned."
@@ -49,10 +62,11 @@ Return ONLY valid JSON (no markdown fences, no preamble) matching this exact sch
   "other_people": [
     {{
       "name": "string - the other person's name as mentioned",
-      "relation": "string - how this person relates to the primary person and/or to the user, stated or clearly implied in the note (e.g. 'Priya's sister', 'Rohan's colleague, might join the next call'). Empty string if the note gives no indication of the relationship - do not guess."
+      "relation": "string - how this person relates to the primary person and/or to the user, stated or clearly implied in the note (e.g. 'Priya's sister', 'Rohan's colleague, might join the next call'). Empty string if the note gives no indication of the relationship - do not guess.",
+      "present": "boolean - true ONLY if this person actually took part in THIS specific meeting/conversation (e.g. joined the call, was physically there, spoke). false if they were merely mentioned/referenced by the primary person without being present themselves (e.g. 'his colleague Priya, who handles onboarding' - Priya wasn't on the call). Default to false when it's unclear - only mark true when the note clearly indicates they participated."
     }}
   ],
-  "date_mentioned": "string - the ABSOLUTE date (YYYY-MM-DD) this interaction happened, resolved from any relative reference in the note using today's date above. Null only if the note gives no time reference at all.",
+  "date_mentioned": "string - when this interaction happened, per the date-phrase rules above (a normalized relative phrase like 'today'/'last Thursday', or an explicit YYYY-MM-DD if the note states/implies one outright). Null only if the note gives no time reference at all.",
   "location": "string - location mentioned, else null",
   "appearance_this_meeting": "string - what the person was WEARING or looked like SPECIFICALLY at this particular meeting/interaction (e.g. 'wore a blue shirt and blazer'), as opposed to their general stable appearance. Empty string if nothing meeting-specific was mentioned.",
   "meeting_type": "string - the TYPE of this meeting/interaction. Must be one of: 'discovery', 'demo', 'negotiation', 'check-in', 'networking', 'contract', 'support', 'internal', 'other'. Always pick the closest fit from context (e.g. a first exploratory call is 'discovery', a casual run-in at an event is 'networking') - use 'other' only if genuinely nothing fits, never leave this blank.",
@@ -70,7 +84,7 @@ Return ONLY valid JSON (no markdown fences, no preamble) matching this exact sch
   "follow_ups": [
     {{
       "description": "string - the action item/to-do, written as a SELF-CONTAINED, SPECIFIC sentence that makes sense read entirely on its own, with no other context. ALWAYS name the actual subject/topic and who it's for/from - never leave it as a bare, ambiguous phrase. BAD (too vague): 'send revised timeline', 'Rohan to get back', 'follow up on this'. GOOD (specific): 'Send Vikas a revised delivery timeline for the project', 'Rohan to get back to us after discussing our pricing with his team'. If the note doesn't give enough detail to be this specific, include whatever specifics ARE available (topic, project, document type) rather than a generic placeholder.",
-      "due_date": "string - absolute date (YYYY-MM-DD) resolved from any deadline mentioned ('by Friday', 'next week'), else null if no deadline was mentioned",
+      "due_date": "string - when this follow-up is due, per the date-phrase rules above (a normalized relative phrase like 'next Monday'/'in 3 days', or an explicit YYYY-MM-DD), else null if no deadline was mentioned",
       "owner": "string - who owns this action item: 'me' if the user (the note-taker) needs to do it (e.g. 'I need to send...', 'Send Vikas a...'), 'them' if the other person owes it (e.g. 'Rohan to get back to us...', 'He's going to send over...'). Default to 'me' if genuinely unclear from phrasing."
     }}
   ]

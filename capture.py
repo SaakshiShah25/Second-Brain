@@ -149,9 +149,11 @@ def resolve_and_link_other_people(user_id: str, interaction_id: int, other_peopl
     people = db.get_all_people(user_id)
     for entry in other_people:
         if isinstance(entry, dict):
-            name, relation = entry.get("name"), entry.get("relation", "") or ""
+            name = entry.get("name")
+            relation = entry.get("relation", "") or ""
+            present = entry.get("present", False)
         else:
-            name, relation = str(entry), ""
+            name, relation, present = str(entry), "", False
         if not name:
             continue
 
@@ -159,7 +161,9 @@ def resolve_and_link_other_people(user_id: str, interaction_id: int, other_peopl
         if match:
             person_id = match["id"]
         else:
-            person_id = db.create_person(user_id, name=name, first_met_date=interaction_date)
+            person_id = db.create_person(
+                user_id, name=name, first_met_date=interaction_date if present else None,
+            )
             # so a second mention of this same new name later in the same
             # note matches it too, instead of creating another duplicate
             people.append(db.get_person(user_id, person_id))

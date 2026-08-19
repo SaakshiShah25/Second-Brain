@@ -56,6 +56,7 @@ Return ONLY valid JSON (no markdown fences, no preamble):
   "person_name": "string - a specific person's name/nickname, either stated in the current question OR resolved from a pronoun/back-reference using the recent conversation as described above, else null",
   "scope": "one of: 'latest' (most recent meeting/interaction), 'first' (earliest/first meeting), 'specific_date' (a particular date or time period is referenced, INCLUDING when it's referenced indirectly via 'that day'/'that meeting' and resolved from the recent conversation), 'all' (summarize the whole relationship / no specific meeting singled out)",
   "specific_date": "string - if scope is 'specific_date', the ABSOLUTE date (YYYY-MM-DD) resolved from any relative reference (including one resolved from the recent conversation, e.g. a date the assistant mentioned in its last answer) using today's date above, else null",
+  "count": "integer or null - if the user asked for a specific number of interactions (e.g. 'last 2 interactions', 'first 3 meetings'), that number, else null",
   "semantic_query": "string - a clean, content-focused restatement of what the user is trying to recall, stripped of phrasing like 'what did we talk about' (e.g. 'pricing concerns and API rate limits discussion'). Always fill this in, even when person_name is present - it's the fallback used for semantic search, and can help narrow down which meeting is relevant."
 }}
 
@@ -63,6 +64,8 @@ Examples (illustrative only):
 - "What did I talk to Rohan about last time?" -> person_name: "Rohan", scope: "latest"
 - "When did I first meet Priya?" -> person_name: "Priya", scope: "first"
 - "Summarize everything I've discussed with Sid" -> person_name: "Sid", scope: "all"
+- "Summarize my last 2 interactions with Rohan" -> person_name: "Rohan", scope: "latest", count: 2
+- "What did we discuss in my first 3 meetings with Priya?" -> person_name: "Priya", scope: "first", count: 3
 - "What did that guy who seemed skeptical about pricing say?" -> person_name: null, scope: "all", semantic_query: "skeptical about pricing"
 - "What happened in my meeting with Rohan in May?" -> person_name: "Rohan", scope: "specific_date", specific_date resolved to a date in May of this/last year as implied
 - Recent conversation mentions "your last meeting with Rohan on 2026-08-10", then the user asks "What did he wear that day?" -> person_name: "Rohan", scope: "specific_date", specific_date: "2026-08-10"
@@ -207,12 +210,13 @@ def _parse_date(value):
         return None
 
 
-def select_by_scope(interactions: list, scope: str, specific_date: str = None):
+def select_by_scope(interactions: list, scope: str, specific_date: str = None, count: int = None):
     """
     Given all of a person's interactions, narrow down to the ones the
     query's scope implies:
-      - 'latest'        -> just the most recent one
-      - 'first'         -> just the earliest one
+      - 'latest'        -> the most recent one, or the most recent `count`
+                            if given (e.g. "last 2 interactions")
+      - 'first'         -> the earliest one, or the earliest `count` if given
       - 'specific_date' -> exact date matches if any, else the single
                             closest-dated interaction
       - 'all' (default) -> everything (used to summarize the relationship)
@@ -225,9 +229,9 @@ def select_by_scope(interactions: list, scope: str, specific_date: str = None):
         return []
 
     if scope == "latest":
-        return [sorted_interactions[-1]]
+        return sorted_interactions[-count:] if count else [sorted_interactions[-1]]
     if scope == "first":
-        return [sorted_interactions[0]]
+        return sorted_interactions[:count] if count else [sorted_interactions[0]]
     if scope == "specific_date" and specific_date:
         exact = [i for i in sorted_interactions if i.get("date") == specific_date]
         if exact:
@@ -333,14 +337,29 @@ def _format_interaction_block(interaction: dict) -> str:
     return "\n".join(lines)
 
 
+def _format_personal_notes(entries: list) -> str:
+    """personal_notes is a dated timeline (list of {"date","note"}), not a
+    single blob - each entry keeps its own date so a briefing can judge
+    how stale a point-in-time fact (a pregnancy, a trip) might be, instead
+    of treating everything as equally current. Also tolerates the rare
+    pre-migration shape (a raw string) defensively, though schema.sql's
+    migration converts those on upgrade."""
+    if not entries:
+        return ""
+    if isinstance(entries, str):
+        return entries
+    return "; ".join(f"\"{e.get('note', '')}\" (noted {e.get('date') or 'unknown date'})" for e in entries if e.get("note"))
+
+
 def _build_person_context(person: dict) -> str:
     """Shared by synthesize_answer() and generate_briefing() - a short
     "Person: X (traits; role, company)" header line. Includes
     personal_notes alongside description so briefings can actually draw
     on family/hobbies/interests, not just professional traits."""
     bits = [person.get("description") or ""]
-    if person.get("personal_notes"):
-        bits.append(person["personal_notes"])
+    notes_str = _format_personal_notes(person.get("personal_notes"))
+    if notes_str:
+        bits.append(f"personal notes over time: {notes_str}")
     role_company = ", ".join(b for b in [person.get("role"), person.get("company")] if b)
     if role_company:
         bits.append(role_company)
@@ -412,14 +431,33 @@ def generate_briefing(user_id: str, person_id: int) -> str:
 
     person_context = _build_person_context(person)
 
-    system_prompt = """You are helping the user prepare to reconnect with someone they haven't
-talked to in a while, or are about to meet again. Using ONLY the interaction records below,
-write a short, natural briefing covering: who this person is, what was last discussed and how
-it went (their sentiment/reactions), anything specific worth remembering about them (appearance,
-personality, personal details they mentioned) so the reconnection feels genuine, and any open
-follow-ups involving them specifically. If they were only ever mentioned by someone else (not a
-direct interaction), say so plainly rather than implying you've spoken with them. Do not invent
-or assume anything not stated in the records. Keep it concise - a few sentences, not a report."""
+    today = date.today().isoformat()
+    system_prompt = f"""You are helping the user prepare to reconnect with someone before a call or
+meeting. Today's date is {today}. Using ONLY the interaction records below, write a SHORT, SKIMMABLE
+briefing - something the user can read in about 10 seconds, not study.
+
+Part 1 - narrative (2-3 sentences of plain prose, no headers/bold labels/lists): a one-phrase sense
+of who they are, how the most recent interaction went (sentiment/outcome), and - only if there have
+been multiple past interactions - the overall relationship trend compressed into one clause (e.g.
+"you've met three times, mostly around pricing, and he's warmed up each time") rather than recapping
+each interaction individually. The goal here is a decision-ready snapshot, not a history.
+
+Part 2 - open follow-ups (only if any exist, omit this part entirely otherwise): list EVERY
+currently open follow-up involving them, not just the most recent or most important one - each is
+something nothing has happened on yet, so none should be silently dropped. One line, format like
+"Open: send him the case studies (you, due Aug 19); he'll loop in finance and get back to you (them,
+due Aug 24)." Keep each item terse - a few words - not a restatement of the full task description.
+
+The person's "personal notes over time" (in the Person line) are each dated with when they were
+mentioned. If a personal note describes something time-sensitive (a pregnancy, an upcoming trip, an
+illness, "starting a new role soon") and its date is more than ~2 months before today, don't state
+it as still true - phrase it as something you learned back then (e.g. "as of {{note's date}}, she
+was expecting" rather than "she's expecting"), since it's likely stale by now. Permanent facts
+(hometown, alma mater, family structure) don't need this hedging regardless of date.
+
+If they were only ever mentioned by someone else (not a direct interaction), say so plainly in one
+sentence rather than implying you've spoken with them. Do not invent or assume anything not stated
+in the records."""
 
     client = get_client()
     response = client.chat.completions.create(
@@ -427,6 +465,59 @@ or assume anything not stated in the records. Keep it concise - a few sentences,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"{person_context}{blocks}"},
+        ],
+        temperature=0.4,
+    )
+    return response.choices[0].message.content
+
+
+def generate_company_briefing(user_id: str, company: str) -> str:
+    """
+    Same idea as generate_briefing() but rolled up across every contact at
+    one company - so "what's the state of things with Acme" doesn't
+    require opening the CEO's, CTO's, and CMO's profiles one at a time and
+    mentally merging three separate briefings. `company` is matched via
+    db.get_people_by_company() (case-insensitive exact match).
+    """
+    people = db.get_people_by_company(user_id, company)
+    if not people:
+        return f"I don't have any contacts recorded at {company}."
+
+    sections = []
+    for person in sorted(people, key=lambda p: p["name"]):
+        interactions = get_all_interactions_for_person(user_id, person["id"])
+        if not interactions:
+            continue
+        interactions = attach_tasks(user_id, interactions)
+        interactions_sorted = sorted(interactions, key=lambda i: i.get("date") or "")
+        blocks = "\n\n".join(
+            f"--- Interaction {i + 1} ---\n{_format_interaction_block(interaction)}"
+            for i, interaction in enumerate(interactions_sorted)
+        )
+        sections.append(f"{_build_person_context(person)}{blocks}")
+
+    if not sections:
+        return f"I have contacts at {company}, but no interactions recorded with any of them yet."
+
+    all_context = "\n\n==========\n\n".join(sections)
+
+    system_prompt = """You are helping the user prepare for or reconnect with a COMPANY they have
+multiple contacts at. Below are separate sections, one per contact at this company, each with that
+person's role and their own interaction history. Using ONLY these records, write a company-level
+briefing: who the contacts are and their roles, the overall state of the relationship (progressing,
+stalled, at risk), any decisions reached with any contact, any concerns/objections raised by anyone
+there, and all open follow-ups across every contact - clearly say who owns each one (the user or the
+specific contact) and which contact it relates to. If different contacts expressed different
+sentiments (e.g. one excited, another skeptical), call that out rather than averaging it away. Do not
+invent or assume anything not stated in the records. Keep it concise but complete - a short briefing,
+not a report."""
+
+    client = get_client()
+    response = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Company: {company}\n\n{all_context}"},
         ],
         temperature=0.4,
     )

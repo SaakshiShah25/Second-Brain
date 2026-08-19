@@ -63,8 +63,26 @@ def get_all_people(user_id: str):
     return resp.data
 
 
+def get_people_by_company(user_id: str, company: str):
+    """Case-insensitive exact match on company (ilike with no wildcards in
+    `company` behaves as case-insensitive equality) - deliberately not
+    fuzzy, since company names typed inconsistently (e.g. "Acme" vs "Acme
+    Corp") should be a follow-up if it turns out to matter in practice,
+    not guessed at upfront."""
+    resp = (
+        get_client().table("person").select("*")
+        .eq("user_id", user_id).ilike("company", company)
+        .execute()
+    )
+    return resp.data
+
+
 def create_person(user_id: str, name, description="", role="", company="", phone="", email="",
-                   aliases=None, tags=None, first_met_date=None, personal_notes=""):
+                   aliases=None, tags=None, first_met_date=None, personal_notes=None):
+    """`personal_notes` is a list of {"date": ..., "note": ...} entries (a
+    dated timeline, not a text blob - see schema.sql section 16). Callers
+    building the first entry from a freshly-captured note should pass
+    e.g. [{"date": interaction_date, "note": text}]."""
     resp = get_client().table("person").insert({
         "user_id": user_id,
         "name": name,
@@ -76,7 +94,7 @@ def create_person(user_id: str, name, description="", role="", company="", phone
         "email": email,
         "tags": tags or [],
         "first_met_date": first_met_date,
-        "personal_notes": personal_notes,
+        "personal_notes": personal_notes or [],
     }).execute()
     return resp.data[0]["id"]
 
@@ -93,19 +111,38 @@ def update_person_description(user_id: str, person_id, new_description):
     client.table("person").update({"description": merged}).eq("id", person_id).eq("user_id", user_id).execute()
 
 
-def update_person_personal_notes(user_id: str, person_id, new_notes):
-    """Passive enrichment for personal/non-professional details - same
-    append-not-overwrite convention as update_person_description(), kept
-    as a separate column so briefings can draw on personal details
-    without them polluting the professional `description` field."""
+def update_person_personal_notes(user_id: str, person_id, new_note, entry_date):
+    """Appends one dated entry to the personal-notes timeline (jsonb list
+    of {"date", "note"}) rather than overwriting - kept as a separate
+    column from `description` so briefings can draw on personal details
+    without them polluting the professional field. Unlike the old
+    text-append convention, each entry keeps its own date so staleness
+    (e.g. a pregnancy mentioned 6 months ago) can be judged later instead
+    of silently merging into one undated paragraph."""
     client = get_client()
     row = (
         client.table("person").select("personal_notes")
         .eq("id", person_id).eq("user_id", user_id).single().execute()
     )
-    existing = (row.data or {}).get("personal_notes") or ""
-    merged = (existing + "\n" + new_notes).strip() if existing else new_notes
-    client.table("person").update({"personal_notes": merged}).eq("id", person_id).eq("user_id", user_id).execute()
+    existing = (row.data or {}).get("personal_notes") or []
+    updated = existing + [{"date": entry_date, "note": new_note}]
+    client.table("person").update({"personal_notes": updated}).eq("id", person_id).eq("user_id", user_id).execute()
+
+
+def delete_person_personal_note(user_id: str, person_id, entry_index: int):
+    """Removes one entry from the personal-notes timeline by its current
+    position - lets the user drop a note that's become stale/wrong (e.g.
+    tied to a job they've since left) rather than leaving it dated-and-
+    misleading forever."""
+    client = get_client()
+    row = (
+        client.table("person").select("personal_notes")
+        .eq("id", person_id).eq("user_id", user_id).single().execute()
+    )
+    existing = (row.data or {}).get("personal_notes") or []
+    if 0 <= entry_index < len(existing):
+        updated = existing[:entry_index] + existing[entry_index + 1:]
+        client.table("person").update({"personal_notes": updated}).eq("id", person_id).eq("user_id", user_id).execute()
 
 
 def update_person_role_company(user_id: str, person_id, role=None, company=None):
@@ -483,6 +520,59 @@ def get_secondary_interactions_for_person(user_id: str, person_id: int):
         .eq("person_id", person_id)
         .eq("user_id", user_id)
         .execute()
+    )
+    return resp.data
+
+
+# ---------- Client helpers (Phase 10 - see document_extract.py / storage.py) ----------
+
+def create_client_record(user_id: str, **fields):
+    resp = get_client().table("client").insert({"user_id": user_id, **fields}).execute()
+    return resp.data[0]["id"]
+
+
+def get_all_clients(user_id: str):
+    resp = (
+        get_client().table("client").select("*")
+        .eq("user_id", user_id).order("company").execute()
+    )
+    return resp.data
+
+
+def get_client_record(user_id: str, client_id: int):
+    resp = (
+        get_client().table("client").select("*")
+        .eq("id", client_id).eq("user_id", user_id).single().execute()
+    )
+    return resp.data
+
+
+def update_client_record(user_id: str, client_id: int, **fields):
+    if fields:
+        get_client().table("client").update(fields).eq("id", client_id).eq("user_id", user_id).execute()
+
+
+def delete_client_record(user_id: str, client_id: int):
+    """client_signatory rows cascade-delete per schema.sql's ON DELETE
+    CASCADE - the original document in Storage is NOT auto-deleted here
+    (Storage is a separate system from Postgres cascades) - see
+    api/routers/clients.py's delete endpoint, which deletes both."""
+    get_client().table("client").delete().eq("id", client_id).eq("user_id", user_id).execute()
+
+
+def create_client_signatory(user_id: str, client_id: int, name: str, role: str = "", side: str = "client",
+                             person_id=None):
+    resp = get_client().table("client_signatory").insert({
+        "user_id": user_id, "client_id": client_id, "name": name,
+        "role": role, "side": side, "person_id": person_id,
+    }).execute()
+    return resp.data[0]["id"]
+
+
+def get_client_signatories(user_id: str, client_id: int):
+    resp = (
+        get_client().table("client_signatory").select("*, person(id, name)")
+        .eq("client_id", client_id).eq("user_id", user_id).execute()
     )
     return resp.data
 

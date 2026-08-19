@@ -28,7 +28,7 @@ def _proceed_with_retrieval(user_id: str, query: str, parsed: dict, person: Opti
         if not interactions:
             return f"I don't have any interactions recorded for {person['name']} yet."
         selected = retrieval.select_by_scope(
-            interactions, parsed.get("scope", "all"), parsed.get("specific_date")
+            interactions, parsed.get("scope", "all"), parsed.get("specific_date"), parsed.get("count")
         )
         selected = retrieval.attach_tasks(user_id, selected)
         return retrieval.synthesize_answer(query, selected, person)

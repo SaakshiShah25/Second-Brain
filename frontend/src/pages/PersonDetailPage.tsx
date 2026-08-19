@@ -1,9 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pencil, Sunrise } from 'lucide-react'
+import { ArrowLeft, Pencil, Plus, Sunrise, Trash2 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
+  useAddPersonalNote,
   useBriefing,
   useDeletePerson,
+  useDeletePersonalNote,
   useMergePerson,
   usePeople,
   usePerson,
@@ -15,12 +19,12 @@ import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Disclosure from '../components/Disclosure'
 import InteractionCard from '../components/InteractionCard'
+import SpeakButton from '../components/SpeakButton'
 import { Input, Label, Textarea } from '../components/fields'
 
 interface PersonForm {
   name: string
   description: string
-  personal_notes: string
   role: string
   company: string
   phone: string
@@ -40,11 +44,14 @@ export default function PersonDetailPage() {
   const deletePerson = useDeletePerson()
   const mergePerson = useMergePerson()
   const briefing = useBriefing(id)
+  const addPersonalNote = useAddPersonalNote(id)
+  const deletePersonalNote = useDeletePersonalNote(id)
 
   const [isEditing, setIsEditing] = useState(false)
   const [form, setForm] = useState<PersonForm | null>(null)
   const [mergeTargetId, setMergeTargetId] = useState<number | ''>('')
   const [confirmDialog, setConfirmDialog] = useState<'merge' | 'delete' | null>(null)
+  const [newNoteText, setNewNoteText] = useState('')
 
   useEffect(() => {
     if (data?.person) {
@@ -52,7 +59,6 @@ export default function PersonDetailPage() {
       setForm({
         name: p.name,
         description: p.description,
-        personal_notes: p.personal_notes,
         role: p.role,
         company: p.company,
         phone: p.phone,
@@ -70,6 +76,11 @@ export default function PersonDetailPage() {
   const otherPeople = (allPeople ?? []).filter((p) => p.id !== id)
   const roleCompany = [person.role, person.company].filter(Boolean).join(', ')
 
+  function handleAddNote() {
+    if (!newNoteText.trim()) return
+    addPersonalNote.mutate(newNoteText.trim(), { onSuccess: () => setNewNoteText('') })
+  }
+
   function handleSave(e: FormEvent) {
     e.preventDefault()
     if (!form) return
@@ -77,7 +88,6 @@ export default function PersonDetailPage() {
       {
         name: form.name,
         description: form.description,
-        personal_notes: form.personal_notes,
         role: form.role,
         company: form.company,
         phone: form.phone,
@@ -119,12 +129,56 @@ export default function PersonDetailPage() {
             <h1 className="text-2xl font-bold">{person.name}</h1>
             {roleCompany && <p className="text-sm text-text-muted">{roleCompany}</p>}
             {person.description && <p className="mt-2 whitespace-pre-wrap text-sm text-text">{person.description}</p>}
-            {person.personal_notes && (
-              <div className="mt-2">
-                <p className="text-xs font-medium text-text-muted">Personal notes</p>
-                <p className="whitespace-pre-wrap text-sm text-text">{person.personal_notes}</p>
+            <div className="mt-2">
+              <p className="mb-1 text-xs font-medium text-text-muted">Personal notes</p>
+              {person.personal_notes.length > 0 && (
+                <ul className="mb-2 flex flex-col gap-1">
+                  {person.personal_notes
+                    .map((entry, index) => ({ entry, index }))
+                    .slice()
+                    .reverse()
+                    .map(({ entry, index }) => (
+                      <li key={index} className="flex items-start justify-between gap-2 text-sm text-text">
+                        <span className="min-w-0">
+                          <span className="text-text-faint">{entry.date} — </span>
+                          {entry.note}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => deletePersonalNote.mutate(index)}
+                          disabled={deletePersonalNote.isPending}
+                          className="flex-shrink-0 text-text-faint hover:text-danger"
+                          title="Remove this note"
+                        >
+                          <Trash2 size={13} strokeWidth={2} />
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              )}
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Add a personal note (e.g. likes trekking, moved to Pune)"
+                  value={newNoteText}
+                  onChange={(e) => setNewNoteText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleAddNote()
+                    }
+                  }}
+                  className="flex-1 text-sm"
+                />
+                <Button
+                  type="button"
+                  onClick={handleAddNote}
+                  disabled={addPersonalNote.isPending || !newNoteText.trim()}
+                  title="Add note"
+                >
+                  <Plus size={14} strokeWidth={2} />
+                </Button>
               </div>
-            )}
+            </div>
             {person.tags.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
                 {person.tags.map((t) => (
@@ -155,14 +209,6 @@ export default function PersonDetailPage() {
                   rows={3}
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Personal notes (family, hobbies, interests)</Label>
-                <Textarea
-                  rows={3}
-                  value={form.personal_notes}
-                  onChange={(e) => setForm({ ...form, personal_notes: e.target.value })}
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -222,7 +268,14 @@ export default function PersonDetailPage() {
           </Button>
         )}
       </div>
-      {briefing.data && <Card className="mb-6 bg-accent-soft text-sm">{briefing.data.briefing}</Card>}
+      {briefing.data && (
+        <Card className="mb-6 flex items-start justify-between gap-2 bg-accent-soft">
+          <div className="prose-chat min-w-0 flex-1 text-sm">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{briefing.data.briefing}</ReactMarkdown>
+          </div>
+          <SpeakButton text={briefing.data.briefing} />
+        </Card>
+      )}
 
       <h2 className="mb-3 text-lg font-semibold">Interaction timeline</h2>
       {interactions.length === 0 && (

@@ -3,16 +3,7 @@ import { Brain, IdCard, MapPin, MessageCircleQuestion, PenLine, X, type LucideIc
 import { useCaptureCard, useCaptureCardConfirm, useCaptureConfirm, useCaptureText } from '../api/capture'
 import { useAsk, useAskConfirm } from '../api/ask'
 import { useTranscribe } from '../api/voice'
-import type {
-  CaptureConfirmRequiredResult,
-  CaptureResult,
-  CaptureSavedResult,
-  AskConfirmRequiredResult,
-  AskResult,
-  CardFields,
-  ChatMessage,
-  ChatMode,
-} from '../api/types'
+import type { CaptureResult, CaptureSavedResult, AskResult, ChatMode } from '../api/types'
 import Button from '../components/Button'
 import { Input, Textarea } from '../components/fields'
 import ChatBubble from '../components/chat/ChatBubble'
@@ -20,10 +11,7 @@ import TypingIndicator from '../components/chat/TypingIndicator'
 import ChatInput from '../components/chat/ChatInput'
 import DisambiguationCard from '../components/chat/DisambiguationCard'
 import EmptyState from '../components/chat/EmptyState'
-
-interface PendingCard extends CardFields {
-  context_note: string
-}
+import { useChatSession } from '../chat/ChatSessionContext'
 
 function formatSavedMessage(result: CaptureSavedResult): string {
   const status = result.created_new ? 'New contact' : 'Matched to existing contact'
@@ -59,12 +47,19 @@ function formatSavedMessage(result: CaptureSavedResult): string {
 }
 
 export default function ChatPage() {
-  const [mode, setMode] = useState<ChatMode>('capture')
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const {
+    mode,
+    setMode,
+    messages,
+    setMessages,
+    pendingCapture,
+    setPendingCapture,
+    pendingAsk,
+    setPendingAsk,
+    pendingCard,
+    setPendingCard,
+  } = useChatSession()
   const [inputText, setInputText] = useState('')
-  const [pendingCapture, setPendingCapture] = useState<CaptureConfirmRequiredResult | null>(null)
-  const [pendingAsk, setPendingAsk] = useState<AskConfirmRequiredResult | null>(null)
-  const [pendingCard, setPendingCard] = useState<PendingCard | null>(null)
   const [isRecording, setIsRecording] = useState(false)
   const [isBusy, setIsBusy] = useState(false)
   const [pendingLocation, setPendingLocation] = useState<{ lat: number; lng: number } | null>(null)
