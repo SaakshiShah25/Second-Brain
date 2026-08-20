@@ -1,5 +1,9 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent } from 'react'
 import { Loader2, MapPin, Mic } from 'lucide-react'
+
+export interface ChatInputHandle {
+  focus: () => void
+}
 
 interface ChatInputProps {
   value: string
@@ -16,20 +20,27 @@ interface ChatInputProps {
   onToggleLocation?: () => void
 }
 
-export default function ChatInput({
-  value,
-  onChange,
-  onSend,
-  placeholder,
-  disabled,
-  isRecording,
-  onToggleRecord,
-  locationAttached = false,
-  locationLoading = false,
-  onToggleLocation,
-}: ChatInputProps) {
+const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
+  {
+    value,
+    onChange,
+    onSend,
+    placeholder,
+    disabled,
+    isRecording,
+    onToggleRecord,
+    locationAttached = false,
+    locationLoading = false,
+    onToggleLocation,
+  },
+  ref,
+) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [elapsed, setElapsed] = useState(0)
+
+  useImperativeHandle(ref, () => ({
+    focus: () => textareaRef.current?.focus(),
+  }))
 
   // Auto-resize the textarea to fit its content, capped by max-h-40 below.
   // Resets to '0px' (not 'auto') before measuring - with box-sizing:
@@ -121,4 +132,6 @@ export default function ChatInput({
       </button>
     </div>
   )
-}
+})
+
+export default ChatInput

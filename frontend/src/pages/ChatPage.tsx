@@ -8,9 +8,10 @@ import Button from '../components/Button'
 import { Input, Textarea } from '../components/fields'
 import ChatBubble from '../components/chat/ChatBubble'
 import TypingIndicator from '../components/chat/TypingIndicator'
-import ChatInput from '../components/chat/ChatInput'
+import ChatInput, { type ChatInputHandle } from '../components/chat/ChatInput'
 import DisambiguationCard from '../components/chat/DisambiguationCard'
 import EmptyState from '../components/chat/EmptyState'
+import RecordCallToAction from '../components/chat/RecordCallToAction'
 import { useChatSession } from '../chat/ChatSessionContext'
 
 function formatSavedMessage(result: CaptureSavedResult): string {
@@ -64,10 +65,16 @@ export default function ChatPage() {
   const [isBusy, setIsBusy] = useState(false)
   const [pendingLocation, setPendingLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [locationLoading, setLocationLoading] = useState(false)
+  // Dismisses the big "Tap to Record" CTA in favor of the normal type-in
+  // bar, for whoever taps "or type instead" - local (not chat-session)
+  // state, so it resets back to the record-first default next time this
+  // page mounts fresh.
+  const [typeInsteadClicked, setTypeInsteadClicked] = useState(false)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const scrollAnchorRef = useRef<HTMLDivElement>(null)
+  const chatInputRef = useRef<ChatInputHandle>(null)
 
   const captureText = useCaptureText()
   const captureConfirm = useCaptureConfirm()
@@ -281,7 +288,18 @@ export default function ChatPage() {
       </div>
 
       <div className="mb-4 flex flex-1 flex-col space-y-4 overflow-y-auto">
-        {messages.length === 0 && !hasPending && <EmptyState mode={mode} />}
+        {messages.length === 0 && !hasPending && mode === 'capture' && !isRecording && !typeInsteadClicked && (
+          <RecordCallToAction
+            onTap={startRecording}
+            onTypeInstead={() => {
+              setTypeInsteadClicked(true)
+              chatInputRef.current?.focus()
+            }}
+          />
+        )}
+        {messages.length === 0 &&
+          !hasPending &&
+          (mode !== 'capture' || isRecording || typeInsteadClicked) && <EmptyState mode={mode} />}
 
         {messages.map((m, i) => (
           <ChatBubble key={i} message={m} />
@@ -403,6 +421,7 @@ export default function ChatPage() {
             </div>
           )}
           <ChatInput
+            ref={chatInputRef}
             value={inputText}
             onChange={setInputText}
             onSend={() => {
