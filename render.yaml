@@ -9,15 +9,16 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    # sentence-transformers/torch (embeddings.py) are memory-hungry - free
-    # tier's 512MB is a real OOM risk, especially on first model load.
-    # Fine for light solo testing; upgrade to "starter" in the dashboard
-    # if it crashes under real usage. Free tier also sleeps after 15min
-    # idle, so the first request after a gap is slow (30-60s cold start).
+    # Free tier sleeps after 15min idle, so the first request after a gap
+    # is slow (30-60s cold start) - otherwise fine now that embeddings.py
+    # calls Cohere's hosted API instead of loading a local model, which
+    # is what was OOM-crashing this on the free tier's 512MB before.
     plan: free
     healthCheckPath: /api/health
     envVars:
       - key: GROQ_API_KEY
+        sync: false
+      - key: COHERE_API_KEY
         sync: false
       - key: SUPABASE_URL
         sync: false

@@ -118,9 +118,8 @@ key at all):
 
 **Backend needs Docker** (not the plain Python buildpack) - `card_scan.py`
 needs the Tesseract OCR *binary* (`apt-get install tesseract-ocr`, not
-just the `pytesseract` pip package) and `embeddings.py`'s
-sentence-transformers/torch are memory-hungry, both of which the
-`Dockerfile` at the repo root already handles.
+just the `pytesseract` pip package), which the `Dockerfile` at the repo
+root already handles.
 
 1. **Get the code on GitHub** - create an empty repo at github.com/new
    (no README/license, so the push isn't a merge conflict), then:
@@ -133,12 +132,13 @@ sentence-transformers/torch are memory-hungry, both of which the
    auto-detects the `Dockerfile` (environment = Docker). `render.yaml`
    documents the service config and the full env var checklist (values
    are secrets - set them in the Render dashboard, not in the file):
-   `GROQ_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`, `FRONTEND_URL` (set
-   this after step 3), and - only if you want Calendar/location working
-   in production - `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/
-   `GOOGLE_OAUTH_REDIRECT_URI`/`GOOGLE_MAPS_API_KEY`. The free tier's
-   memory limit is a real OOM risk with torch loaded - at least the
-   smallest paid tier is recommended.
+   `GROQ_API_KEY`, `COHERE_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`,
+   `FRONTEND_URL` (set this after step 3), and - only if you want
+   Calendar/location working in production -
+   `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_OAUTH_REDIRECT_URI`/
+   `GOOGLE_MAPS_API_KEY`. Free tier is fine - embeddings are computed via
+   Cohere's hosted API now (see `embeddings.py`), not a local model, so
+   there's no in-process memory pressure to worry about.
 3. **Vercel (frontend)** - Import the same repo, set **Root Directory to
    `frontend`** (framework preset auto-detects as Vite), and set
    `VITE_API_URL` (the Render URL from step 2), `VITE_SUPABASE_URL`,
@@ -282,6 +282,18 @@ Get a free key: https://console.groq.com/keys
 export GROQ_API_KEY="your_key_here"
 ```
 
+### 1b. Cohere (free hosted embeddings, used for semantic search)
+
+Get a free key (no credit card required): https://cohere.com
+
+```bash
+export COHERE_API_KEY="your_key_here"
+```
+
+Optional - if unset, capture still works, just without semantic
+("that skeptical guy") search. See `embeddings.py`'s module docstring for
+why this is a hosted API call rather than a local model.
+
 ### 2. Supabase (free Postgres + pgvector, replaces the old SQLite file)
 
 1. Create a free project at https://supabase.com
@@ -289,8 +301,9 @@ export GROQ_API_KEY="your_key_here"
    `schema.sql` from this folder, and run it. This creates:
    - the `person`, `interaction`, `task`, `interaction_person` tables
    - the `pgvector` extension
-   - a `vector(384)` column on `interaction.embedding` (a real vector type,
-     not a JSON list stuffed into a text column)
+   - a `vector(1024)` column on `interaction.embedding` (a real vector
+     type, not a JSON list stuffed into a text column - 1024 dims to
+     match Cohere's `embed-english-v3.0`, see `embeddings.py`)
    - an `ivfflat` cosine-similarity index on that column
    - a `match_interactions()` SQL function that performs the actual vector
      search (used by `db.search_interactions_by_embedding()`)
@@ -361,8 +374,8 @@ What happens under the hood:
    exact alias/nickname match — nicknames aren't unique), it **asks you to
    confirm** before merging rather than guessing. Only when there's zero
    plausible candidate does it create a new person automatically.
-3. A local embedding of the raw note is computed with `sentence-transformers`
-   (free, runs on your machine, no API call).
+3. An embedding of the raw note is computed via Cohere's hosted embed API
+   (free tier, no credit card - see `embeddings.py`).
 4. Everything is written to Supabase: the Person row is created/updated,
    an Interaction row is stored (raw text + structured fields + the
    embedding in a real `vector` column), and any follow-ups become Task
@@ -406,7 +419,7 @@ person automatically — there's nothing to confirm in that case.
   facts that change (promotions, job switches), not accumulating traits.
 - **`Interaction.appearance`**: what they wore/looked like at that
   *specific* meeting — per-interaction, not per-person.
-- **`Interaction.embedding`**: a real `vector(384)` pgvector column, with
+- **`Interaction.embedding`**: a real `vector(1024)` pgvector column, with
   an `ivfflat` cosine-similarity index — genuine approximate-nearest-
   neighbor vector search inside Postgres, not a Python-side loop over
   JSON blobs.
@@ -421,15 +434,14 @@ person automatically — there's nothing to confirm in that case.
 - **MODEL_NAME** in `extraction.py` — set to a current free Groq model.
   Check https://console.groq.com/docs/models for the latest list if the
   hardcoded one gets deprecated.
-- The `sentence-transformers` model (`all-MiniLM-L6-v2`) downloads once
-  (~80MB) on first run and is cached locally after that. It produces
-  384-dimensional vectors — matching `schema.sql`'s `vector(384)` column.
-  If you swap embedding models later, update that dimension too (and
-  re-embed existing rows).
-- If you skip installing `sentence-transformers`, capture still works —
-  it just stores `embedding = NULL`, and you'll only get structured
-  person-based retrieval (no semantic "that skeptical guy" search) until
-  you add it back.
+- Embeddings are computed via Cohere's hosted `embed-english-v3.0` model
+  (1024-dimensional vectors, matching `schema.sql`'s `vector(1024)`
+  column). If you swap embedding models/providers later, update that
+  dimension too (and re-embed existing rows - a different model's
+  vectors aren't comparable to another's).
+- If `COHERE_API_KEY` isn't set, capture still works — it just stores
+  `embedding = NULL`, and you'll only get structured person-based
+  retrieval (no semantic "that skeptical guy" search) until you add it.
 - **Supabase free tier limits** (as of writing): 500MB database, 2 free
   projects, project pauses after a week of inactivity (just reopen it in
   the dashboard to wake it up). Fine for a prototype; check

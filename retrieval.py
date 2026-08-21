@@ -544,7 +544,7 @@ def answer_query(user_query: str, conversation_context: str = "") -> str:
         # Path B: no resolvable named person -> vague reference, fall back
         # to semantic search across everything via pgvector.
         semantic_query = parsed.get("semantic_query") or user_query
-        query_embedding = compute_embedding(semantic_query)
+        query_embedding = compute_embedding(semantic_query, input_type="search_query")
         if query_embedding is None:
             return ("I couldn't resolve a specific person from your question, and semantic "
                     "search isn't available right now (embedding model not loaded).")

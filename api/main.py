@@ -63,7 +63,8 @@ def health():
         get_llm_client()
     except Exception:
         groq_ok = False
-    return {"supabase": supabase_ok, "groq": groq_ok}
+    cohere_ok = bool(os.environ.get("COHERE_API_KEY"))
+    return {"supabase": supabase_ok, "groq": groq_ok, "cohere": cohere_ok}
 
 
 @app.post("/api/transcribe")

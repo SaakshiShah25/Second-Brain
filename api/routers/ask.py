@@ -34,7 +34,7 @@ def _proceed_with_retrieval(user_id: str, query: str, parsed: dict, person: Opti
         return retrieval.synthesize_answer(query, selected, person)
 
     semantic_query = parsed.get("semantic_query") or query
-    query_embedding = embeddings.compute_embedding(semantic_query)
+    query_embedding = embeddings.compute_embedding(semantic_query, input_type="search_query")
     if query_embedding is None:
         return ("I couldn't resolve a specific person from your question, and "
                 "semantic search isn't available right now.")

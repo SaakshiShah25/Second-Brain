@@ -1,5 +1,4 @@
 groq
-sentence-transformers
 python-dotenv
 supabase
 streamlit==1.50.0

@@ -362,3 +362,58 @@ begin
         alter table person drop column personal_notes_old;
     end if;
 end $$;
+
+-- 17. Switch embeddings from local sentence-transformers (384-dim,
+--     all-MiniLM-L6-v2) to Cohere's hosted embed-english-v3.0 API
+--     (1024-dim) - see embeddings.py. Running the local model in-process
+--     was OOM-crashing the deployed backend on Render's free tier
+--     (confirmed live: crashed mid-request, every time, computing an
+--     embedding). A hosted API call has no local memory footprint.
+--
+-- All existing data is wiped here rather than migrated - the old 384-dim
+-- embeddings are incompatible with the new 1024-dim column regardless
+-- (there's no way to "convert" a vector from one model's space to
+-- another's), and this is explicitly a clean-slate reset before testing
+-- the new setup, not a preserve-old-data migration.
+truncate table client_signatory, client, interaction_person, task, interaction, person
+    restart identity cascade;
+
+drop function if exists match_interactions(vector(384), int, bigint, uuid);
+
+alter table interaction alter column embedding type vector(1024);
+
+drop index if exists interaction_embedding_idx;
+create index interaction_embedding_idx
+    on interaction using ivfflat (embedding vector_cosine_ops)
+    with (lists = 100);
+
+create or replace function match_interactions (
+    query_embedding vector(1024),
+    match_count int default 5,
+    filter_person_id bigint default null,
+    filter_user_id uuid default null
+)
+returns table (
+    id bigint,
+    person_id bigint,
+    raw_text text,
+    date date,
+    summary text,
+    similarity float
+)
+language sql stable
+as $$
+    select
+        interaction.id,
+        interaction.person_id,
+        interaction.raw_text,
+        interaction.date,
+        interaction.summary,
+        1 - (interaction.embedding <=> query_embedding) as similarity
+    from interaction
+    where interaction.embedding is not null
+      and (filter_person_id is null or interaction.person_id = filter_person_id)
+      and (filter_user_id is null or interaction.user_id = filter_user_id)
+    order by interaction.embedding <=> query_embedding
+    limit match_count;
+$$;
