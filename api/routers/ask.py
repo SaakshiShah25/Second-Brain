@@ -54,6 +54,9 @@ def ask(body: AskRequest, user_id: str = Depends(get_current_user_id)):
     except Exception as e:
         raise HTTPException(500, f"Couldn't understand that question: {e}")
 
+    if parsed.get("aggregate"):
+        return {"status": "answered", "answer": retrieval.answer_aggregate_query(user_id, parsed["aggregate"])}
+
     person = None
     if parsed.get("person_name"):
         people = db.get_all_people(user_id)

@@ -10,6 +10,7 @@ Then set it as an environment variable:
 import json
 from datetime import date
 
+import text_utils
 from llm_client import get_client, MODEL_NAME
 
 
@@ -126,7 +127,7 @@ def extract_info(raw_text: str, reference_date: date = None) -> dict:
         response_format={"type": "json_object"},
     )
 
-    content = response.choices[0].message.content
+    content = text_utils.normalize_text(response.choices[0].message.content)
 
     try:
         return json.loads(content)

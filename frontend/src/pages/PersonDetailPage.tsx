@@ -126,7 +126,7 @@ export default function PersonDetailPage() {
         <div className="mb-4 flex items-start gap-4">
           <Avatar id={person.id} name={person.name} size="lg" />
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-bold">{person.name}</h1>
+            <h1 className="text-2xl font-bold tracking-tight">{person.name}</h1>
             {roleCompany && <p className="text-sm text-text-muted">{roleCompany}</p>}
             {person.description && <p className="mt-2 whitespace-pre-wrap text-sm text-text">{person.description}</p>}
             <div className="mt-2">
@@ -277,7 +277,7 @@ export default function PersonDetailPage() {
         </Card>
       )}
 
-      <h2 className="mb-3 text-lg font-semibold">Interaction timeline</h2>
+      <h2 className="mb-3 text-lg font-semibold tracking-tight">Interaction timeline</h2>
       {interactions.length === 0 && (
         <p className="mb-6 text-sm text-text-muted">No interactions logged with this person yet.</p>
       )}
@@ -287,7 +287,7 @@ export default function PersonDetailPage() {
         ))}
       </div>
 
-      <h2 className="mb-3 text-lg font-semibold">Mentioned in</h2>
+      <h2 className="mb-3 text-lg font-semibold tracking-tight">Mentioned in</h2>
       {mentioned_in.length === 0 && (
         <p className="mb-6 text-sm text-text-muted">Not mentioned as a secondary person in any other notes yet.</p>
       )}

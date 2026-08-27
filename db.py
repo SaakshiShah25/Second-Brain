@@ -577,6 +577,44 @@ def get_client_signatories(user_id: str, client_id: int):
     return resp.data
 
 
+# ---------- User preferences (theme, font size, Terms acceptance) ----------
+
+def get_user_preference(user_id: str) -> dict:
+    """Fetches the user's settings row, creating a default one on first
+    read - simpler than a signup-time hook, and every existing account
+    (which predates this table) needs to transparently get one too."""
+    resp = get_client().table("user_preference").select("*").eq("user_id", user_id).execute()
+    if resp.data:
+        return resp.data[0]
+    resp = get_client().table("user_preference").insert({"user_id": user_id}).execute()
+    return resp.data[0]
+
+
+def update_user_preference(user_id: str, **fields) -> dict:
+    """Upserts so this works whether or not get_user_preference() has
+    already created the row for this user."""
+    row = {"user_id": user_id, "updated_at": datetime.now(timezone.utc).isoformat(), **fields}
+    resp = get_client().table("user_preference").upsert(row).execute()
+    return resp.data[0]
+
+
+def get_user_email(user_id: str) -> str:
+    """Looks up the account's login email via the Auth admin API (not
+    stored redundantly in `person`/`user_preference`) - used by
+    morning_brief.py to know where to send the daily brief."""
+    user = get_client().auth.admin.get_user_by_id(user_id)
+    return user.user.email
+
+
+def get_users_with_daily_brief_enabled() -> list:
+    """Every user_id that's opted into the scheduled daily-brief email
+    (see schema.sql section 19) - used by the cron-triggered
+    POST /api/brief/send-daily-emails, which has no single logged-in user
+    to scope to."""
+    resp = get_client().table("user_preference").select("user_id").eq("daily_brief_email_enabled", True).execute()
+    return [row["user_id"] for row in resp.data]
+
+
 if __name__ == "__main__":
     # Quick connectivity check: confirms env vars are set and the tables
     # from schema.sql exist.

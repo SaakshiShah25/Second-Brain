@@ -127,7 +127,7 @@ export default function ClientsPage() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="flex items-center gap-2 text-2xl font-bold">
+        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
           <Briefcase size={22} strokeWidth={2} className="text-accent" /> Clients
         </h1>
         <Button variant="primary" onClick={() => fileInputRef.current?.click()} disabled={upload.isPending}>

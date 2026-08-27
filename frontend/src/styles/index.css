@@ -23,6 +23,34 @@ theme below via @theme, so both plain CSS and Tailwind utility classes
   --sb-accent-soft: rgba(124, 108, 246, 0.16);
   --sb-danger: #f27272;
   --sb-success: #4ade80;
+
+  /* Multiplier for the Settings page's font-size preference - applied on
+     top of the responsive base size below via html's font-size formula. */
+  --user-font-scale: 1;
+}
+
+/* Light theme - opted into via data-theme="light" on <html> (set by
+   SettingsProvider from the user's stored preference). Apple's own
+   light-mode palette: white/near-white surfaces, near-black text
+   (#1d1d1f, not pure black), the same accent hue deepened slightly for
+   AA contrast on white, and danger/success darkened for the same reason
+   (the dark theme's pastel red/green read fine on a near-black
+   background but fail contrast as text on white). */
+:root[data-theme="light"] {
+  --sb-bg: #ffffff;
+  --sb-bg-elevated: #f5f5f7;
+  --sb-bg-card: #ffffff;
+  --sb-bg-hover: #f0f0f2;
+  --sb-border: rgba(0, 0, 0, 0.08);
+  --sb-border-strong: rgba(0, 0, 0, 0.14);
+  --sb-text: #1d1d1f;
+  --sb-text-muted: #6e6e73;
+  --sb-text-faint: #8e8e93;
+  --sb-accent: #6c5ce8;
+  --sb-accent-hover: #5b4bd6;
+  --sb-accent-soft: rgba(108, 92, 232, 0.12);
+  --sb-danger: #d92d20;
+  --sb-success: #16a34a;
 }
 
 @theme {
@@ -40,7 +68,42 @@ theme below via @theme, so both plain CSS and Tailwind utility classes
   --color-accent-soft: var(--sb-accent-soft);
   --color-danger: var(--sb-danger);
   --color-success: var(--sb-success);
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* Apple's system font (SF Pro) first on Apple devices/browsers - falls
+     back to Inter (a close match in spirit: geometric, humanist) on
+     everything else, so this looks native on iOS/macOS rather than an
+     approximation of it. */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+}
+
+/* Font-size preference (Settings page) - a multiplier on top of the
+   responsive base size below, set via data-font-size on <html>. Small/
+   large chosen to be a noticeable but not disruptive step, matching how
+   iOS's own Larger Text setting scales rather than jumping wildly. */
+:root[data-font-size="small"] {
+  --user-font-scale: 0.9;
+}
+:root[data-font-size="large"] {
+  --user-font-scale: 1.15;
+}
+
+/* Base text size scales with viewport, not just a fixed 16px everywhere -
+   phones get Apple's ~17pt body-text feel, and wider (web/desktop)
+   viewports step up so text isn't left looking small on a large
+   display. Every Tailwind text-* utility is rem-based, so this single
+   rule scales the entire app's type consistently instead of hand-tuning
+   font sizes component by component. */
+html {
+  font-size: calc(16px * var(--user-font-scale));
+}
+@media (min-width: 768px) {
+  html {
+    font-size: calc(18px * var(--user-font-scale));
+  }
+}
+@media (min-width: 1280px) {
+  html {
+    font-size: calc(19px * var(--user-font-scale));
+  }
 }
 
 html, body, #root {
@@ -51,6 +114,9 @@ body {
   background: var(--sb-bg);
   color: var(--sb-text);
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.011em;
 }
 
 ::-webkit-scrollbar {

@@ -211,7 +211,14 @@ export interface ChatMessage {
   content: string
 }
 
-export type ChatMode = 'capture' | 'ask' | 'card'
+// ---------- Unified chat (single thread, no mode tabs) ----------
+// POST /api/chat classifies each message as capture-intent or ask-intent
+// and returns the matching existing result shape with an `intent` tag
+// added - see api/routers/chat.py's docstring.
+
+export type ChatCaptureResult = { intent: 'capture' } & CaptureResult
+export type ChatAskResult = { intent: 'ask' } & AskResult
+export type ChatResult = ChatCaptureResult | ChatAskResult
 
 // ---------- Clients (Phase 10) ----------
 
@@ -282,4 +289,24 @@ export interface AgreementUploadResult {
   file_base64: string
   filename: string
   content_type: string
+}
+
+// ---------- Settings (theme, font size, Terms of Service) ----------
+
+export type Theme = 'dark' | 'light'
+export type FontSize = 'small' | 'default' | 'large'
+
+export interface UserPreference {
+  user_id: string
+  theme: Theme
+  font_size: FontSize
+  terms_accepted_at: string | null
+  daily_brief_email_enabled: boolean
+  updated_at: string
+}
+
+// ---------- Morning brief ----------
+
+export interface MorningBrief {
+  brief: string
 }

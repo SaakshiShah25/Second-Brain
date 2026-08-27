@@ -1,0 +1,27 @@
+# Triggers the daily morning-brief email for every user who's opted in
+# (Settings page > "Daily morning brief by email" - see schema.sql
+# section 19 and api/routers/brief.py's POST /send-daily-emails).
+#
+# The schedule below (02:00 UTC = 7:30am IST) is a single fixed time for
+# everyone, not per-user-timezone-aware - adjust the cron expression to
+# whatever "morning" should mean for your actual users.
+#
+# Required repo secrets (Settings > Secrets and variables > Actions):
+#   RENDER_API_URL - the deployed backend's base URL, e.g.
+#                     https://second-brain-api-ot22.onrender.com
+#   CRON_SECRET     - must match the CRON_SECRET env var set on Render
+name: Morning brief email
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch: {}  # lets you trigger a run manually from the Actions tab, for testing
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger daily brief emails
+        run: |
+          curl -sf -X POST "${{ secrets.RENDER_API_URL }}/api/brief/send-daily-emails" \
+            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}"

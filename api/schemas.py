@@ -60,6 +60,36 @@ class AskConfirmRequest(BaseModel):
     choice: Optional[int] = None  # index into candidates, or None for "none of these"
 
 
+class ChatRequest(BaseModel):
+    """One unified chat input - api/routers/chat.py classifies it as
+    capture or ask and delegates to the matching existing flow (see that
+    module's docstring). Superset of CaptureRequest/AskRequest's fields."""
+    text: str
+    history: list[dict[str, Any]] = []
+    geo_lat: Optional[float] = None
+    geo_lng: Optional[float] = None
+
+
+class ChatConfirmRequest(BaseModel):
+    """Covers both CaptureConfirmRequest's and AskConfirmRequest's fields -
+    `intent` (round-tripped from the initial /api/chat response) says
+    which set actually applies. Unused fields for the other intent are
+    just left null."""
+    intent: str  # "capture" | "ask"
+    candidates: list[CandidateEnvelope]
+    choice: Optional[int] = None
+    # capture fields
+    extracted: Optional[dict[str, Any]] = None
+    raw_text: Optional[str] = None
+    interaction_date: Optional[str] = None
+    date_warning: Optional[str] = None
+    geo_lat: Optional[float] = None
+    geo_lng: Optional[float] = None
+    # ask fields
+    query: Optional[str] = None
+    parsed: Optional[dict[str, Any]] = None
+
+
 class PersonUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
@@ -173,3 +203,9 @@ class ClientUpdate(BaseModel):
 
 class ExtendClientRequest(BaseModel):
     months: int
+
+
+class UserPreferenceUpdate(BaseModel):
+    theme: Optional[str] = None                        # 'dark' | 'light'
+    font_size: Optional[str] = None                     # 'small' | 'default' | 'large'
+    daily_brief_email_enabled: Optional[bool] = None

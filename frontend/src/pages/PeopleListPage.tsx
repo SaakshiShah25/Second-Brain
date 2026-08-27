@@ -83,7 +83,7 @@ export default function PeopleListPage() {
 
   return (
     <div>
-      <h1 className="mb-4 flex items-center gap-2 text-2xl font-bold">
+      <h1 className="mb-4 flex items-center gap-2 text-2xl font-bold tracking-tight">
         <Users size={22} strokeWidth={2} className="text-accent" /> People
       </h1>
 

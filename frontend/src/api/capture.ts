@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
-import type { Candidate, CaptureResult, CardFields, ExtractedNote } from './types'
+import type { CaptureResult, CardFields } from './types'
 
 // Invalidated by every successful capture path below, since a save can
 // create a person/interaction/task that the Digest and People pages
@@ -13,63 +13,10 @@ function useInvalidateOnCapture() {
   }
 }
 
-export interface CaptureTextBody {
-  rawText: string
-  geoLat?: number | null
-  geoLng?: number | null
-}
-
-export function useCaptureText() {
-  const invalidate = useInvalidateOnCapture()
-  return useMutation({
-    mutationFn: ({ rawText, geoLat, geoLng }: CaptureTextBody) =>
-      api.post<CaptureResult>('/api/capture', { raw_text: rawText, geo_lat: geoLat, geo_lng: geoLng }),
-    onSuccess: (result) => {
-      if (result.status === 'saved') invalidate()
-    },
-  })
-}
-
-export interface CaptureConfirmBody {
-  extracted: ExtractedNote
-  raw_text: string
-  interaction_date: string
-  date_warning: string | null
-  candidates: Candidate[]
-  choice: number | null
-  geo_lat?: number | null
-  geo_lng?: number | null
-}
-
-export function useCaptureConfirm() {
-  const invalidate = useInvalidateOnCapture()
-  return useMutation({
-    mutationFn: (body: CaptureConfirmBody) => api.post<CaptureResult>('/api/capture/confirm', body),
-    onSuccess: invalidate,
-  })
-}
-
-export interface CaptureVoiceBody {
-  audioBlob: Blob
-  geoLat?: number | null
-  geoLng?: number | null
-}
-
-export function useCaptureVoice() {
-  const invalidate = useInvalidateOnCapture()
-  return useMutation({
-    mutationFn: ({ audioBlob, geoLat, geoLng }: CaptureVoiceBody) => {
-      const formData = new FormData()
-      formData.append('file', audioBlob, 'recording.webm')
-      if (geoLat != null) formData.append('geo_lat', String(geoLat))
-      if (geoLng != null) formData.append('geo_lng', String(geoLng))
-      return api.post<CaptureResult & { transcript: string }>('/api/capture/voice', formData)
-    },
-    onSuccess: (result) => {
-      if (result.status === 'saved') invalidate()
-    },
-  })
-}
+// Text/voice capture and Q&A both go through the unified /api/chat now
+// (see api/chat.ts) - only business-card scanning stays a distinct
+// explicit action here, since it's triggered by an attach icon, not
+// something the chat intent-classifier needs to route.
 
 export function useCaptureCard() {
   return useMutation({

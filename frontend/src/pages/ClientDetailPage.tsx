@@ -148,7 +148,7 @@ export default function ClientDetailPage() {
         <>
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-bold">{client.company}</h1>
+              <h1 className="text-2xl font-bold tracking-tight">{client.company}</h1>
               {client.client_legal_name && <p className="text-sm text-text-muted">{client.client_legal_name}</p>}
             </div>
             <span
@@ -246,7 +246,7 @@ export default function ClientDetailPage() {
 
           {client.signatories.length > 0 && (
             <>
-              <h2 className="mb-3 text-lg font-semibold">Signatories</h2>
+              <h2 className="mb-3 text-lg font-semibold tracking-tight">Signatories</h2>
               <div className="mb-6 flex flex-col gap-2">
                 {client.signatories.map((sig) => (
                   <Card key={sig.id} className="flex items-center justify-between">

@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent } from 'react'
-import { Loader2, MapPin, Mic } from 'lucide-react'
+import { Camera, Loader2, MapPin, Mic, Square } from 'lucide-react'
 
 export interface ChatInputHandle {
   focus: () => void
@@ -11,13 +11,16 @@ interface ChatInputProps {
   onSend: () => void
   placeholder: string
   disabled: boolean
+  isBusy: boolean
+  onStop?: () => void
   isRecording: boolean
   onToggleRecord: () => void
-  // Opt-in device location (see ChatPage.tsx) - undefined `onToggleLocation`
-  // hides the button entirely (e.g. in Ask mode, where a location doesn't apply).
+  // Opt-in device location - undefined `onToggleLocation` hides the button.
   locationAttached?: boolean
   locationLoading?: boolean
   onToggleLocation?: () => void
+  // Business-card scan trigger - undefined hides the button.
+  onAttachCard?: (file: File) => void
 }
 
 const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
@@ -27,15 +30,19 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
     onSend,
     placeholder,
     disabled,
+    isBusy,
+    onStop,
     isRecording,
     onToggleRecord,
     locationAttached = false,
     locationLoading = false,
     onToggleLocation,
+    onAttachCard,
   },
   ref,
 ) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const cardInputRef = useRef<HTMLInputElement>(null)
   const [elapsed, setElapsed] = useState(0)
 
   useImperativeHandle(ref, () => ({
@@ -43,10 +50,6 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
   }))
 
   // Auto-resize the textarea to fit its content, capped by max-h-40 below.
-  // Resets to '0px' (not 'auto') before measuring - with box-sizing:
-  // border-box (Tailwind's preflight default), 'auto' can leave scrollHeight
-  // reporting the previous rendered box instead of the content's natural
-  // height once max-height is already constraining it.
   useEffect(() => {
     const el = textareaRef.current
     if (!el) return
@@ -71,65 +74,127 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
     }
   }
 
+  // The record/stop button lives as its own round element below the text
+  // field entirely - not nested inside the same bordered input bar as the
+  // camera/location icons and textarea - so it reads as a distinct,
+  // deliberate control rather than another item crammed into a text
+  // field's toolbar. It only appears when there's no typed text to send,
+  // so typing still gets a normal compact Send pill inline instead.
+  const showRecordButton = (isBusy && onStop) || isRecording || !value.trim()
+
   return (
-    <div className="flex items-end gap-2 rounded-2xl border border-border-strong bg-bg-card p-2">
-      <button
-        type="button"
-        onClick={onToggleRecord}
-        disabled={disabled && !isRecording}
-        title={isRecording ? 'Stop recording' : 'Record a voice note'}
-        className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-base transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-          isRecording ? 'bg-danger/20 text-danger' : 'text-text-muted hover:bg-bg-hover hover:text-text'
-        }`}
-      >
-        {isRecording ? (
-          <span className="h-2.5 w-2.5 rounded-full bg-danger" style={{ animation: 'pulse-rec 1s infinite' }} />
-        ) : (
-          <Mic size={17} strokeWidth={2} />
+    <div className="flex flex-col items-center gap-3">
+      <div className="flex w-full items-end gap-1.5 rounded-3xl border border-border-strong bg-bg-card p-1.5 shadow-sm">
+        {onAttachCard && (
+          <>
+            <button
+              type="button"
+              onClick={() => cardInputRef.current?.click()}
+              disabled={disabled}
+              title="Scan a business card"
+              className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-bg-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Camera size={19} strokeWidth={2} />
+            </button>
+            <input
+              ref={cardInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) onAttachCard(file)
+                e.target.value = ''
+              }}
+            />
+          </>
         )}
-      </button>
 
-      {onToggleLocation && (
-        <button
-          type="button"
-          onClick={onToggleLocation}
-          disabled={disabled || locationLoading}
-          title={locationAttached ? 'Remove location' : 'Add my location'}
-          className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-            locationAttached ? 'bg-accent-soft text-accent' : 'text-text-muted hover:bg-bg-hover hover:text-text'
-          }`}
-        >
-          {locationLoading ? (
-            <Loader2 size={17} strokeWidth={2} className="animate-spin" />
-          ) : (
-            <MapPin size={17} strokeWidth={2} />
-          )}
-        </button>
-      )}
+        {onToggleLocation && (
+          <button
+            type="button"
+            onClick={onToggleLocation}
+            disabled={disabled || locationLoading}
+            title={locationAttached ? 'Remove location' : 'Add my location'}
+            className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              locationAttached ? 'bg-accent-soft text-accent' : 'text-text-muted hover:bg-bg-hover hover:text-text'
+            }`}
+          >
+            {locationLoading ? (
+              <Loader2 size={18} strokeWidth={2} className="animate-spin" />
+            ) : (
+              <MapPin size={18} strokeWidth={2} />
+            )}
+          </button>
+        )}
 
-      {isRecording ? (
-        <div className="flex flex-1 items-center px-2 py-2 text-sm text-text-muted">Recording… {elapsed}s</div>
-      ) : (
-        <textarea
-          ref={textareaRef}
-          rows={1}
-          value={value}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          className="max-h-40 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-text placeholder:text-text-faint focus:outline-none disabled:opacity-50"
-        />
-      )}
+        {isRecording ? (
+          <div className="flex flex-1 items-center gap-2 px-3 py-2.5 text-sm text-text-muted">
+            <span className="h-2 w-2 rounded-full bg-danger" style={{ animation: 'pulse-rec 1s infinite' }} />
+            Recording… {elapsed}s
+          </div>
+        ) : (
+          <textarea
+            ref={textareaRef}
+            rows={1}
+            value={value}
+            disabled={disabled}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            className="max-h-40 flex-1 resize-none bg-transparent px-2 py-2.5 text-[0.9375rem] text-text placeholder:text-text-faint focus:outline-none disabled:opacity-50"
+          />
+        )}
 
-      <button
-        type="button"
-        onClick={onSend}
-        disabled={disabled || isRecording || !value.trim()}
-        className="flex-shrink-0 rounded-full bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        Send
-      </button>
+        {!showRecordButton && (
+          <button
+            type="button"
+            onClick={onSend}
+            disabled={disabled}
+            className="flex h-11 flex-shrink-0 items-center justify-center rounded-full bg-accent px-5 text-[0.9375rem] font-semibold text-white shadow-sm transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Send
+          </button>
+        )}
+      </div>
+
+      {/* A big, round, standalone primary action - deliberately separate
+          from the text field above it, matching how a camera shutter or
+          Voice Memos' record button isn't part of any other control. */}
+      {showRecordButton &&
+        (isBusy && onStop ? (
+          <div className="flex flex-col items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onStop}
+              className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-full bg-danger/15 text-danger shadow-sm transition-colors hover:bg-danger/25"
+            >
+              <Square size={24} strokeWidth={2} fill="currentColor" />
+            </button>
+            <span className="text-xs font-medium text-text-muted">Stop</span>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onToggleRecord}
+              disabled={disabled}
+              className={`flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-full text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                isRecording ? 'bg-danger hover:bg-danger/85' : 'bg-accent hover:bg-accent-hover'
+              }`}
+            >
+              {isRecording ? (
+                <Square size={26} strokeWidth={2} fill="currentColor" />
+              ) : (
+                <Mic size={28} strokeWidth={2} />
+              )}
+            </button>
+            <span className="text-xs font-medium text-text-muted">
+              {isRecording ? 'Stop recording' : 'Tap to record'}
+            </span>
+          </div>
+        ))}
     </div>
   )
 })

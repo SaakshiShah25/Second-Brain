@@ -18,7 +18,8 @@ not the importing file's own name.
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
+from starlette.concurrency import run_in_threadpool
 
 import capture
 import card_scan
@@ -170,12 +171,19 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
 # ---------- Endpoints ----------
 
 @router.post("")
-def capture_text(body: CaptureRequest, user_id: str = Depends(get_current_user_id)):
+async def capture_text(body: CaptureRequest, request: Request, user_id: str = Depends(get_current_user_id)):
     try:
-        extracted = extraction.extract_info(body.raw_text)
+        extracted = await run_in_threadpool(extraction.extract_info, body.raw_text)
     except Exception as e:
         raise HTTPException(500, f"Extraction failed: {e}")
-    return _process_extracted(user_id, body.raw_text, extracted, geo_lat=body.geo_lat, geo_lng=body.geo_lng)
+    # Extraction (the LLM call above) is the slow part of a capture - if the
+    # client cancelled the request (e.g. the chat's Stop button) while it was
+    # running, don't go on to save a note the user just told us to cancel.
+    if await request.is_disconnected():
+        raise HTTPException(499, "Client disconnected")
+    return await run_in_threadpool(
+        lambda: _process_extracted(user_id, body.raw_text, extracted, geo_lat=body.geo_lat, geo_lng=body.geo_lng)
+    )
 
 
 @router.post("/confirm")

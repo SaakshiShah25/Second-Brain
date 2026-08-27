@@ -1,6 +1,19 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Calendar, CalendarCheck, CalendarPlus, CheckCircle2, ChevronDown, Sunrise, TriangleAlert } from 'lucide-react'
+import {
+  Calendar,
+  CalendarCheck,
+  CalendarPlus,
+  CheckCircle2,
+  ChevronDown,
+  Circle,
+  Mail,
+  Sunrise,
+  TriangleAlert,
+} from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { useMorningBrief, useSendBriefEmail } from '../api/brief'
 import { useCalendarStatus, useStartCalendarConnect } from '../api/calendar'
 import {
   useAddTaskToCalendar,
@@ -13,6 +26,45 @@ import {
 import type { TaskFilter } from '../api/types'
 import Card from '../components/Card'
 import Button from '../components/Button'
+
+function MorningBriefCard() {
+  const { data, isLoading } = useMorningBrief()
+  const sendEmail = useSendBriefEmail()
+
+  return (
+    <Card className="mb-4">
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold tracking-tight text-text-muted">Morning brief</h2>
+        <Button onClick={() => sendEmail.mutate()} disabled={sendEmail.isPending} title="Resend this to your email now">
+          <span className="flex items-center gap-1.5">
+            <Mail size={14} strokeWidth={2} />
+            {sendEmail.isPending ? 'Sending…' : 'Send now'}
+          </span>
+        </Button>
+      </div>
+      {/* This card already arrives in your inbox automatically each
+          morning (Settings > Daily morning brief by email, on by
+          default) - "Send now" is just a manual resend, e.g. if you
+          want another copy or turned the automatic one off. */}
+      <p className="mb-2 text-xs text-text-faint">Also emailed to you automatically each morning.</p>
+      {sendEmail.isSuccess && (
+        <p className="mb-2 text-xs text-green-600">Sent to {sendEmail.data.sent_to}.</p>
+      )}
+      {sendEmail.isError && (
+        <p className="mb-2 text-xs text-danger">
+          {sendEmail.error instanceof Error ? sendEmail.error.message : 'Could not send the email.'}
+        </p>
+      )}
+      {isLoading ? (
+        <p className="text-sm text-text-muted">Putting today together…</p>
+      ) : (
+        <div className="prose-chat text-sm leading-relaxed text-text">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{data?.brief ?? ''}</ReactMarkdown>
+        </div>
+      )}
+    </Card>
+  )
+}
 
 const FILTERS: { value: TaskFilter; label: string }[] = [
   { value: 'overdue', label: 'Overdue' },
@@ -75,9 +127,11 @@ export default function DigestPage() {
 
   return (
     <div>
-      <h1 className="mb-6 flex items-center gap-2 text-2xl font-bold">
+      <h1 className="mb-6 flex items-center gap-2 text-2xl font-bold tracking-tight">
         <Sunrise size={22} strokeWidth={2} className="text-accent" /> Digest
       </h1>
+
+      <MorningBriefCard />
 
       {calendarResult === 'connected' && (
         <Card className="mb-4 flex items-center justify-between gap-3 border-green-600/40">
@@ -109,23 +163,23 @@ export default function DigestPage() {
         </Card>
       )}
 
-      <h2 className="mb-3 text-lg font-semibold">Tasks</h2>
+      <h2 className="mb-3 text-lg font-semibold tracking-tight">Tasks</h2>
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card className="text-center">
           <div className="text-xs text-text-muted">Overdue</div>
-          <div className="text-2xl font-bold">{data?.counts.overdue ?? '—'}</div>
+          <div className="text-2xl font-bold tracking-tight">{data?.counts.overdue ?? '—'}</div>
         </Card>
         <Card className="text-center">
           <div className="text-xs text-text-muted">Due in 7 days</div>
-          <div className="text-2xl font-bold">{data?.counts.due_soon ?? '—'}</div>
+          <div className="text-2xl font-bold tracking-tight">{data?.counts.due_soon ?? '—'}</div>
         </Card>
         <Card className="text-center">
           <div className="text-xs text-text-muted">Open</div>
-          <div className="text-2xl font-bold">{data?.counts.open ?? '—'}</div>
+          <div className="text-2xl font-bold tracking-tight">{data?.counts.open ?? '—'}</div>
         </Card>
         <Card className="text-center">
           <div className="text-xs text-text-muted">Done</div>
-          <div className="text-2xl font-bold">{data?.counts.done ?? '—'}</div>
+          <div className="text-2xl font-bold tracking-tight">{data?.counts.done ?? '—'}</div>
         </Card>
       </div>
 
@@ -175,122 +229,138 @@ export default function DigestPage() {
       <div className="mb-8 flex flex-col gap-2">
         {visibleTasks.map((task) => {
           const due = dueLabel(task.due_date, task.status)
+          const isExpanded = expandedTaskId === task.id
           return (
-            <Card key={task.id} className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-3">
+            <Card key={task.id} className="!p-0 overflow-hidden">
+              {/* Collapsed row: just the essentials (what it is, who it's
+                  about, when it's due) - everything else (owner, calendar
+                  scheduling) is an action, revealed on tap instead of
+                  crowding every row at once, which is what made this list
+                  feel cramped/shabby on a phone-width screen. */}
+              <div className="flex items-start gap-2 p-4">
                 <button
                   type="button"
-                  onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                  onClick={() =>
+                    updateStatus.mutate({ taskId: task.id, status: task.status === 'open' ? 'done' : 'open' })
+                  }
+                  disabled={updateStatus.isPending}
+                  title={task.status === 'open' ? 'Mark done' : 'Reopen'}
+                  className="mt-0.5 flex-shrink-0 text-text-faint transition-colors hover:text-success disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {task.status === 'done' ? (
+                    <CheckCircle2 size={20} strokeWidth={2} className="text-success" />
+                  ) : (
+                    <Circle size={20} strokeWidth={2} />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
                   className="min-w-0 flex-1 cursor-pointer text-left"
-                  title={expandedTaskId === task.id ? 'Click to collapse' : 'Click to view full text'}
                 >
                   <span className="flex items-start gap-1">
-                    <span className={`font-medium ${expandedTaskId === task.id ? 'whitespace-pre-wrap' : 'truncate'}`}>
+                    <span className={`font-medium ${isExpanded ? 'whitespace-pre-wrap' : 'truncate'}`}>
                       {task.description}
                     </span>
                     <ChevronDown
                       size={13}
                       strokeWidth={2}
                       className={`mt-1 flex-shrink-0 text-text-faint transition-transform ${
-                        expandedTaskId === task.id ? 'rotate-180' : ''
+                        isExpanded ? 'rotate-180' : ''
                       }`}
                     />
                   </span>
-                  <p className="text-xs text-text-muted">
-                    {task.interaction?.person?.name ?? 'Unknown'}
-                    {task.interaction?.date ? ` · ${task.interaction.date}` : ''}
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-text-muted">
+                    <span className="truncate">{task.interaction?.person?.name ?? 'Unknown'}</span>
+                    <span>·</span>
+                    <span className={`flex items-center gap-1 whitespace-nowrap ${due.overdue ? 'font-medium text-danger' : ''}`}>
+                      {due.overdue && <TriangleAlert size={12} strokeWidth={2} />}
+                      {due.text}
+                    </span>
                   </p>
                 </button>
-                <button
-                  type="button"
-                  title="Click to toggle who owns this follow-up"
-                  onClick={() =>
-                    updateOwner.mutate({ taskId: task.id, owner: task.owner === 'them' ? 'me' : 'them' })
-                  }
-                  disabled={updateOwner.isPending}
-                  className={`flex-shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                    task.owner === 'them'
-                      ? 'border-amber-400/40 bg-amber-400/10 text-amber-500 hover:border-amber-400/60'
-                      : 'border-accent bg-accent-soft text-accent'
-                  }`}
-                >
-                  {task.owner === 'them' ? 'Them' : 'Me'}
-                </button>
-                <span className={`flex items-center gap-1 whitespace-nowrap text-xs ${due.overdue ? 'font-medium text-danger' : 'text-text-muted'}`}>
-                  {due.overdue && <TriangleAlert size={13} strokeWidth={2} />}
-                  {due.text}
-                </span>
-                {calendarStatus?.connected && task.due_date && (
-                  task.calendar_event_id ? (
-                    <Button
-                      onClick={() => removeFromCalendar.mutate(task.id)}
-                      disabled={removeFromCalendar.isPending}
-                      title="Remove from Google Calendar"
-                    >
-                      <span className="flex items-center gap-1">
-                        <CalendarCheck size={14} strokeWidth={2} /> On Calendar
-                      </span>
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={() => {
-                        if (schedulingTaskId === task.id) {
-                          setSchedulingTaskId(null)
-                        } else {
-                          setSchedulingTaskId(task.id)
-                          setScheduleDate(task.due_date ?? '')
-                        }
-                      }}
-                      title="Schedule this meeting on Google Calendar"
-                    >
-                      <span className="flex items-center gap-1">
-                        <CalendarPlus size={14} strokeWidth={2} /> Schedule meet
-                      </span>
-                    </Button>
-                  )
-                )}
-                <Button
-                  onClick={() =>
-                    updateStatus.mutate({ taskId: task.id, status: task.status === 'open' ? 'done' : 'open' })
-                  }
-                  disabled={updateStatus.isPending}
-                  className={
-                    task.status === 'open'
-                      ? 'border-success/40 bg-success/10 text-success hover:border-success/60'
-                      : 'border-border-strong bg-bg-card text-text-muted hover:text-text'
-                  }
-                >
-                  {task.status === 'open' ? 'Mark done' : 'Reopen'}
-                </Button>
               </div>
 
-              {schedulingTaskId === task.id && (
-                <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-                  <label className="text-xs text-text-muted">
-                    Meeting date
-                    {task.due_date && <span className="text-text-faint"> (due {task.due_date})</span>}:
-                  </label>
-                  <input
-                    type="date"
-                    value={scheduleDate}
-                    onChange={(e) => setScheduleDate(e.target.value)}
-                    className="rounded-lg border border-border-strong bg-bg-card px-2 py-1 text-sm"
-                  />
-                  <Button
-                    variant="primary"
-                    disabled={addToCalendar.isPending || !scheduleDate}
-                    onClick={() =>
-                      addToCalendar.mutate(
-                        { taskId: task.id, eventDate: scheduleDate },
-                        { onSuccess: () => setSchedulingTaskId(null) },
+              {isExpanded && (
+                <div className="flex flex-col gap-3 border-t border-border bg-bg-elevated/40 p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      title="Click to toggle who owns this follow-up"
+                      onClick={() =>
+                        updateOwner.mutate({ taskId: task.id, owner: task.owner === 'them' ? 'me' : 'them' })
+                      }
+                      disabled={updateOwner.isPending}
+                      className={`flex-shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                        task.owner === 'them'
+                          ? 'border-amber-400/40 bg-amber-400/10 text-amber-500 hover:border-amber-400/60'
+                          : 'border-accent bg-accent-soft text-accent'
+                      }`}
+                    >
+                      {task.owner === 'them' ? 'Owed by them' : 'Owed by me'}
+                    </button>
+                    <span className="flex-1" />
+                    {calendarStatus?.connected && task.due_date && (
+                      task.calendar_event_id ? (
+                        <Button
+                          onClick={() => removeFromCalendar.mutate(task.id)}
+                          disabled={removeFromCalendar.isPending}
+                          title="Remove from Google Calendar"
+                        >
+                          <span className="flex items-center gap-1">
+                            <CalendarCheck size={14} strokeWidth={2} /> On Calendar
+                          </span>
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={() => {
+                            if (schedulingTaskId === task.id) {
+                              setSchedulingTaskId(null)
+                            } else {
+                              setSchedulingTaskId(task.id)
+                              setScheduleDate(task.due_date ?? '')
+                            }
+                          }}
+                          title="Schedule this meeting on Google Calendar"
+                        >
+                          <span className="flex items-center gap-1">
+                            <CalendarPlus size={14} strokeWidth={2} /> Schedule meet
+                          </span>
+                        </Button>
                       )
-                    }
-                  >
-                    {addToCalendar.isPending ? 'Scheduling…' : 'Confirm'}
-                  </Button>
-                  <Button type="button" onClick={() => setSchedulingTaskId(null)}>
-                    Cancel
-                  </Button>
+                    )}
+                  </div>
+
+                  {schedulingTaskId === task.id && (
+                    <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                      <label className="text-xs text-text-muted">
+                        Meeting date
+                        {task.due_date && <span className="text-text-faint"> (due {task.due_date})</span>}:
+                      </label>
+                      <input
+                        type="date"
+                        value={scheduleDate}
+                        onChange={(e) => setScheduleDate(e.target.value)}
+                        className="rounded-lg border border-border-strong bg-bg-card px-2 py-1 text-sm"
+                      />
+                      <Button
+                        variant="primary"
+                        disabled={addToCalendar.isPending || !scheduleDate}
+                        onClick={() =>
+                          addToCalendar.mutate(
+                            { taskId: task.id, eventDate: scheduleDate },
+                            { onSuccess: () => setSchedulingTaskId(null) },
+                          )
+                        }
+                      >
+                        {addToCalendar.isPending ? 'Scheduling…' : 'Confirm'}
+                      </Button>
+                      <Button type="button" onClick={() => setSchedulingTaskId(null)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </Card>
@@ -298,7 +368,7 @@ export default function DigestPage() {
         })}
       </div>
 
-      <h2 className="mb-1 text-lg font-semibold">Relationships gone quiet</h2>
+      <h2 className="mb-1 text-lg font-semibold tracking-tight">Relationships gone quiet</h2>
       <p className="mb-3 text-xs text-text-muted">Open their profile on the People page for a full "Get briefing".</p>
 
       <label className="mb-4 block text-sm">

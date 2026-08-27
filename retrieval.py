@@ -30,6 +30,7 @@ import json
 from datetime import date, datetime
 
 import db
+import text_utils
 from llm_client import get_client, MODEL_NAME
 from embeddings import compute_embedding
 from person_match import score_candidates
@@ -57,7 +58,8 @@ Return ONLY valid JSON (no markdown fences, no preamble):
   "scope": "one of: 'latest' (most recent meeting/interaction), 'first' (earliest/first meeting), 'specific_date' (a particular date or time period is referenced, INCLUDING when it's referenced indirectly via 'that day'/'that meeting' and resolved from the recent conversation), 'all' (summarize the whole relationship / no specific meeting singled out)",
   "specific_date": "string - if scope is 'specific_date', the ABSOLUTE date (YYYY-MM-DD) resolved from any relative reference (including one resolved from the recent conversation, e.g. a date the assistant mentioned in its last answer) using today's date above, else null",
   "count": "integer or null - if the user asked for a specific number of interactions (e.g. 'last 2 interactions', 'first 3 meetings'), that number, else null",
-  "semantic_query": "string - a clean, content-focused restatement of what the user is trying to recall, stripped of phrasing like 'what did we talk about' (e.g. 'pricing concerns and API rate limits discussion'). Always fill this in, even when person_name is present - it's the fallback used for semantic search, and can help narrow down which meeting is relevant."
+  "semantic_query": "string - a clean, content-focused restatement of what the user is trying to recall, stripped of phrasing like 'what did we talk about' (e.g. 'pricing concerns and API rate limits discussion'). Always fill this in, even when person_name is present - it's the fallback used for semantic search, and can help narrow down which meeting is relevant.",
+  "aggregate": "one of 'most_interactions', 'least_interactions', or null - set ONLY when the user is asking a cross-person ranking/comparison question about interaction frequency across ALL their contacts (e.g. 'who have I met with the most', 'which person do I interact with the least', 'who do I talk to most often') - NOT when asking about a specific named person. This needs an exact count over every interaction, not a semantic-similarity match, so it's handled as its own case. person_name should be null whenever this is set. Null for everything else."
 }}
 
 Examples (illustrative only):
@@ -69,6 +71,8 @@ Examples (illustrative only):
 - "What did that guy who seemed skeptical about pricing say?" -> person_name: null, scope: "all", semantic_query: "skeptical about pricing"
 - "What happened in my meeting with Rohan in May?" -> person_name: "Rohan", scope: "specific_date", specific_date resolved to a date in May of this/last year as implied
 - Recent conversation mentions "your last meeting with Rohan on 2026-08-10", then the user asks "What did he wear that day?" -> person_name: "Rohan", scope: "specific_date", specific_date: "2026-08-10"
+- "With which person have I had the most interactions?" -> person_name: null, aggregate: "most_interactions"
+- "Who do I talk to the least?" -> person_name: null, aggregate: "least_interactions"
 """
 
 
@@ -112,11 +116,56 @@ def parse_query(user_query: str, reference_date: date = None, conversation_conte
         temperature=0.1,
         response_format={"type": "json_object"},
     )
-    content = response.choices[0].message.content
+    content = text_utils.normalize_text(response.choices[0].message.content)
     try:
         return json.loads(content)
     except json.JSONDecodeError as e:
         raise ValueError(f"Query parser did not return valid JSON. Raw output:\n{content}") from e
+
+
+# ---------- Aggregate/ranking queries ("who have I met with the most") ----------
+
+def answer_aggregate_query(user_id: str, aggregate_type: str) -> str:
+    """
+    Answers a cross-person ranking question with an exact count computed
+    over every interaction row - not a semantic-search slice (top_k=5),
+    which only surfaces a handful of interactions picked by similarity to
+    the question text and can easily undercount someone whose notes just
+    didn't rank in that small sample. That's what caused "most
+    interactions" to wrongly name a contact with fewer total interactions
+    than another one whose notes happened to embed closer to the query.
+    Counts by primary person_id (who the interaction is actually about),
+    same as everywhere else "an interaction with X" is counted in this app.
+    """
+    interactions = db.get_all_interactions(user_id)
+    people = {p["id"]: p["name"] for p in db.get_all_people(user_id)}
+
+    counts: dict = {}
+    for interaction in interactions:
+        pid = interaction.get("person_id")
+        if pid is not None:
+            counts[pid] = counts.get(pid, 0) + 1
+
+    if not counts:
+        return "You don't have any interactions recorded yet."
+
+    most = aggregate_type == "most_interactions"
+    ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=most)
+    target_count = ranked[0][1]
+    top = [people.get(pid, "Unknown") for pid, c in ranked if c == target_count]
+    breakdown = ", ".join(f"{people.get(pid, 'Unknown')} ({c})" for pid, c in ranked)
+    superlative = "most" if most else "fewest"
+
+    if len(top) == 1:
+        plural = "" if target_count == 1 else "s"
+        headline = (
+            f"The person you've interacted with the {superlative} is {top[0]}, "
+            f"with {target_count} recorded interaction{plural}."
+        )
+    else:
+        headline = f"{' and '.join(top)} are tied for the {superlative} recorded interactions, with {target_count} each."
+
+    return f"{headline}\n\nFull breakdown: {breakdown}"
 
 
 # ---------- Step 2a: resolve a named person (read-only — never creates one) ----------
@@ -400,7 +449,7 @@ specifically calls for a list."""
         ],
         temperature=0.4,
     )
-    return response.choices[0].message.content
+    return text_utils.normalize_text(response.choices[0].message.content)
 
 
 def generate_briefing(user_id: str, person_id: int) -> str:
@@ -468,7 +517,7 @@ in the records."""
         ],
         temperature=0.4,
     )
-    return response.choices[0].message.content
+    return text_utils.normalize_text(response.choices[0].message.content)
 
 
 def generate_company_briefing(user_id: str, company: str) -> str:
@@ -521,7 +570,7 @@ not a report."""
         ],
         temperature=0.4,
     )
-    return response.choices[0].message.content
+    return text_utils.normalize_text(response.choices[0].message.content)
 
 
 # ---------- Main entry point ----------

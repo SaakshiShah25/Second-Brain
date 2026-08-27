@@ -417,3 +417,27 @@ as $$
     order by interaction.embedding <=> query_embedding
     limit match_count;
 $$;
+
+-- 18. Per-account settings (theme/font-size preference, Terms of Service
+--     acceptance) - one row per user, created on first read by
+--     db.get_user_preference(). Kept server-side (not just localStorage)
+--     so a preference/acceptance made on the web app also applies on the
+--     Android app, since both point at the same account.
+create table if not exists user_preference (
+    user_id uuid primary key references auth.users(id) on delete cascade,
+    theme text not null default 'dark',        -- 'dark' | 'light'
+    font_size text not null default 'default', -- 'small' | 'default' | 'large'
+    terms_accepted_at timestamptz,             -- null until the user accepts the Terms gate
+    updated_at timestamptz not null default now()
+);
+
+-- 19. Opt-OUT flag for the scheduled daily-brief email (see
+--     api/routers/brief.py's POST /send-daily-emails, run on a schedule
+--     by .github/workflows/morning-brief.yml). Defaults to true - the
+--     whole point of a daily brief is that it reaches you whether or not
+--     you open the app that day, so it should arrive automatically
+--     unless someone turns it off, not sit dormant until they discover
+--     an opt-in toggle in Settings. The "Send now" button on the Digest
+--     page is a separate, explicit per-click resend and is unaffected by
+--     this flag either way.
+alter table user_preference add column if not exists daily_brief_email_enabled boolean not null default true;

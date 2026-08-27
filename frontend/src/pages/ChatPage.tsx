@@ -1,17 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { Brain, IdCard, MapPin, MessageCircleQuestion, PenLine, X, type LucideIcon } from 'lucide-react'
-import { useCaptureCard, useCaptureCardConfirm, useCaptureConfirm, useCaptureText } from '../api/capture'
-import { useAsk, useAskConfirm } from '../api/ask'
+import { Brain, MapPin, X } from 'lucide-react'
+import { useCaptureCard, useCaptureCardConfirm } from '../api/capture'
+import { useChat, useChatConfirm } from '../api/chat'
 import { useTranscribe } from '../api/voice'
-import type { CaptureResult, CaptureSavedResult, AskResult, ChatMode } from '../api/types'
+import type { CaptureResult, CaptureSavedResult, ChatResult } from '../api/types'
 import Button from '../components/Button'
+import Greeting from '../components/Greeting'
 import { Input, Textarea } from '../components/fields'
 import ChatBubble from '../components/chat/ChatBubble'
 import TypingIndicator from '../components/chat/TypingIndicator'
 import ChatInput, { type ChatInputHandle } from '../components/chat/ChatInput'
 import DisambiguationCard from '../components/chat/DisambiguationCard'
-import EmptyState from '../components/chat/EmptyState'
-import RecordCallToAction from '../components/chat/RecordCallToAction'
 import { useChatSession } from '../chat/ChatSessionContext'
 
 function formatSavedMessage(result: CaptureSavedResult): string {
@@ -48,45 +47,28 @@ function formatSavedMessage(result: CaptureSavedResult): string {
 }
 
 export default function ChatPage() {
-  const {
-    mode,
-    setMode,
-    messages,
-    setMessages,
-    pendingCapture,
-    setPendingCapture,
-    pendingAsk,
-    setPendingAsk,
-    pendingCard,
-    setPendingCard,
-  } = useChatSession()
+  const { messages, setMessages, pendingConfirm, setPendingConfirm, pendingCard, setPendingCard } = useChatSession()
   const [inputText, setInputText] = useState('')
   const [isRecording, setIsRecording] = useState(false)
   const [isBusy, setIsBusy] = useState(false)
   const [pendingLocation, setPendingLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [locationLoading, setLocationLoading] = useState(false)
-  // Dismisses the big "Tap to Record" CTA in favor of the normal type-in
-  // bar, for whoever taps "or type instead" - local (not chat-session)
-  // state, so it resets back to the record-first default next time this
-  // page mounts fresh.
-  const [typeInsteadClicked, setTypeInsteadClicked] = useState(false)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const scrollAnchorRef = useRef<HTMLDivElement>(null)
   const chatInputRef = useRef<ChatInputHandle>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
-  const captureText = useCaptureText()
-  const captureConfirm = useCaptureConfirm()
+  const chatMutation = useChat()
+  const chatConfirm = useChatConfirm()
   const captureCard = useCaptureCard()
   const captureCardConfirm = useCaptureCardConfirm()
-  const askMutation = useAsk()
-  const askConfirm = useAskConfirm()
   const transcribe = useTranscribe()
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages, pendingCapture, pendingAsk, pendingCard, isBusy])
+  }, [messages, pendingConfirm, pendingCard, isBusy])
 
   function appendMessage(role: 'user' | 'assistant', content: string) {
     setMessages((prev) => [...prev, { role, content }])
@@ -115,19 +97,13 @@ export default function ChatPage() {
     )
   }
 
-  function handleCaptureResult(result: CaptureResult) {
-    if (result.status === 'saved') {
-      appendMessage('assistant', formatSavedMessage(result))
+  function handleChatResult(result: ChatResult) {
+    if (result.intent === 'capture') {
+      if (result.status === 'saved') appendMessage('assistant', formatSavedMessage(result))
+      else setPendingConfirm(result)
     } else {
-      setPendingCapture(result)
-    }
-  }
-
-  function handleAskResult(result: AskResult) {
-    if (result.status === 'answered') {
-      appendMessage('assistant', result.answer)
-    } else {
-      setPendingAsk(result)
+      if (result.status === 'answered') appendMessage('assistant', result.answer)
+      else setPendingConfirm(result)
     }
   }
 
@@ -136,62 +112,59 @@ export default function ChatPage() {
     const historyForRequest = messages
     appendMessage('user', text)
     setIsBusy(true)
+    const controller = new AbortController()
+    abortControllerRef.current = controller
     try {
-      if (mode === 'card') return // card mode has its own submit path
-      if (mode === 'capture') {
-        const result = await captureText.mutateAsync({
-          rawText: text,
-          geoLat: pendingLocation?.lat,
-          geoLng: pendingLocation?.lng,
-        })
-        setPendingLocation(null) // one-shot per note, not sticky across future notes
-        handleCaptureResult(result)
+      const result = await chatMutation.mutateAsync({
+        body: { text, history: historyForRequest, geoLat: pendingLocation?.lat, geoLng: pendingLocation?.lng },
+        signal: controller.signal,
+      })
+      setPendingLocation(null) // one-shot per note, not sticky across future sends
+      handleChatResult(result)
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        appendMessage('assistant', '_Stopped._')
       } else {
-        const result = await askMutation.mutateAsync({ query: text, history: historyForRequest })
-        handleAskResult(result)
+        appendMessage('assistant', `Something went wrong: ${err}`)
       }
-    } catch (err) {
-      appendMessage('assistant', `Something went wrong: ${err}`)
     } finally {
       setIsBusy(false)
+      abortControllerRef.current = null
     }
   }
 
-  async function chooseCaptureCandidate(choice: number | null) {
-    if (!pendingCapture) return
-    setIsBusy(true)
-    try {
-      const result = await captureConfirm.mutateAsync({
-        extracted: pendingCapture.extracted,
-        raw_text: pendingCapture.raw_text,
-        interaction_date: pendingCapture.interaction_date,
-        date_warning: pendingCapture.date_warning,
-        candidates: pendingCapture.candidates,
-        choice,
-        geo_lat: pendingCapture.geo_lat,
-        geo_lng: pendingCapture.geo_lng,
-      })
-      setPendingCapture(null)
-      if (result.status === 'saved') appendMessage('assistant', formatSavedMessage(result))
-    } catch (err) {
-      appendMessage('assistant', `Something went wrong: ${err}`)
-    } finally {
-      setIsBusy(false)
-    }
+  function stopRequest() {
+    abortControllerRef.current?.abort()
   }
 
-  async function chooseAskCandidate(choice: number | null) {
-    if (!pendingAsk) return
+  async function chooseConfirmCandidate(choice: number | null) {
+    if (!pendingConfirm) return
     setIsBusy(true)
     try {
-      const result = await askConfirm.mutateAsync({
-        query: pendingAsk.query,
-        parsed: pendingAsk.parsed,
-        candidates: pendingAsk.candidates,
-        choice,
-      })
-      setPendingAsk(null)
-      if (result.status === 'answered') appendMessage('assistant', result.answer)
+      const result = await chatConfirm.mutateAsync(
+        pendingConfirm.intent === 'capture'
+          ? {
+              intent: 'capture',
+              extracted: pendingConfirm.extracted,
+              raw_text: pendingConfirm.raw_text,
+              interaction_date: pendingConfirm.interaction_date,
+              date_warning: pendingConfirm.date_warning,
+              candidates: pendingConfirm.candidates,
+              choice,
+              geo_lat: pendingConfirm.geo_lat,
+              geo_lng: pendingConfirm.geo_lng,
+            }
+          : {
+              intent: 'ask',
+              query: pendingConfirm.query,
+              parsed: pendingConfirm.parsed,
+              candidates: pendingConfirm.candidates,
+              choice,
+            },
+      )
+      setPendingConfirm(null)
+      if (result.intent === 'capture' && result.status === 'saved') appendMessage('assistant', formatSavedMessage(result))
+      if (result.intent === 'ask' && result.status === 'answered') appendMessage('assistant', result.answer)
     } catch (err) {
       appendMessage('assistant', `Something went wrong: ${err}`)
     } finally {
@@ -219,9 +192,14 @@ export default function ChatPage() {
     appendMessage('user', label)
     setIsBusy(true)
     try {
-      const result = await captureCardConfirm.mutateAsync(pendingCard)
+      const result: CaptureResult = await captureCardConfirm.mutateAsync(pendingCard)
       setPendingCard(null)
-      handleCaptureResult(result)
+      if (result.status === 'saved') {
+        appendMessage('assistant', formatSavedMessage(result))
+      } else {
+        const confirmResult: ChatResult = { intent: 'capture', ...result }
+        if (confirmResult.status === 'confirm_required') setPendingConfirm(confirmResult)
+      }
     } catch (err) {
       appendMessage('assistant', `Something went wrong: ${err}`)
     } finally {
@@ -240,7 +218,10 @@ export default function ChatPage() {
       setIsBusy(true)
       try {
         const { transcript } = await transcribe.mutateAsync(blob)
-        await submitText(transcript)
+        // Populate the input rather than auto-sending, so the user can
+        // review/edit a misheard word before it goes anywhere.
+        setInputText(transcript)
+        chatInputRef.current?.focus()
       } catch (err) {
         appendMessage('assistant', `Voice transcription failed: ${err}`)
       } finally {
@@ -257,81 +238,55 @@ export default function ChatPage() {
     setIsRecording(false)
   }
 
-  const hasPending = pendingCapture !== null || pendingAsk !== null || pendingCard !== null
-  const showTyping = isBusy && !hasPending && !isRecording
+  const hasPending = pendingConfirm !== null || pendingCard !== null
+  const showTyping = isBusy && !hasPending && !isRecording && !transcribe.isPending
 
   return (
     <div className="flex h-full flex-col">
-      <h1 className="mb-4 text-2xl font-bold">Chat</h1>
-
-      <div className="mb-4 flex gap-2">
-        {(
-          [
-            ['capture', 'Log a note', PenLine],
-            ['ask', 'Ask a question', MessageCircleQuestion],
-            ['card', 'Scan a card', IdCard],
-          ] as [ChatMode, string, LucideIcon][]
-        ).map(([m, label, Icon]) => (
-          <button
-            key={m}
-            onClick={() => setMode(m)}
-            className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
-              mode === m
-                ? 'border-accent bg-accent-soft text-accent'
-                : 'border-border-strong bg-bg-card text-text-muted hover:text-text'
-            }`}
-          >
-            <Icon size={15} strokeWidth={2} />
-            {label}
-          </button>
-        ))}
-      </div>
-
       <div className="mb-4 flex flex-1 flex-col space-y-4 overflow-y-auto">
-        {messages.length === 0 && !hasPending && mode === 'capture' && !isRecording && !typeInsteadClicked && (
-          <RecordCallToAction
-            onTap={startRecording}
-            onTypeInstead={() => {
-              setTypeInsteadClicked(true)
-              chatInputRef.current?.focus()
-            }}
-          />
+        {messages.length === 0 && !hasPending && (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-center">
+            <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft text-accent">
+              <Brain size={22} strokeWidth={2} />
+            </div>
+            <Greeting />
+            <p className="max-w-xs text-sm text-text-muted">
+              Tell me about a conversation, or ask about someone you've met.
+            </p>
+          </div>
         )}
-        {messages.length === 0 &&
-          !hasPending &&
-          (mode !== 'capture' || isRecording || typeInsteadClicked) && <EmptyState mode={mode} />}
 
         {messages.map((m, i) => (
           <ChatBubble key={i} message={m} />
         ))}
 
-        {pendingCapture && (
+        {pendingConfirm && pendingConfirm.intent === 'capture' && (
           <DisambiguationCard
             prompt={
               <>
-                The note mentions <strong>'{pendingCapture.extracted.primary_person.name}'</strong>. Is this the same
+                The note mentions <strong>'{pendingConfirm.extracted.primary_person.name}'</strong>. Is this the same
                 person as one of these existing entries?
               </>
             }
-            candidates={pendingCapture.candidates}
-            onChoose={chooseCaptureCandidate}
-            onNone={() => chooseCaptureCandidate(null)}
-            noneLabel={`None of these — '${pendingCapture.extracted.primary_person.name}' is a new person`}
+            candidates={pendingConfirm.candidates}
+            onChoose={chooseConfirmCandidate}
+            onNone={() => chooseConfirmCandidate(null)}
+            noneLabel={`None of these — '${pendingConfirm.extracted.primary_person.name}' is a new person`}
             busy={isBusy}
           />
         )}
 
-        {pendingAsk && (
+        {pendingConfirm && pendingConfirm.intent === 'ask' && (
           <DisambiguationCard
             prompt={
               <>
-                <strong>'{String(pendingAsk.parsed.person_name ?? '')}'</strong> could refer to more than one person
-                you've logged. Who did you mean?
+                <strong>'{String(pendingConfirm.parsed.person_name ?? '')}'</strong> could refer to more than one
+                person you've logged. Who did you mean?
               </>
             }
-            candidates={pendingAsk.candidates}
-            onChoose={chooseAskCandidate}
-            onNone={() => chooseAskCandidate(null)}
+            candidates={pendingConfirm.candidates}
+            onChoose={chooseConfirmCandidate}
+            onNone={() => chooseConfirmCandidate(null)}
             noneLabel="None of these"
             busy={isBusy}
           />
@@ -392,23 +347,7 @@ export default function ChatPage() {
         <div ref={scrollAnchorRef} />
       </div>
 
-      {!hasPending && mode === 'card' && (
-        <div className="border-t border-border pt-3">
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-text-muted">Scan a business card</span>
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              disabled={isBusy}
-              onChange={(e) => e.target.files?.[0] && handleCardFile(e.target.files[0])}
-              className="block w-full text-sm text-text-muted file:mr-3 file:rounded-lg file:border file:border-border-strong file:bg-bg-card file:px-3 file:py-1.5 file:text-sm file:text-text"
-            />
-          </label>
-        </div>
-      )}
-
-      {!hasPending && mode !== 'card' && (
+      {!hasPending && (
         <>
           {pendingLocation && (
             <div className="mb-2 flex items-center gap-2 text-xs text-text-muted">
@@ -428,13 +367,16 @@ export default function ChatPage() {
               submitText(inputText)
               setInputText('')
             }}
-            placeholder={mode === 'capture' ? 'Tell me about a conversation…' : 'Ask about someone or something…'}
-            disabled={isBusy}
+            placeholder="Tell me about a conversation, or ask a question…"
+            disabled={isBusy && !isRecording}
+            isBusy={isBusy}
+            onStop={stopRequest}
             isRecording={isRecording}
             onToggleRecord={isRecording ? stopRecording : startRecording}
             locationAttached={pendingLocation !== null}
             locationLoading={locationLoading}
-            onToggleLocation={mode === 'capture' ? toggleLocation : undefined}
+            onToggleLocation={toggleLocation}
+            onAttachCard={handleCardFile}
           />
         </>
       )}

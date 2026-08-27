@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Brain, Briefcase, MessageSquare, Sunrise, Users, type LucideIcon } from 'lucide-react'
+import { Brain, Briefcase, MessageSquare, Settings, Sunrise, Users, type LucideIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 
 const navItems: { to: string; label: string; icon: LucideIcon; end: boolean }[] = [
@@ -7,6 +7,7 @@ const navItems: { to: string; label: string; icon: LucideIcon; end: boolean }[] 
   { to: '/digest', label: 'Digest', icon: Sunrise, end: false },
   { to: '/people', label: 'People', icon: Users, end: false },
   { to: '/clients', label: 'Clients', icon: Briefcase, end: false },
+  { to: '/settings', label: 'Settings', icon: Settings, end: false },
 ]
 
 export default function Layout() {
@@ -55,7 +56,14 @@ export default function Layout() {
 
       <div className="flex flex-1 flex-col overflow-hidden">
         <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
-          <div className="mx-auto max-w-3xl p-4 md:p-8">
+          {/* flex + h-full so a page like ChatPage that itself uses
+              "h-full flex-col" (to pin its input bar to the bottom)
+              actually has a real height to fill, instead of collapsing
+              to its own content's height and leaving dead space below
+              a short empty state - overflow-y-auto stays on <main>
+              above, so pages with content taller than the viewport
+              still scroll normally. */}
+          <div className="mx-auto flex h-full max-w-3xl flex-col p-4 md:p-8">
             <Outlet />
           </div>
         </main>

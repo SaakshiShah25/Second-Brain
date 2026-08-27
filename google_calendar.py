@@ -128,11 +128,62 @@ def create_event(user_id: str, task: dict, event_date: Optional[str] = None) -> 
             "description": description,
             "start": {"date": start.isoformat()},
             "end": {"date": end.isoformat()},
+            # Explicit reminder rather than relying on the calendar's
+            # (often unset) default - Google's all-day-event reminders are
+            # expressed as minutes before MIDNIGHT of the start date, so
+            # 900 minutes (15h) before is "9:00 AM the day before", the
+            # same anchor most calendar apps use as their all-day-event
+            # default. Both a popup and an email alert, so it actually
+            # reaches the user whether or not they have the calendar open.
+            "reminders": {
+                "useDefault": False,
+                "overrides": [
+                    {"method": "popup", "minutes": 900},
+                    {"method": "email", "minutes": 900},
+                ],
+            },
         },
     )
     resp.raise_for_status()
     body = resp.json()
     return {"calendar_event_id": body["id"], "html_link": body.get("htmlLink")}
+
+
+def list_events_for_date(user_id: str, target_date: str) -> list:
+    """Lists calendar events overlapping `target_date` (YYYY-MM-DD) -
+    used by morning_brief.py to include "what's on your calendar today"
+    in the daily brief. Returns [] (not an error) if Google Calendar
+    isn't connected, since the brief should still generate without it."""
+    try:
+        access_token = get_valid_access_token(user_id)
+    except NotConnectedError:
+        return []
+
+    day = date.fromisoformat(target_date)
+    time_min = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
+    time_max = time_min + timedelta(days=1)
+
+    resp = requests.get(
+        EVENTS_URL,
+        headers={"Authorization": f"Bearer {access_token}"},
+        params={
+            "timeMin": time_min.isoformat(),
+            "timeMax": time_max.isoformat(),
+            "singleEvents": "true",
+            "orderBy": "startTime",
+        },
+    )
+    resp.raise_for_status()
+    events = []
+    for item in resp.json().get("items", []):
+        start = item.get("start", {})
+        events.append({
+            "summary": item.get("summary", "(no title)"),
+            "start": start.get("dateTime") or start.get("date"),
+            "all_day": "date" in start,
+            "html_link": item.get("htmlLink"),
+        })
+    return events
 
 
 def delete_event(user_id: str, event_id: str) -> None:

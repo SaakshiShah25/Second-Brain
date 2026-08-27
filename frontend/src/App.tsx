@@ -8,7 +8,10 @@ import PeopleListPage from './pages/PeopleListPage'
 import PersonDetailPage from './pages/PersonDetailPage'
 import ClientsPage from './pages/ClientsPage'
 import ClientDetailPage from './pages/ClientDetailPage'
+import SettingsPage from './pages/SettingsPage'
 import { ChatSessionProvider } from './chat/ChatSessionContext'
+import SettingsProvider from './settings/SettingsProvider'
+import TermsGate from './legal/TermsGate'
 
 export default function App() {
   return (
@@ -17,9 +20,13 @@ export default function App() {
       <Route element={<RequireAuth />}>
         <Route
           element={
-            <ChatSessionProvider>
-              <Layout />
-            </ChatSessionProvider>
+            <SettingsProvider>
+              <TermsGate>
+                <ChatSessionProvider>
+                  <Layout />
+                </ChatSessionProvider>
+              </TermsGate>
+            </SettingsProvider>
           }
         >
           <Route path="/" element={<ChatPage />} />
@@ -28,6 +35,7 @@ export default function App() {
           <Route path="/people/:personId" element={<PersonDetailPage />} />
           <Route path="/clients" element={<ClientsPage />} />
           <Route path="/clients/:clientId" element={<ClientDetailPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>
     </Routes>

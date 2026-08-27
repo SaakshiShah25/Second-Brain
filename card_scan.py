@@ -24,6 +24,7 @@ from io import BytesIO
 import pytesseract
 from PIL import Image
 
+import text_utils
 from llm_client import get_client, MODEL_NAME
 
 
@@ -56,7 +57,7 @@ If the card lists multiple phone numbers, pick the one that looks primary (e.g. 
         temperature=0.1,
         response_format={"type": "json_object"},
     )
-    content = response.choices[0].message.content
+    content = text_utils.normalize_text(response.choices[0].message.content)
     try:
         return json.loads(content)
     except json.JSONDecodeError as e:

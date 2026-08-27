@@ -42,10 +42,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body?: unknown) =>
+  // `signal` lets a caller cancel an in-flight POST (e.g. a "Stop"
+  // button on a chat send) - passed straight through to fetch's own
+  // AbortSignal support, nothing custom needed.
+  post: <T>(path: string, body?: unknown, signal?: AbortSignal) =>
     request<T>(path, {
       method: 'POST',
       body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
+      signal,
     }),
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
