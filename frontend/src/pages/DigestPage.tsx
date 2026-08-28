@@ -4,9 +4,9 @@ import {
   Calendar,
   CalendarCheck,
   CalendarPlus,
+  Check,
   CheckCircle2,
   ChevronDown,
-  Circle,
   Mail,
   Sunrise,
   TriangleAlert,
@@ -226,12 +226,28 @@ export default function DigestPage() {
       {isLoading && <p className="text-sm text-text-muted">Loading…</p>}
       {!isLoading && visibleTasks.length === 0 && <p className="text-sm text-text-muted">Nothing here.</p>}
 
+      {visibleTasks.length > 0 && (
+        <div className="mb-3 flex items-center gap-4 text-xs text-text-muted">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-accent" /> My tasks
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-amber-400" /> Their tasks
+          </span>
+        </div>
+      )}
+
       <div className="mb-8 flex flex-col gap-2">
         {visibleTasks.map((task) => {
           const due = dueLabel(task.due_date, task.status)
           const isExpanded = expandedTaskId === task.id
           return (
-            <Card key={task.id} className="!p-0 overflow-hidden">
+            <Card
+              key={task.id}
+              className={`!p-0 overflow-hidden border-l-4 ${
+                task.owner === 'them' ? 'border-l-amber-400' : 'border-l-accent'
+              }`}
+            >
               {/* Collapsed row: just the essentials (what it is, who it's
                   about, when it's due) - everything else (owner, calendar
                   scheduling) is an action, revealed on tap instead of
@@ -245,13 +261,17 @@ export default function DigestPage() {
                   }
                   disabled={updateStatus.isPending}
                   title={task.status === 'open' ? 'Mark done' : 'Reopen'}
-                  className="mt-0.5 flex-shrink-0 text-text-faint transition-colors hover:text-success disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-0.5 flex-shrink-0 disabled:cursor-not-allowed"
                 >
-                  {task.status === 'done' ? (
-                    <CheckCircle2 size={20} strokeWidth={2} className="text-success" />
-                  ) : (
-                    <Circle size={20} strokeWidth={2} />
-                  )}
+                  <span
+                    className={`flex h-5 w-5 items-center justify-center rounded-[5px] border-2 transition-colors ${
+                      task.status === 'done'
+                        ? 'border-success bg-success text-white'
+                        : 'border-text-faint text-transparent hover:border-success'
+                    }`}
+                  >
+                    <Check size={13} strokeWidth={3} />
+                  </span>
                 </button>
 
                 <button
@@ -292,7 +312,7 @@ export default function DigestPage() {
                         updateOwner.mutate({ taskId: task.id, owner: task.owner === 'them' ? 'me' : 'them' })
                       }
                       disabled={updateOwner.isPending}
-                      className={`flex-shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      className={`flex-shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium transition-colors disabled:cursor-not-allowed ${
                         task.owner === 'them'
                           ? 'border-amber-400/40 bg-amber-400/10 text-amber-500 hover:border-amber-400/60'
                           : 'border-accent bg-accent-soft text-accent'
@@ -300,6 +320,19 @@ export default function DigestPage() {
                     >
                       {task.owner === 'them' ? 'Owed by them' : 'Owed by me'}
                     </button>
+                    <Button
+                      onClick={() =>
+                        updateStatus.mutate({ taskId: task.id, status: task.status === 'open' ? 'done' : 'open' })
+                      }
+                      disabled={updateStatus.isPending}
+                      className={
+                        task.status === 'open'
+                          ? 'border-success/40 bg-success/10 text-success hover:border-success/60'
+                          : 'border-border-strong bg-bg-card text-text-muted hover:text-text'
+                      }
+                    >
+                      {task.status === 'open' ? 'Mark done' : 'Reopen'}
+                    </Button>
                     <span className="flex-1" />
                     {calendarStatus?.connected && task.due_date && (
                       task.calendar_event_id ? (
