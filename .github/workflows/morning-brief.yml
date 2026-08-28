@@ -23,5 +23,13 @@ jobs:
     steps:
       - name: Trigger daily brief emails
         run: |
-          curl -sf -X POST "${{ secrets.RENDER_API_URL }}/api/brief/send-daily-emails" \
-            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}"
+          response=$(curl -s -w '\n%{http_code}' -X POST "${{ secrets.RENDER_API_URL }}/api/brief/send-daily-emails" \
+            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}")
+          status="${response##*$'\n'}"
+          body="${response%$'\n'*}"
+          echo "HTTP status: $status"
+          echo "Response body: $body"
+          if [ "$status" -ge 400 ]; then
+            echo "::error::Request failed with status $status - $body"
+            exit 1
+          fi
