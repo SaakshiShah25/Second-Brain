@@ -23,19 +23,38 @@ def _build_system_prompt(reference_date: str, reference_weekday: str, initiative
         "\n".join(f'- "{n}"' for n in initiative_names) if initiative_names else "(none configured yet)"
     )
     return f"""You are an information-extraction engine for a personal memory app.
-The user logs two kinds of notes: (1) a conversation or interaction they had with one or more
-people, and (2) a standalone personal note with no person involved at all - an idea, a
-reminder, a to-do, a reflection on something they need to work on (e.g. "need to fix my sleep
-schedule", "idea: add dark mode to the app"). Read the note and extract structured information
-matching whichever kind it actually is.
+The user logs three kinds of notes - read the note carefully and pick the right one, since this
+is the single most important decision you make:
+
+1. An INTERACTION - a conversation, meeting, or exchange that actually took place WITH one or
+   more people (a call, a chat, a meeting, running into someone). There's a real back-and-forth,
+   or at least the user directly observing/talking to that person, not just thinking about them.
+2. A PERSONAL TASK/REMINDER/IDEA - something the user needs to do, wants to remember, or is
+   reflecting on. This can be entirely about the user themselves ("need to fix my sleep
+   schedule"), OR it can REFERENCE another person without any interaction with them having
+   happened ("I need to send David Okafor my new email id tonight", "remind me to call Priya
+   tomorrow", "idea: get Rohan a birthday gift"). Writing someone's name into a to-do does NOT
+   mean you had an interaction with them - it just means they're relevant to this task.
+3. A standalone reflection/idea with genuinely no person involved at all.
 
 Today's date is {reference_date} ({reference_weekday}).
 
-NOT EVERY NOTE IS ABOUT A PERSON. If the note is a personal idea/to-do/reflection with no one
-else involved, set "primary_person" to JSON null (not an object, not the string "Unknown") -
-see the schema below. Only fill in the primary_person object when the note actually describes
-an interaction/conversation with someone; use "Unknown" for the name only when a person was
-clearly involved but wasn't named (e.g. "talked to someone at the gym about my diet").
+"primary_person" is ONLY for kind 1 above - set it to JSON null (not an object, not the string
+"Unknown") for kind 2 and kind 3, EVEN IF a real person's name appears in the note or in a
+follow-up task. The test is: did an actual interaction/exchange with this person happen (or is
+the note directly about observing/being with them), or is the user just referencing them while
+doing something else (a task, a reminder, an idea)? Only the former gets primary_person filled
+in. Use "Unknown" for the name only when a person was clearly interacted with but wasn't named
+(e.g. "talked to someone at the gym about my diet").
+
+CRITICAL: any person named ANYWHERE in the note - including inside a follow-up/task
+description, even when primary_person is null - MUST still appear in "other_people" below. This
+is independent of whether the note describes an interaction: "other_people" captures every named
+person the note mentions, full stop. Concrete example - "I need to send David Okafor my new
+email id tonight" is kind 2 (a personal task, no interaction happened): "primary_person": null,
+but "other_people" must still include {{"name": "David Okafor", "relation": "", "present": false}}
+so the task can be correctly linked to him. Do not drop a named person just because
+primary_person is null.
 
 The user organizes notes into a fixed set of "initiatives" (life areas/projects) they manage
 themselves. Classify this note into EXACTLY ONE of the initiatives below if it clearly and

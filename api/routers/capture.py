@@ -65,13 +65,22 @@ def _resolve_initiative(user_id: str, extracted: dict) -> Optional[int]:
 
 
 def _resolve_task_person(task_desc: str, primary_name: Optional[str], primary_person_id: Optional[int],
-                          linked_others: list) -> Optional[int]:
+                          linked_others: list, all_people: list) -> Optional[int]:
     """Attributes a follow-up task to whoever it's EXPLICITLY named for,
-    whether that's the interaction's primary person or a secondary one.
-    extraction.py's prompt already requires every follow-up description
-    to explicitly name who it's for/from, so a simple substring match
-    against the primary person's name and each linked secondary person's
-    name is enough here - no extra LLM call needed.
+    whether that's the interaction's primary person, a secondary person
+    extraction.py already linked for THIS note, or - as a last resort -
+    ANY other existing person this task text happens to name, even if
+    extraction didn't flag them at all for this note. That last tier
+    matters for a personal task/reminder that references someone without
+    describing an interaction with them (e.g. "I need to send David
+    Okafor my new email id tonight") - extraction.py's prompt now asks
+    for these to show up in other_people regardless of primary_person,
+    but LLM extraction is never 100% reliable, so this is a deterministic
+    safety net: if a real, already-known person's name is sitting right
+    there in the task text, attribute it to them rather than silently
+    losing that context to "Personal" every time extraction has an off
+    run. No extra LLM call needed for any of this - just substring
+    matching, same as the first two tiers.
 
     Returning the primary person's own id (rather than None) when their
     name is matched - instead of relying on the interaction's primary
@@ -84,8 +93,8 @@ def _resolve_task_person(task_desc: str, primary_name: Optional[str], primary_pe
     must survive as an explicit match, not collapse into the same "no
     one named" None as a task that never mentions anyone at all.
 
-    Returns None only when no name - primary or secondary - appears in
-    the description at all."""
+    Returns None only when no name - primary, secondary, or any other
+    known person - appears in the description at all."""
     desc_lower = task_desc.lower()
     if primary_name and primary_name.lower() in desc_lower:
         return primary_person_id
@@ -93,6 +102,27 @@ def _resolve_task_person(task_desc: str, primary_name: Optional[str], primary_pe
         name = other.get("name")
         if name and name.lower() in desc_lower:
             return other["person_id"]
+
+    # Last-resort tier: match against every other existing person by
+    # name/alias. Prefer the LONGEST matching name (reduces false
+    # positives from short/common names matching as a substring of an
+    # unrelated word), and only act on it if exactly one person is tied
+    # for that best length - a genuine tie between two different people
+    # sharing a name is safer left unattributed than guessed.
+    already_checked_ids = {primary_person_id} | {o["person_id"] for o in linked_others}
+    best_len, best_ids = 0, set()
+    for person in all_people:
+        if person["id"] in already_checked_ids:
+            continue
+        for name in [person["name"]] + (person.get("aliases") or []):
+            if name and len(name) >= 3 and name.lower() in desc_lower:
+                if len(name) > best_len:
+                    best_len, best_ids = len(name), {person["id"]}
+                elif len(name) == best_len:
+                    best_ids.add(person["id"])
+                break
+    if best_len and len(best_ids) == 1:
+        return next(iter(best_ids))
     return None
 
 
@@ -145,6 +175,8 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
     linked_others = capture.resolve_and_link_other_people(
         user_id, interaction_id, extracted.get("other_people", []) or [], interaction_date
     )
+    already_linked_ids = {person_id} | {o["person_id"] for o in linked_others}
+    all_people = db.get_all_people(user_id)
 
     tasks_created = []
     skipped_due_dates = []
@@ -161,7 +193,16 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
         due_date = resolve_relative_phrase(raw_due_date)
         if raw_due_date and not due_date:
             skipped_due_dates.append({"description": task_desc, "raw_due_date": raw_due_date})
-        task_person_id = _resolve_task_person(task_desc, resolved_name, person_id, linked_others)
+        task_person_id = _resolve_task_person(task_desc, resolved_name, person_id, linked_others, all_people)
+        # A task-text-only match against an existing person (extraction
+        # didn't flag them at all for this note) - link them to this
+        # interaction too, same as an other_people mention, so this note
+        # is discoverable from their own profile later. Track locally so
+        # a second task in the same note naming the same fallback-matched
+        # person doesn't try to link them twice.
+        if task_person_id is not None and task_person_id not in already_linked_ids:
+            db.link_interaction_person(user_id, interaction_id, task_person_id, relation="")
+            already_linked_ids.add(task_person_id)
         db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner, person_id=task_person_id)
         tasks_created.append({
             "description": task_desc, "due_date": due_date, "owner": owner, "person_id": task_person_id,
