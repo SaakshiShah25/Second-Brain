@@ -114,7 +114,18 @@ def create_event(user_id: str, task: dict, event_date: Optional[str] = None) -> 
     start = date.fromisoformat(target_date)
     end = start + timedelta(days=1)  # Google's all-day events use an exclusive end date
 
-    person_name = ((task.get("interaction") or {}).get("person") or {}).get("name")
+    # Prefer the task's own directly-linked person (who this SPECIFIC
+    # follow-up is about) over the interaction's primary person - they
+    # differ when a note involved multiple people and this follow-up is
+    # for someone other than whoever the note is primarily about.
+    # Same owner-aware fallback as morning_brief.py's _format_task_line():
+    # only default to the note's primary person when THEY own the task -
+    # for a task I own with no one explicitly named, prefixing someone
+    # else's name (e.g. "Sonali: Buy a sports t-shirt" for my own to-do)
+    # is misleading, so leave the summary as just the task description.
+    person_name = (task.get("person") or {}).get("name")
+    if not person_name and task.get("owner", "me") != "me":
+        person_name = ((task.get("interaction") or {}).get("person") or {}).get("name")
     summary = f"{person_name}: {task['description']}" if person_name else task["description"]
     description = "Created from Second Brain."
     if event_date and task.get("due_date") and event_date != task["due_date"]:

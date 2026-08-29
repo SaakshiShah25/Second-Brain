@@ -6,12 +6,12 @@ import DigestPage from './pages/DigestPage'
 import ChatPage from './pages/ChatPage'
 import PeopleListPage from './pages/PeopleListPage'
 import PersonDetailPage from './pages/PersonDetailPage'
-import ClientsPage from './pages/ClientsPage'
-import ClientDetailPage from './pages/ClientDetailPage'
+import NotesPage from './pages/NotesPage'
 import SettingsPage from './pages/SettingsPage'
 import { ChatSessionProvider } from './chat/ChatSessionContext'
 import SettingsProvider from './settings/SettingsProvider'
 import TermsGate from './legal/TermsGate'
+import TourGate from './components/TourGate'
 
 export default function App() {
   return (
@@ -22,19 +22,20 @@ export default function App() {
           element={
             <SettingsProvider>
               <TermsGate>
-                <ChatSessionProvider>
-                  <Layout />
-                </ChatSessionProvider>
+                <TourGate>
+                  <ChatSessionProvider>
+                    <Layout />
+                  </ChatSessionProvider>
+                </TourGate>
               </TermsGate>
             </SettingsProvider>
           }
         >
           <Route path="/" element={<ChatPage />} />
+          <Route path="/notes" element={<NotesPage />} />
           <Route path="/digest" element={<DigestPage />} />
           <Route path="/people" element={<PeopleListPage />} />
           <Route path="/people/:personId" element={<PersonDetailPage />} />
-          <Route path="/clients" element={<ClientsPage />} />
-          <Route path="/clients/:clientId" element={<ClientDetailPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>

@@ -47,8 +47,49 @@ def _resolve_interaction_date(extracted: dict):
     return resolved, warning
 
 
-def _finish_capture_storage(user_id: str, person_id: int, resolved_name: str, created_new: bool, raw_text: str,
-                             extracted: dict, interaction_date: str, date_warning: Optional[str],
+def _resolve_initiative(user_id: str, extracted: dict) -> Optional[int]:
+    """Resolves extraction.py's classified initiative name to an
+    initiative_id via an exact, case-insensitive match against this
+    user's CURRENT initiatives - never creates a new one on the model's
+    own initiative. Returns None (Uncategorized) if the model said null,
+    or named something that doesn't match any existing initiative (stale
+    list, wording mismatch, hallucination) - silent, no error, matching
+    the "don't interrupt the capture flow for this" decision (a wrong/
+    missing initiative is a single dropdown fix later, unlike a wrong
+    person match)."""
+    name = (extracted.get("initiative") or "").strip()
+    if not name:
+        return None
+    match = db.get_initiative_by_name(user_id, name)
+    return match["id"] if match else None
+
+
+def _resolve_task_person(task_desc: str, primary_name: Optional[str], linked_others: list) -> Optional[int]:
+    """Attributes a follow-up task to whoever it's actually about, when
+    that's someone OTHER than the interaction's primary person - e.g. a
+    note involving two people where a specific follow-up is for the
+    secondary one, not the person the note is primarily about.
+    extraction.py's prompt already requires every follow-up description
+    to explicitly name who it's for/from, so a simple substring match
+    against the primary person's name and each linked secondary person's
+    name is enough here - no extra LLM call needed. Returns None (falls
+    back to the interaction's primary person at display time, the
+    existing/default behavior) if the primary person's name is ALSO in
+    the description (ambiguous - stay with the default rather than guess)
+    or if no secondary person's name appears at all."""
+    desc_lower = task_desc.lower()
+    if primary_name and primary_name.lower() in desc_lower:
+        return None
+    for other in linked_others:
+        name = other.get("name")
+        if name and name.lower() in desc_lower:
+            return other["person_id"]
+    return None
+
+
+def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_name: Optional[str], created_new: bool,
+                             raw_text: str, extracted: dict, interaction_date: str, date_warning: Optional[str],
+                             initiative_id: Optional[int] = None,
                              geo_lat: Optional[float] = None, geo_lng: Optional[float] = None) -> dict:
     embedding = embeddings.compute_embedding(raw_text)
     sentiments = extracted.get("sentiments") or []
@@ -69,6 +110,7 @@ def _finish_capture_storage(user_id: str, person_id: int, resolved_name: str, cr
     interaction_id = db.create_interaction(
         user_id,
         person_id=person_id,
+        initiative_id=initiative_id,
         raw_text=raw_text,
         date=interaction_date,
         location=extracted.get("location"),
@@ -87,7 +129,11 @@ def _finish_capture_storage(user_id: str, person_id: int, resolved_name: str, cr
         concerns=extracted.get("concerns") or [],
     )
 
-    capture.resolve_and_link_other_people(
+    # Person-less notes have no primary_person, but a note can still
+    # mention OTHER people in passing (e.g. "reminder to call Priya about
+    # the trip") - other_people is independent of whether there's a
+    # primary person at all.
+    linked_others = capture.resolve_and_link_other_people(
         user_id, interaction_id, extracted.get("other_people", []) or [], interaction_date
     )
 
@@ -106,8 +152,11 @@ def _finish_capture_storage(user_id: str, person_id: int, resolved_name: str, cr
         due_date = resolve_relative_phrase(raw_due_date)
         if raw_due_date and not due_date:
             skipped_due_dates.append({"description": task_desc, "raw_due_date": raw_due_date})
-        db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner)
-        tasks_created.append({"description": task_desc, "due_date": due_date, "owner": owner})
+        task_person_id = _resolve_task_person(task_desc, resolved_name, linked_others)
+        db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner, person_id=task_person_id)
+        tasks_created.append({
+            "description": task_desc, "due_date": due_date, "owner": owner, "person_id": task_person_id,
+        })
 
     return {
         "status": "saved",
@@ -115,6 +164,7 @@ def _finish_capture_storage(user_id: str, person_id: int, resolved_name: str, cr
         "resolved_name": resolved_name,
         "created_new": created_new,
         "interaction_id": interaction_id,
+        "initiative_id": initiative_id,
         "summary": extracted.get("summary", ""),
         "tasks_created": tasks_created,
         "date_warning": date_warning,
@@ -129,7 +179,20 @@ def _finish_capture_storage(user_id: str, person_id: int, resolved_name: str, cr
 
 def _process_extracted(user_id: str, raw_text: str, extracted: dict,
                         geo_lat: Optional[float] = None, geo_lng: Optional[float] = None) -> dict:
-    primary = extracted.get("primary_person", {}) or {}
+    interaction_date, date_warning = _resolve_interaction_date(extracted)
+    initiative_id = _resolve_initiative(user_id, extracted)
+
+    primary = extracted.get("primary_person")
+    if primary is None:
+        # Standalone note - no person involved at all (an idea, a to-do,
+        # a personal reflection). Nothing to resolve/disambiguate, so
+        # this always saves directly, same as the no-candidate-match
+        # branch below.
+        return _finish_capture_storage(
+            user_id, None, None, False, raw_text, extracted, interaction_date, date_warning,
+            initiative_id=initiative_id, geo_lat=geo_lat, geo_lng=geo_lng,
+        )
+
     name = primary.get("name") or "Unknown"
     description = primary.get("description") or ""
     role = primary.get("role") or ""
@@ -139,10 +202,33 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
     personal_notes = primary.get("personal_notes") or ""
     aliases = primary.get("aliases") or []
 
-    interaction_date, date_warning = _resolve_interaction_date(extracted)
+    is_unnamed = name.strip().lower() == "unknown"
+    has_distinguishing_info = bool(description or role or company or personal_notes)
+
+    if is_unnamed and not has_distinguishing_info:
+        # Someone was involved but is both unnamed AND has no other
+        # identifying trait at all - not worth promoting to a standalone
+        # Person record. It adds nothing searchable, and worse, every
+        # OTHER equally-unnamed person from a different note would
+        # text-match "Unknown" against this one at 100% (see
+        # person_match.py) and risk merging two unrelated people if the
+        # match prompt isn't read carefully. The note itself
+        # (raw_text/summary) still records that someone was there - it
+        # just isn't split out as a trackable Person. Same handling as a
+        # fully person-less note.
+        return _finish_capture_storage(
+            user_id, None, None, False, raw_text, extracted, interaction_date, date_warning,
+            initiative_id=initiative_id, geo_lat=geo_lat, geo_lng=geo_lng,
+        )
 
     people = db.get_all_people(user_id)
-    candidates = person_match.score_candidates(name, people)
+    # "Unknown" is a placeholder, not an identity - text-matching it
+    # against a DIFFERENT unnamed person from another note is meaningless
+    # and risks merging unrelated people. Skip candidate matching
+    # entirely in that case and always create a fresh record (still
+    # worth keeping here since there IS other distinguishing info, e.g.
+    # "Unknown - President").
+    candidates = [] if is_unnamed else person_match.score_candidates(name, people)
 
     if not candidates:
         person_id = db.create_person(
@@ -153,7 +239,7 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
         )
         return _finish_capture_storage(
             user_id, person_id, name, True, raw_text, extracted, interaction_date, date_warning,
-            geo_lat=geo_lat, geo_lng=geo_lng,
+            initiative_id=initiative_id, geo_lat=geo_lat, geo_lng=geo_lng,
         )
 
     return {
@@ -162,6 +248,7 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
         "raw_text": raw_text,
         "interaction_date": interaction_date,
         "date_warning": date_warning,
+        "initiative_id": initiative_id,
         "geo_lat": geo_lat,
         "geo_lng": geo_lng,
         "candidates": [{"person": p, "score": s} for p, s in candidates],
@@ -172,8 +259,10 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
 
 @router.post("")
 async def capture_text(body: CaptureRequest, request: Request, user_id: str = Depends(get_current_user_id)):
+    initiatives = await run_in_threadpool(db.get_initiatives, user_id)
+    initiative_names = [i["name"] for i in initiatives]
     try:
-        extracted = await run_in_threadpool(extraction.extract_info, body.raw_text)
+        extracted = await run_in_threadpool(extraction.extract_info, body.raw_text, None, initiative_names)
     except Exception as e:
         raise HTTPException(500, f"Extraction failed: {e}")
     # Extraction (the LLM call above) is the slow part of a capture - if the
@@ -192,8 +281,14 @@ def capture_confirm(body: CaptureConfirmRequest, user_id: str = Depends(get_curr
     /capture/voice, or /capture/card/confirm) call returned - mirrors
     chat_view.py's apply_capture_choice(). `body.candidates` is the exact
     list that call returned; the client round-trips it since there's no
-    server-side session to remember it from."""
-    primary = body.extracted.get("primary_person", {}) or {}
+    server-side session to remember it from.
+
+    This endpoint only exists because _process_extracted found candidate
+    people to disambiguate - which requires a non-null primary_person -
+    so `body.extracted["primary_person"]` is guaranteed non-null here
+    (the person-less/standalone-note branch always saves directly and
+    never reaches this endpoint)."""
+    primary = body.extracted.get("primary_person") or {}
     name = primary.get("name") or "Unknown"
     description = primary.get("description") or ""
     role = primary.get("role") or ""
@@ -234,7 +329,8 @@ def capture_confirm(body: CaptureConfirmRequest, user_id: str = Depends(get_curr
 
     return _finish_capture_storage(
         user_id, person_id, resolved_name, created_new, body.raw_text, body.extracted,
-        body.interaction_date, body.date_warning, geo_lat=body.geo_lat, geo_lng=body.geo_lng,
+        body.interaction_date, body.date_warning, initiative_id=body.initiative_id,
+        geo_lat=body.geo_lat, geo_lng=body.geo_lng,
     )
 
 
@@ -253,8 +349,10 @@ async def capture_voice(
     if not text or not text.strip():
         raise HTTPException(422, "Didn't catch anything in that recording - try again.")
 
+    initiatives = db.get_initiatives(user_id)
+    initiative_names = [i["name"] for i in initiatives]
     try:
-        extracted = extraction.extract_info(text)
+        extracted = extraction.extract_info(text, None, initiative_names)
     except Exception as e:
         raise HTTPException(500, f"Extraction failed: {e}")
 
@@ -292,6 +390,10 @@ def capture_card_confirm(body: CardConfirmRequest, user_id: str = Depends(get_cu
             "name": body.name, "description": "", "role": body.role, "company": body.company,
             "phone": body.phone, "email": body.email,
         },
+        # Business-card scans skip LLM extraction entirely (no free text
+        # to classify), so there's no initiative classification to do -
+        # always lands Uncategorized. A documented v1 limitation, not a bug.
+        "initiative": None,
         "date_mentioned": None,
         "location": None,
         "appearance_this_meeting": "",

@@ -151,6 +151,7 @@ export default function ChatPage() {
               date_warning: pendingConfirm.date_warning,
               candidates: pendingConfirm.candidates,
               choice,
+              initiative_id: pendingConfirm.initiative_id,
               geo_lat: pendingConfirm.geo_lat,
               geo_lng: pendingConfirm.geo_lng,
             }
@@ -264,14 +265,15 @@ export default function ChatPage() {
           <DisambiguationCard
             prompt={
               <>
-                The note mentions <strong>'{pendingConfirm.extracted.primary_person.name}'</strong>. Is this the same
+                The note mentions{' '}
+                <strong>'{pendingConfirm.extracted.primary_person?.name ?? 'Unknown'}'</strong>. Is this the same
                 person as one of these existing entries?
               </>
             }
             candidates={pendingConfirm.candidates}
             onChoose={chooseConfirmCandidate}
             onNone={() => chooseConfirmCandidate(null)}
-            noneLabel={`None of these — '${pendingConfirm.extracted.primary_person.name}' is a new person`}
+            noneLabel={`None of these — '${pendingConfirm.extracted.primary_person?.name ?? 'Unknown'}' is a new person`}
             busy={isBusy}
           />
         )}

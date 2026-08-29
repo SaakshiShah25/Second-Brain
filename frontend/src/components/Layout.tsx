@@ -1,12 +1,12 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Brain, Briefcase, MessageSquare, Settings, Sunrise, Users, type LucideIcon } from 'lucide-react'
+import { Brain, MessageSquare, NotebookText, Settings, Sunrise, Users, type LucideIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 
 const navItems: { to: string; label: string; icon: LucideIcon; end: boolean }[] = [
   { to: '/', label: 'Chat', icon: MessageSquare, end: true },
+  { to: '/notes', label: 'Notes', icon: NotebookText, end: false },
   { to: '/digest', label: 'Digest', icon: Sunrise, end: false },
   { to: '/people', label: 'People', icon: Users, end: false },
-  { to: '/clients', label: 'Clients', icon: Briefcase, end: false },
   { to: '/settings', label: 'Settings', icon: Settings, end: false },
 ]
 

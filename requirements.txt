@@ -1,6 +1,7 @@
 groq
 python-dotenv
 supabase
+cryptography
 streamlit==1.50.0
 pytesseract
 Pillow
@@ -8,5 +9,3 @@ fastapi
 uvicorn[standard]
 python-multipart
 requests
-pymupdf
-python-docx

@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { CheckCircle2, MapPin, Tag, TriangleAlert } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { useInitiatives } from '../api/initiatives'
 import { useDeleteInteraction, useUpdateInteraction } from '../api/people'
 import type { Interaction } from '../api/types'
 import Button from './Button'
@@ -31,6 +33,16 @@ export default function InteractionCard({ interaction }: { interaction: Interact
   const deleteInteraction = useDeleteInteraction()
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // Only fetched lazily when actually needed (the Notes page's edit
+  // form) - react-query dedupes this against NotesPage's own
+  // useInitiatives() call, so it's not a duplicate network request.
+  const { data: initiatives } = useInitiatives()
+
+  // `interaction.person`/`interaction.initiative` are only ever present
+  // when this card is rendered from the Notes page (GET /api/notes'
+  // joined select) - PersonDetailPage's own interaction list doesn't
+  // include them, so this header simply doesn't render there.
+  const showNoteContext = interaction.person !== undefined
 
   const [form, setForm] = useState({
     date: interaction.date ?? '',
@@ -41,6 +53,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
     meeting_type: interaction.meeting_type ?? '',
     decisions: (interaction.decisions ?? []).join('\n'),
     concerns: (interaction.concerns ?? []).join('\n'),
+    initiative_id: interaction.initiative_id,
   })
 
   function handleSave(e: FormEvent) {
@@ -61,6 +74,26 @@ export default function InteractionCard({ interaction }: { interaction: Interact
 
   return (
     <Disclosure summary={`${interaction.date ?? 'unknown date'} — ${interaction.summary || '(no summary)'}`}>
+      {showNoteContext && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+          {interaction.person ? (
+            <Link to={`/people/${interaction.person.id}`} className="font-medium text-accent hover:underline">
+              {interaction.person.name}
+            </Link>
+          ) : (
+            <span className="rounded-full border border-border-strong px-2 py-0.5 text-text-muted">
+              Standalone note
+            </span>
+          )}
+          {interaction.initiative ? (
+            <span className="rounded-full bg-accent-soft px-2 py-0.5 text-accent">{interaction.initiative.name}</span>
+          ) : (
+            <span className="rounded-full border border-border-strong px-2 py-0.5 text-text-faint">
+              Uncategorized
+            </span>
+          )}
+        </div>
+      )}
       {!editing ? (
         <>
           {interaction.meeting_type && (
@@ -150,6 +183,23 @@ export default function InteractionCard({ interaction }: { interaction: Interact
               ))}
             </select>
           </div>
+          {showNoteContext && (
+            <div>
+              <Label>Initiative</Label>
+              <select
+                className={selectClass}
+                value={form.initiative_id ?? ''}
+                onChange={(e) => setForm({ ...form, initiative_id: e.target.value ? Number(e.target.value) : null })}
+              >
+                <option value="">Uncategorized</option>
+                {initiatives?.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <Label>Location</Label>
             <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />

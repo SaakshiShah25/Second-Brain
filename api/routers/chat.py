@@ -54,7 +54,7 @@ def chat_confirm(body: ChatConfirmRequest, user_id: str = Depends(get_current_us
             CaptureConfirmRequest(
                 extracted=body.extracted, raw_text=body.raw_text, interaction_date=body.interaction_date,
                 date_warning=body.date_warning, candidates=body.candidates, choice=body.choice,
-                geo_lat=body.geo_lat, geo_lng=body.geo_lng,
+                initiative_id=body.initiative_id, geo_lat=body.geo_lat, geo_lng=body.geo_lng,
             ),
             user_id,
         )

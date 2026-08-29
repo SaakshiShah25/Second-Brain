@@ -120,7 +120,10 @@ def delete_personal_note(person_id: int, entry_index: int, user_id: str = Depend
 
 @router.patch("/interactions/{interaction_id}")
 def update_interaction(interaction_id: int, body: InteractionUpdate, user_id: str = Depends(get_current_user_id)):
-    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    # exclude_unset (not "is not None") so a field explicitly sent as null
+    # - like initiative_id, to uncategorize a note back to "Uncategorized"
+    # - is distinguishable from a field the client simply didn't include.
+    fields = body.model_dump(exclude_unset=True)
     if fields:
         db.update_interaction(user_id, interaction_id, **fields)
     return {"ok": True}

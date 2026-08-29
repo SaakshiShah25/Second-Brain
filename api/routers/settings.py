@@ -46,3 +46,10 @@ def update_settings(body: UserPreferenceUpdate, user_id: str = Depends(get_curre
 @router.post("/accept-terms")
 def accept_terms(user_id: str = Depends(get_current_user_id)):
     return db.update_user_preference(user_id, terms_accepted_at=datetime.now(timezone.utc).isoformat())
+
+
+@router.post("/complete-tour")
+def complete_tour(user_id: str = Depends(get_current_user_id)):
+    """Marks the onboarding tour as seen - called whether the user finished
+    it or hit Skip, same binary semantics as accept_terms() above."""
+    return db.update_user_preference(user_id, tour_completed_at=datetime.now(timezone.utc).isoformat())

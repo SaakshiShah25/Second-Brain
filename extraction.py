@@ -14,16 +14,36 @@ import text_utils
 from llm_client import get_client, MODEL_NAME
 
 
-def _build_system_prompt(reference_date: str, reference_weekday: str) -> str:
+def _build_system_prompt(reference_date: str, reference_weekday: str, initiative_names: list = None) -> str:
     # The reference date is injected dynamically so the model has an anchor
     # to resolve relative expressions ("today", "yesterday", "by Friday")
     # into absolute ISO dates. Without this the model has no idea what
     # "today" means and correctly returns null for everything relative.
+    initiatives_block = (
+        "\n".join(f'- "{n}"' for n in initiative_names) if initiative_names else "(none configured yet)"
+    )
     return f"""You are an information-extraction engine for a personal memory app.
-Given a raw note describing a conversation or interaction the user had with one or more people,
-extract structured information.
+The user logs two kinds of notes: (1) a conversation or interaction they had with one or more
+people, and (2) a standalone personal note with no person involved at all - an idea, a
+reminder, a to-do, a reflection on something they need to work on (e.g. "need to fix my sleep
+schedule", "idea: add dark mode to the app"). Read the note and extract structured information
+matching whichever kind it actually is.
 
 Today's date is {reference_date} ({reference_weekday}).
+
+NOT EVERY NOTE IS ABOUT A PERSON. If the note is a personal idea/to-do/reflection with no one
+else involved, set "primary_person" to JSON null (not an object, not the string "Unknown") -
+see the schema below. Only fill in the primary_person object when the note actually describes
+an interaction/conversation with someone; use "Unknown" for the name only when a person was
+clearly involved but wasn't named (e.g. "talked to someone at the gym about my diet").
+
+The user organizes notes into a fixed set of "initiatives" (life areas/projects) they manage
+themselves. Classify this note into EXACTLY ONE of the initiatives below if it clearly and
+confidently fits - otherwise use null. Never invent an initiative name that isn't in this list;
+pick null rather than guess when it's ambiguous.
+
+Initiatives:
+{initiatives_block}
 
 IMPORTANT - for date/time references anchored to a WEEKDAY or to
 "today"/"tomorrow"/"yesterday" (e.g. "next Monday", "last Thursday", "by Friday",
@@ -52,17 +72,18 @@ reference at all.
 Return ONLY valid JSON (no markdown fences, no preamble) matching this exact schema:
 
 {{
-  "primary_person": {{
-    "name": "string - the main person's name as mentioned, or 'Unknown' if unclear",
+  "primary_person": null if this note has no person involved at all (see instructions above) - otherwise an object: {{
+    "name": "string - the main person's name as mentioned, or 'Unknown' if a person was involved but unnamed",
     "aliases": ["any nicknames/short forms used"],
     "description": "string - GENERAL, stable, PROFESSIONALLY-OBSERVABLE traits only: physical appearance (e.g. build, hair, glasses) and personality/demeanor (e.g. funny, sincere, analytical, reserved) that would still be true the next time you meet them. Do NOT include their job title or company here - those go in separate fields below. Do NOT include personal-life details (family, hobbies, interests, life events) - those go in 'personal_notes' below instead. Do NOT include a reaction or emotion about a specific thing discussed in THIS meeting (e.g. 'excited about the pricing change', 'skeptical about the timeline') - that is not a stable trait, it belongs in the 'sentiments' field below instead, tied to its specific topic. Empty string if nothing is mentioned. Do not invent traits that aren't stated or clearly implied.",
     "role": "string - their job title/role if mentioned (e.g. 'Procurement Manager'), else empty string",
     "company": "string - their company/organization if mentioned, else empty string",
     "personal_notes": "string - PERSONAL, non-professional details mentioned about them: family, hobbies/interests, alma mater, life events, upcoming personal plans (e.g. 'has two kids', 'into cycling on weekends', 'went to Stanford'). Kept separate from 'description' above, which is professional/stable demeanor and appearance only. Empty string if nothing personal was mentioned."
   }},
+  "initiative": "string - the EXACT name of one initiative from the list above that this note best fits, or null if none confidently applies. Pick null rather than guess when uncertain - never invent a name not in the list.",
   "other_people": [
     {{
-      "name": "string - the other person's name as mentioned",
+      "name": "string - the other person's name as mentioned, or 'Unknown' if they're referred to only by role/title/relation and never actually named (e.g. 'the CTO', 'his manager') - put the role/title in 'relation' below instead, NEVER use a role/title as the name itself",
       "relation": "string - how this person relates to the primary person and/or to the user, stated or clearly implied in the note (e.g. 'Priya's sister', 'Rohan's colleague, might join the next call'). Empty string if the note gives no indication of the relationship - do not guess.",
       "present": "boolean - true ONLY if this person actually took part in THIS specific meeting/conversation (e.g. joined the call, was physically there, spoke). false if they were merely mentioned/referenced by the primary person without being present themselves (e.g. 'his colleague Priya, who handles onboarding' - Priya wasn't on the call). Default to false when it's unclear - only mark true when the note clearly indicates they participated."
     }}
@@ -97,13 +118,18 @@ Notes:
 - Every "follow_ups" description, "other_people" entry, "concerns" entry, and "decisions" entry should be understandable in complete isolation, without needing to cross-reference the summary or raw note - imagine someone reading only that one field months later with no other context.
 - Be faithful to the note - do not invent details that aren't stated or strongly implied.
 - If information for a field isn't present, use an empty string, empty list, or null as appropriate.
+- "primary_person" is null for a standalone personal note (idea/to-do/reflection with no one else involved) - most other fields (other_people, sentiments, appearance_this_meeting, etc.) will naturally be empty/null in that case too, which is expected, not an error.
+- "initiative" only ever names one of the initiatives listed above, verbatim, or null - never a name outside that list.
 """
 
 
-def extract_info(raw_text: str, reference_date: date = None) -> dict:
+def extract_info(raw_text: str, reference_date: date = None, initiative_names: list = None) -> dict:
     """
     Calls the LLM to extract structured info from a raw note.
     `reference_date` anchors relative date resolution (defaults to today).
+    `initiative_names` is the user's current list of initiatives (see
+    db.get_initiatives) - passed through so the model can classify this
+    note into one of them, or null if none confidently fit.
     Returns a dict matching the schema in _build_system_prompt.
     Raises ValueError if the model doesn't return valid JSON.
     """
@@ -115,6 +141,7 @@ def extract_info(raw_text: str, reference_date: date = None) -> dict:
     system_prompt = _build_system_prompt(
         reference_date=reference_date.isoformat(),
         reference_weekday=reference_date.strftime("%A"),
+        initiative_names=initiative_names,
     )
 
     response = client.chat.completions.create(

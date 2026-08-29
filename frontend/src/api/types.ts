@@ -53,7 +53,15 @@ export interface Task {
     date: string | null
     summary: string | null
     person: { id: number; name: string } | null
+    initiative: { id: number; name: string } | null
   } | null
+  // Who this SPECIFIC task is about, when that's someone other than the
+  // interaction's primary person (e.g. a note involving two people, where
+  // this follow-up is for the secondary one) - null means "use the
+  // interaction's primary person" (interaction.person above), the
+  // pre-existing default. Prefer this field over interaction.person when
+  // both are present.
+  person?: { id: number; name: string } | null
 }
 
 export interface TaskCounts {
@@ -75,9 +83,23 @@ export interface SentimentEntry {
   sentiment: string
 }
 
+// ---------- Initiatives (user-managed note categories) ----------
+
+export interface Initiative {
+  id: number
+  name: string
+  color: string | null
+  created_at: string
+}
+
 export interface Interaction {
   id: number
-  person_id: number
+  person_id: number | null // null for a standalone note not about any specific person
+  initiative_id: number | null // which user-managed initiative this note belongs to, if any - null = Uncategorized
+  // Only present on GET /api/notes' joined response (not on a person's
+  // own interaction list, which is inherently already scoped to them).
+  person?: { id: number; name: string } | null
+  initiative?: { id: number; name: string; color: string | null } | null
   raw_text: string
   date: string | null
   location: string | null
@@ -139,7 +161,8 @@ export interface ExtractedPrimaryPerson {
 }
 
 export interface ExtractedNote {
-  primary_person: ExtractedPrimaryPerson
+  primary_person: ExtractedPrimaryPerson | null // null = a standalone note, no person involved at all
+  initiative?: string | null // the initiative name the LLM classified this note into, or null
   other_people?: { name: string; relation: string }[]
   date_mentioned: string | null
   location: string | null
@@ -156,10 +179,11 @@ export interface ExtractedNote {
 
 export interface CaptureSavedResult {
   status: 'saved'
-  person_id: number
-  resolved_name: string
+  person_id: number | null
+  resolved_name: string | null
   created_new: boolean
   interaction_id: number
+  initiative_id: number | null
   summary: string
   tasks_created: { description: string; due_date: string | null; owner: TaskOwner }[]
   date_warning: string | null
@@ -177,6 +201,7 @@ export interface CaptureConfirmRequiredResult {
   raw_text: string
   interaction_date: string
   date_warning: string | null
+  initiative_id: number | null
   candidates: Candidate[]
   geo_lat: number | null
   geo_lng: number | null
@@ -220,77 +245,6 @@ export type ChatCaptureResult = { intent: 'capture' } & CaptureResult
 export type ChatAskResult = { intent: 'ask' } & AskResult
 export type ChatResult = ChatCaptureResult | ChatAskResult
 
-// ---------- Clients (Phase 10) ----------
-
-export type ExpiryState = 'active' | 'expiring_soon' | 'expired' | 'terminated'
-
-export interface Signatory {
-  name: string
-  role: string
-  side: 'client' | 'provider'
-}
-
-export interface ClientSignatory extends Signatory {
-  id: number
-  person_id: number | null
-  person: { id: number; name: string } | null
-}
-
-export interface Client {
-  id: number
-  company: string
-  client_legal_name: string
-  provider_legal_name: string
-  effective_date: string | null
-  term_months: number | null
-  end_date: string | null
-  auto_renews: boolean
-  renewal_notice_days: number | null
-  fee_amount: number | null
-  fee_currency: string
-  fee_frequency: string
-  payment_terms: string
-  termination_terms: string
-  other_terms: string
-  status: string
-  document_path: string | null
-  document_filename: string
-  created_at: string
-  expiry_state: ExpiryState
-}
-
-export interface ClientDetail extends Client {
-  signatories: ClientSignatory[]
-}
-
-// What POST /api/clients/upload returns - fields extracted from the
-// document for review, plus the original file round-tripped as base64
-// so /api/clients/confirm can save it without a second upload.
-export interface AgreementExtracted {
-  client_company: string
-  client_legal_name: string
-  provider_legal_name: string
-  effective_date: string | null
-  term_months: number | null
-  end_date: string | null
-  auto_renews: boolean
-  renewal_notice_days: number | null
-  fee_amount: number | null
-  fee_currency: string
-  fee_frequency: string
-  payment_terms: string
-  termination_terms: string
-  other_terms: string
-  signatories: Signatory[]
-}
-
-export interface AgreementUploadResult {
-  extracted: AgreementExtracted
-  file_base64: string
-  filename: string
-  content_type: string
-}
-
 // ---------- Settings (theme, font size, Terms of Service) ----------
 
 export type Theme = 'dark' | 'light'
@@ -302,6 +256,7 @@ export interface UserPreference {
   font_size: FontSize
   terms_accepted_at: string | null
   daily_brief_email_enabled: boolean
+  tour_completed_at: string | null
   updated_at: string
 }
 

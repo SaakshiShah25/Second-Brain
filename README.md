@@ -133,8 +133,10 @@ root already handles.
    documents the service config and the full env var checklist (values
    are secrets - set them in the Render dashboard, not in the file):
    `GROQ_API_KEY`, `COHERE_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`,
-   `FRONTEND_URL` (set this after step 3), and - only if you want
-   Calendar/location working in production -
+   `ENCRYPTION_KEY` (same value as your local one - see "Encrypt-at-rest
+   setup" above, don't generate a second key or existing data becomes
+   unreadable), `FRONTEND_URL` (set this after step 3), and - only if you
+   want Calendar/location working in production -
    `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_OAUTH_REDIRECT_URI`/
    `GOOGLE_MAPS_API_KEY`. Free tier is fine - embeddings are computed via
    Cohere's hosted API now (see `embeddings.py`), not a local model, so
@@ -335,6 +337,31 @@ export SUPABASE_KEY="your_service_role_key"
 > ship the service_role key inside a client-facing app (web/mobile) — if you
 > later build a UI that talks to Supabase directly, switch to the anon key
 > and add RLS policies first.
+
+### Encrypt-at-rest setup
+
+Note/person/task content (`raw_text`, `summary`, `description`,
+`personal_notes`, task descriptions, etc. — see `crypto_utils.py`'s
+docstring for the full list) is encrypted before it's written to
+Postgres and decrypted after it's read back, so a direct database
+lookup only shows ciphertext. Generate the key once and set it as an
+env var, the same way as `SUPABASE_KEY`:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+export ENCRYPTION_KEY="<paste the output above>"
+```
+
+> **Back this up somewhere durable (a password manager) before you go
+> further.** If `ENCRYPTION_KEY` is ever lost, every row encrypted with
+> it becomes permanently unreadable — there is no reset/recovery path,
+> the same way there wouldn't be for a lost disk-encryption password.
+
+If you have existing data from before this feature, run the schema.sql
+section 22 migration in the Supabase SQL Editor first, then run
+`python scripts/encrypt_existing_data.py` once (with `ENCRYPTION_KEY`
+already set) to encrypt it in place. A brand-new project has nothing to
+migrate — new rows are encrypted automatically from the first capture.
 
 ### Sanity check the connection
 

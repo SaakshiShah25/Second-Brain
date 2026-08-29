@@ -292,7 +292,29 @@ export default function DigestPage() {
                     />
                   </span>
                   <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-text-muted">
-                    <span className="truncate">{task.interaction?.person?.name ?? 'Unknown'}</span>
+                    {/* Prefer the task's own directly-linked person (who
+                        this SPECIFIC follow-up is about) - set only when
+                        the task text explicitly names someone, so it's
+                        always safe to show regardless of owner (e.g.
+                        "Send Vikas a proposal" naming Vikas even though I
+                        own it). Only default to the note's PRIMARY person
+                        when THEY own the task - that's the one case where
+                        "no one specific was named" reasonably means "the
+                        person this note is about". For a task I own with
+                        no one named, defaulting to the note's primary
+                        person is actively misleading (e.g. my fitness
+                        trainer mentions I should buy new workout gear -
+                        that's MY to-do, not hers) - fall straight to the
+                        note's initiative instead (e.g. "Fitness"), same
+                        "no person to show because there genuinely isn't
+                        one" reasoning as a fully standalone note. "Personal"
+                        is the final fallback if there's neither. */}
+                    <span className="truncate">
+                      {task.person?.name ??
+                        (task.owner === 'them' ? task.interaction?.person?.name : undefined) ??
+                        task.interaction?.initiative?.name ??
+                        'Personal'}
+                    </span>
                     <span>·</span>
                     <span className={`flex items-center gap-1 whitespace-nowrap ${due.overdue ? 'font-medium text-danger' : ''}`}>
                       {due.overdue && <TriangleAlert size={12} strokeWidth={2} />}

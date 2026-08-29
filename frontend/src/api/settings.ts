@@ -29,3 +29,13 @@ export function useAcceptTerms() {
     },
   })
 }
+
+export function useCompleteTour() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post<UserPreference>('/api/settings/complete-tour'),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['settings'], updated)
+    },
+  })
+}

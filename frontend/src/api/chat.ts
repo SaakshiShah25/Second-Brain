@@ -11,6 +11,7 @@ function useInvalidateOnCapture() {
   return () => {
     queryClient.invalidateQueries({ queryKey: ['tasks'] })
     queryClient.invalidateQueries({ queryKey: ['people'] })
+    queryClient.invalidateQueries({ queryKey: ['notes'] })
   }
 }
 
@@ -47,6 +48,7 @@ export interface ChatConfirmBody {
   raw_text?: string
   interaction_date?: string
   date_warning?: string | null
+  initiative_id?: number | null
   geo_lat?: number | null
   geo_lng?: number | null
   // ask fields

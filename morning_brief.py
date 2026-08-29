@@ -29,9 +29,23 @@ def _days_ago(date_str: str) -> int:
 
 
 def _format_task_line(task: dict) -> str:
-    person = ((task.get("interaction") or {}).get("person") or {}).get("name")
-    who = f" ({person})" if person else ""
-    owner = "you" if task.get("owner", "me") == "me" else "them"
+    # Prefer the task's own directly-linked person (who this SPECIFIC
+    # follow-up EXPLICITLY names) - safe to show regardless of owner.
+    # Only default to the note's PRIMARY person when THEY own the task -
+    # that's the one case where "no one specific was named" reasonably
+    # means "the person this note is about". For a task I own with no one
+    # named, defaulting to the note's primary person is misleading (e.g.
+    # my fitness trainer mentions I should buy new gear - that's MY
+    # to-do, not hers) - fall to the note's initiative instead (e.g.
+    # "Fitness"), same reasoning as a fully standalone/person-less note.
+    interaction = task.get("interaction") or {}
+    owner_raw = task.get("owner", "me")
+    person = (task.get("person") or {}).get("name")
+    if not person and owner_raw != "me":
+        person = (interaction.get("person") or {}).get("name")
+    initiative = (interaction.get("initiative") or {}).get("name")
+    who = f" ({person})" if person else (f" ({initiative})" if initiative else "")
+    owner = "you" if owner_raw == "me" else "them"
     return f"- {task['description']}{who} [owed by {owner}]"
 
 

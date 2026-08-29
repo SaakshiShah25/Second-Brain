@@ -10,6 +10,7 @@ function useInvalidateOnCapture() {
   return () => {
     queryClient.invalidateQueries({ queryKey: ['tasks'] })
     queryClient.invalidateQueries({ queryKey: ['people'] })
+    queryClient.invalidateQueries({ queryKey: ['notes'] })
   }
 }
 
