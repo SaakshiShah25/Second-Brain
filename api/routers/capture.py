@@ -64,22 +64,31 @@ def _resolve_initiative(user_id: str, extracted: dict) -> Optional[int]:
     return match["id"] if match else None
 
 
-def _resolve_task_person(task_desc: str, primary_name: Optional[str], linked_others: list) -> Optional[int]:
-    """Attributes a follow-up task to whoever it's actually about, when
-    that's someone OTHER than the interaction's primary person - e.g. a
-    note involving two people where a specific follow-up is for the
-    secondary one, not the person the note is primarily about.
+def _resolve_task_person(task_desc: str, primary_name: Optional[str], primary_person_id: Optional[int],
+                          linked_others: list) -> Optional[int]:
+    """Attributes a follow-up task to whoever it's EXPLICITLY named for,
+    whether that's the interaction's primary person or a secondary one.
     extraction.py's prompt already requires every follow-up description
     to explicitly name who it's for/from, so a simple substring match
     against the primary person's name and each linked secondary person's
-    name is enough here - no extra LLM call needed. Returns None (falls
-    back to the interaction's primary person at display time, the
-    existing/default behavior) if the primary person's name is ALSO in
-    the description (ambiguous - stay with the default rather than guess)
-    or if no secondary person's name appears at all."""
+    name is enough here - no extra LLM call needed.
+
+    Returning the primary person's own id (rather than None) when their
+    name is matched - instead of relying on the interaction's primary
+    person as an implicit default - matters because the display fallback
+    (DigestPage.tsx / morning_brief.py / google_calendar.py) only falls
+    back to the interaction's primary person when the task is owed by
+    THEM, not by me (a task I own with NO name mentioned shouldn't show
+    someone else's name by default - see the Sonali/t-shirt case). If a
+    task I own explicitly names the primary person, that distinction
+    must survive as an explicit match, not collapse into the same "no
+    one named" None as a task that never mentions anyone at all.
+
+    Returns None only when no name - primary or secondary - appears in
+    the description at all."""
     desc_lower = task_desc.lower()
     if primary_name and primary_name.lower() in desc_lower:
-        return None
+        return primary_person_id
     for other in linked_others:
         name = other.get("name")
         if name and name.lower() in desc_lower:
@@ -152,7 +161,7 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
         due_date = resolve_relative_phrase(raw_due_date)
         if raw_due_date and not due_date:
             skipped_due_dates.append({"description": task_desc, "raw_due_date": raw_due_date})
-        task_person_id = _resolve_task_person(task_desc, resolved_name, linked_others)
+        task_person_id = _resolve_task_person(task_desc, resolved_name, person_id, linked_others)
         db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner, person_id=task_person_id)
         tasks_created.append({
             "description": task_desc, "due_date": due_date, "owner": owner, "person_id": task_person_id,
