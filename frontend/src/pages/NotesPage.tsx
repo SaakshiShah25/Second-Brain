@@ -1,17 +1,31 @@
-import { useState } from 'react'
-import { NotebookText } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { ListTree, NotebookText } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { useNotes } from '../api/notes'
+import InitiativesManager from '../components/InitiativesManager'
 import InteractionCard from '../components/InteractionCard'
 
 // null = "All", -1 = "Uncategorized" (sentinel, since real initiative ids
 // are always positive), else a real initiative id.
 type FilterValue = null | -1 | number
 
+type Tab = 'notes' | 'initiatives'
+
 export default function NotesPage() {
   const { data: notes, isLoading, error } = useNotes()
   const { data: initiatives } = useInitiatives()
   const [filter, setFilter] = useState<FilterValue>(null)
+
+  // ?tab=initiatives deep-links straight to the Initiatives tab - used by
+  // the onboarding tour (Tour.tsx navigates here for its Initiatives
+  // step) so it can point at the real tab instead of just describing it,
+  // but works for anyone bookmarking/sharing the link too.
+  const [searchParams] = useSearchParams()
+  const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'initiatives' ? 'initiatives' : 'notes')
+  useEffect(() => {
+    setTab(searchParams.get('tab') === 'initiatives' ? 'initiatives' : 'notes')
+  }, [searchParams])
 
   const visibleNotes = (notes ?? []).filter((n) => {
     if (filter === null) return true
@@ -21,10 +35,39 @@ export default function NotesPage() {
 
   return (
     <div>
-      <h1 className="mb-6 flex items-center gap-2 text-2xl font-bold tracking-tight">
+      <h1 className="mb-4 flex items-center gap-2 text-2xl font-bold tracking-tight">
         <NotebookText size={22} strokeWidth={2} className="text-accent" /> Notes
       </h1>
 
+      {/* Initiatives moved here from Settings - this is where you're
+          actually filtering/thinking about them, not a one-time config
+          screen you'd otherwise have to remember to go find. */}
+      <div className="mb-4 flex gap-1 border-b border-border">
+        <button
+          type="button"
+          onClick={() => setTab('notes')}
+          className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+            tab === 'notes' ? 'border-accent text-accent' : 'border-transparent text-text-muted hover:text-text'
+          }`}
+        >
+          All Notes
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('initiatives')}
+          className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+            tab === 'initiatives' ? 'border-accent text-accent' : 'border-transparent text-text-muted hover:text-text'
+          }`}
+        >
+          <ListTree size={14} strokeWidth={2} />
+          Initiatives
+        </button>
+      </div>
+
+      {tab === 'initiatives' ? (
+        <InitiativesManager />
+      ) : (
+        <>
       {/* Client-side filtering - a personal-scale dataset and a handful
           of initiatives, not worth a server round-trip per chip click. */}
       <div className="mb-4 flex flex-wrap gap-2">
@@ -80,6 +123,8 @@ export default function NotesPage() {
           <InteractionCard key={note.id} interaction={note} />
         ))}
       </div>
+        </>
+      )}
     </div>
   )
 }
