@@ -15,7 +15,7 @@ export default function SpeakButton({ text }: { text: string }) {
       title={isSpeaking ? 'Stop reading' : 'Listen to this'}
     >
       <span className="flex items-center gap-1.5">
-        {isSpeaking ? <Square size={13} strokeWidth={2} /> : <Volume2 size={13} strokeWidth={2} />}
+        {isSpeaking ? <Square size={13} strokeWidth={1.6} /> : <Volume2 size={13} strokeWidth={1.6} />}
         {isSpeaking ? 'Stop' : 'Listen'}
       </span>
     </Button>

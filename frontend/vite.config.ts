@@ -12,11 +12,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
-        name: 'Second Brain',
-        short_name: 'Second Brain',
+        name: 'Confía',
+        short_name: 'Confía',
         description: 'Your personal second brain for people, conversations, and follow-ups',
-        theme_color: '#0a0c12',
-        background_color: '#0a0c12',
+        theme_color: '#211e36',
+        background_color: '#211e36',
         display: 'standalone',
         start_url: '/',
         icons: [

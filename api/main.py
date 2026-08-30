@@ -23,7 +23,7 @@ from llm_client import get_client as get_llm_client
 from api.auth import get_current_user_id
 from api.routers import ask, brief, calendar, capture, chat, initiatives, notes, people, settings, tasks
 
-app = FastAPI(title="Second Brain API")
+app = FastAPI(title="Confía API")
 
 # Vite's default dev server port always allowed (local dev); the deployed
 # frontend origin is added on top of that via FRONTEND_URL (the same env

@@ -51,10 +51,10 @@ export default function InitiativesManager() {
                   className="flex-1"
                 />
                 <Button onClick={() => saveRename(i.id)} disabled={updateInitiative.isPending}>
-                  <Check size={14} strokeWidth={2} />
+                  <Check size={14} strokeWidth={1.6} />
                 </Button>
                 <Button onClick={() => setRenamingId(null)}>
-                  <X size={14} strokeWidth={2} />
+                  <X size={14} strokeWidth={1.6} />
                 </Button>
               </>
             ) : (
@@ -73,7 +73,7 @@ export default function InitiativesManager() {
                   className="flex-shrink-0 text-text-faint transition-colors hover:text-danger"
                   title="Delete initiative"
                 >
-                  <Trash2 size={15} strokeWidth={2} />
+                  <Trash2 size={15} strokeWidth={1.6} />
                 </button>
               </>
             )}
@@ -97,7 +97,7 @@ export default function InitiativesManager() {
           className="flex-1"
         />
         <Button type="submit" disabled={!newName.trim() || createInitiative.isPending}>
-          <Plus size={14} strokeWidth={2} />
+          <Plus size={14} strokeWidth={1.6} />
         </Button>
       </form>
       {createInitiative.isError && (

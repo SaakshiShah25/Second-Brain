@@ -98,7 +98,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
         <>
           {interaction.meeting_type && (
             <p className="mb-1 flex items-center gap-1 text-xs text-text-muted">
-              <Tag size={12} strokeWidth={2} className="flex-shrink-0" />
+              <Tag size={12} strokeWidth={1.6} className="flex-shrink-0" />
               {interaction.meeting_type}
             </p>
           )}
@@ -108,7 +108,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
           )}
           {interaction.maps_url && (
             <p className="flex items-center gap-1 text-xs text-text-muted">
-              <MapPin size={12} strokeWidth={2} className="flex-shrink-0" />
+              <MapPin size={12} strokeWidth={1.6} className="flex-shrink-0" />
               {interaction.geo_address ?? `${interaction.geo_lat?.toFixed(5)}, ${interaction.geo_lng?.toFixed(5)}`}
               {' · '}
               <a href={interaction.maps_url} target="_blank" rel="noreferrer" className="text-accent hover:underline">
@@ -119,7 +119,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
           {interaction.decisions && interaction.decisions.length > 0 && (
             <div className="mt-2">
               <p className="flex items-center gap-1 text-xs font-medium">
-                <CheckCircle2 size={12} strokeWidth={2} /> Decisions:
+                <CheckCircle2 size={12} strokeWidth={1.6} /> Decisions:
               </p>
               {interaction.decisions.map((d, i) => (
                 <p key={i} className="text-xs text-text-muted">
@@ -131,7 +131,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
           {interaction.concerns && interaction.concerns.length > 0 && (
             <div className="mt-2">
               <p className="flex items-center gap-1 text-xs font-medium">
-                <TriangleAlert size={12} strokeWidth={2} /> Concerns:
+                <TriangleAlert size={12} strokeWidth={1.6} /> Concerns:
               </p>
               {interaction.concerns.map((c, i) => (
                 <p key={i} className="text-xs text-text-muted">

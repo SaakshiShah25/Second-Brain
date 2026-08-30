@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Brain, MessageSquare, NotebookText, Settings, Sunrise, Users, type LucideIcon } from 'lucide-react'
+import { MessageSquare, NotebookText, Settings, Sunrise, Users, type LucideIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
+import ConfiaLogo from './ConfiaLogo'
 
 const navItems: { to: string; label: string; icon: LucideIcon; end: boolean }[] = [
   { to: '/', label: 'Chat', icon: MessageSquare, end: true },
@@ -19,9 +20,9 @@ export default function Layout() {
       <aside className="hidden md:flex md:w-56 md:flex-shrink-0 md:flex-col md:border-r md:border-border md:bg-bg-elevated md:p-4">
         <div className="mb-6 flex items-center gap-2 px-2">
           <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
-            <Brain size={18} strokeWidth={2} />
+            <ConfiaLogo size={18} />
           </span>
-          <span className="text-base font-semibold tracking-tight">Second Brain</span>
+          <span className="text-base font-semibold tracking-[-0.02em]">Confía</span>
         </div>
         <nav className="flex flex-1 flex-col gap-1">
           {navItems.map((item) => (
@@ -30,12 +31,14 @@ export default function Layout() {
               to={item.to}
               end={item.end}
               className={({ isActive }) =>
-                `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isActive ? 'bg-accent-soft text-accent' : 'text-text-muted hover:bg-bg-hover hover:text-text'
+                `flex items-center gap-2 rounded-lg px-3 py-2 text-sm tracking-[-0.006em] transition-colors ${
+                  isActive
+                    ? 'bg-accent-soft font-semibold text-accent'
+                    : 'font-medium text-text-muted hover:bg-bg-hover hover:text-text'
                 }`
               }
             >
-              <item.icon size={18} strokeWidth={2} />
+              <item.icon size={18} strokeWidth={1.6} />
               <span>{item.label}</span>
             </NavLink>
           ))}
@@ -81,7 +84,7 @@ export default function Layout() {
                 }`
               }
             >
-              <item.icon size={20} strokeWidth={2} />
+              <item.icon size={20} strokeWidth={1.6} />
               {item.label}
             </NavLink>
           ))}

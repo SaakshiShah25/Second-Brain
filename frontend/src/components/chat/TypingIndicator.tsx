@@ -1,10 +1,10 @@
-import { Brain } from 'lucide-react'
+import ConfiaLogo from '../ConfiaLogo'
 
 export default function TypingIndicator() {
   return (
     <div className="flex items-center gap-3">
       <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-        <Brain size={15} strokeWidth={2} />
+        <ConfiaLogo size={15} />
       </div>
       <div className="flex items-center gap-1 py-1">
         {[0, 1, 2].map((i) => (

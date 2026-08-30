@@ -2,26 +2,36 @@
 @import "tailwindcss";
 
 /*
-Same palette as the Streamlit app's assets/style.css - cool/modern dark
-theme, indigo-violet accent - kept for visual continuity across the
-migration. Exposed as CSS variables here and mapped into Tailwind's
-theme below via @theme, so both plain CSS and Tailwind utility classes
-(bg-surface, text-muted, etc.) can use them.
+Confía brand palette - indigo/amber, replacing the old purple/violet
+"Second Brain" theme (see git history for that palette). Indigo is the
+light-theme primary (buttons, active nav, primary actions); amber takes
+over as the primary action color in dark theme instead - the brand
+explicitly treats amber as "dark-theme primary actions," not a flat
+accent reused unchanged across both themes. Rose is a deliberately
+sparing secondary accent (used here for danger/delete, not a primary
+action, in either theme). Exposed as CSS variables here and mapped into
+Tailwind's theme below via @theme, so both plain CSS and Tailwind
+utility classes (bg-accent, text-muted, etc.) can use them - extend
+these tokens rather than hardcoding a brand color inline anywhere.
 */
 :root {
-  --sb-bg: #0a0c12;
-  --sb-bg-elevated: #12151e;
-  --sb-bg-card: #161a24;
-  --sb-bg-hover: #1c212e;
-  --sb-border: rgba(255, 255, 255, 0.08);
-  --sb-border-strong: rgba(255, 255, 255, 0.16);
-  --sb-text: #e8eaf0;
-  --sb-text-muted: #9098a8;
-  --sb-text-faint: #6b7280;
-  --sb-accent: #7c6cf6;
-  --sb-accent-hover: #6c5ce8;
-  --sb-accent-soft: rgba(124, 108, 246, 0.16);
-  --sb-danger: #f27272;
+  --sb-bg: #211e36; /* indigo deep - dark-theme background */
+  --sb-bg-elevated: #28243f;
+  --sb-bg-card: #2d2a48;
+  --sb-bg-hover: #363151;
+  --sb-border: rgba(247, 240, 228, 0.08);
+  --sb-border-strong: rgba(247, 240, 228, 0.18);
+  --sb-text: #f7f0e4; /* cream/paper - dark-theme text on dark backgrounds */
+  --sb-text-muted: #b8b2ce;
+  --sb-text-faint: #7a7492;
+  --sb-accent: #e9a73b; /* amber - dark-theme primary actions */
+  --sb-accent-hover: #d89530;
+  --sb-accent-soft: rgba(233, 167, 59, 0.15);
+  /* Text/icon color drawn ON TOP of --sb-accent (e.g. a filled button,
+     the mic button) - amber is light, so it needs dark text on it,
+     unlike the light theme's indigo accent which wants white on it. */
+  --sb-accent-contrast: #211e36;
+  --sb-danger: #c97186; /* rose - sparing secondary accent, not a primary color */
   --sb-success: #4ade80;
 
   /* Multiplier for the Settings page's font-size preference - applied on
@@ -30,26 +40,22 @@ theme below via @theme, so both plain CSS and Tailwind utility classes
 }
 
 /* Light theme - opted into via data-theme="light" on <html> (set by
-   SettingsProvider from the user's stored preference). Apple's own
-   light-mode palette: white/near-white surfaces, near-black text
-   (#1d1d1f, not pure black), the same accent hue deepened slightly for
-   AA contrast on white, and danger/success darkened for the same reason
-   (the dark theme's pastel red/green read fine on a near-black
-   background but fail contrast as text on white). */
+   SettingsProvider from the user's stored preference). */
 :root[data-theme="light"] {
   --sb-bg: #ffffff;
-  --sb-bg-elevated: #f5f5f7;
+  --sb-bg-elevated: #f7f5fb;
   --sb-bg-card: #ffffff;
-  --sb-bg-hover: #f0f0f2;
-  --sb-border: rgba(0, 0, 0, 0.08);
-  --sb-border-strong: rgba(0, 0, 0, 0.14);
-  --sb-text: #1d1d1f;
-  --sb-text-muted: #6e6e73;
-  --sb-text-faint: #8e8e93;
-  --sb-accent: #6c5ce8;
-  --sb-accent-hover: #5b4bd6;
-  --sb-accent-soft: rgba(108, 92, 232, 0.12);
-  --sb-danger: #d92d20;
+  --sb-bg-hover: #f0eef7;
+  --sb-border: rgba(46, 42, 77, 0.08);
+  --sb-border-strong: #e4e0ee;
+  --sb-text: #211e36;
+  --sb-text-muted: #6b6580;
+  --sb-text-faint: #9490a6;
+  --sb-accent: #2e2a4d; /* indigo - light-theme primary actions */
+  --sb-accent-hover: #211e36;
+  --sb-accent-soft: #ede9fb;
+  --sb-accent-contrast: #ffffff;
+  --sb-danger: #c97186;
   --sb-success: #16a34a;
 }
 
@@ -66,13 +72,15 @@ theme below via @theme, so both plain CSS and Tailwind utility classes
   --color-accent: var(--sb-accent);
   --color-accent-hover: var(--sb-accent-hover);
   --color-accent-soft: var(--sb-accent-soft);
+  --color-accent-contrast: var(--sb-accent-contrast);
   --color-danger: var(--sb-danger);
   --color-success: var(--sb-success);
-  /* Apple's system font (SF Pro) first on Apple devices/browsers - falls
-     back to Inter (a close match in spirit: geometric, humanist) on
-     everything else, so this looks native on iOS/macOS rather than an
-     approximation of it. */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  /* True SF Pro on Apple devices/browsers; Inter (imported above - the
+     closest open match to SF Pro's metrics and letterforms) as the
+     cross-platform fallback, since San Francisco itself can't be
+     embedded outside Apple's own platforms. */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter', 'Segoe UI', Roboto,
+    Helvetica, Arial, sans-serif;
 }
 
 /* Font-size preference (Settings page) - a multiplier on top of the
@@ -117,6 +125,7 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   letter-spacing: -0.011em;
+  line-height: 1.6;
 }
 
 ::-webkit-scrollbar {
@@ -202,4 +211,19 @@ body {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Startup splash (LoadingScreen.tsx) - a radial glow behind the mark,
+   themed to match the brand's splash mockup exactly (light = soft
+   lavender-white; dusk = deep indigo with an amber glow behind the
+   logo). Scoped by data-theme like every other theme override in this
+   file, not hardcoded to one look. */
+:root:not([data-theme="light"]) .confia-splash-bg {
+  background: radial-gradient(circle at 50% 34%, #322c55 0%, #211e36 55%, #171526 100%);
+}
+:root:not([data-theme="light"]) .confia-splash-glow {
+  filter: drop-shadow(0 0 34px rgba(233, 167, 59, 0.35));
+}
+:root[data-theme="light"] .confia-splash-bg {
+  background: radial-gradient(circle at 50% 38%, #f3eeff 0%, #ffffff 62%);
 }

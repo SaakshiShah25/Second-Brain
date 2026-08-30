@@ -1,7 +1,7 @@
-import { Brain } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ChatMessage } from '../../api/types'
+import ConfiaLogo from '../ConfiaLogo'
 import CopyButton from '../CopyButton'
 import SpeakButton from '../SpeakButton'
 
@@ -22,7 +22,7 @@ export default function ChatBubble({ message }: { message: ChatMessage }) {
   return (
     <div className="flex items-start gap-3">
       <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-        <Brain size={15} strokeWidth={2} />
+        <ConfiaLogo size={15} />
       </div>
       <div className="relative min-w-0 flex-1 pr-8 pt-1">
         <div className="prose-chat text-sm leading-relaxed text-text">

@@ -37,7 +37,7 @@ function MorningBriefCard() {
         <h2 className="text-sm font-semibold tracking-tight text-text-muted">Morning brief</h2>
         <Button onClick={() => sendEmail.mutate()} disabled={sendEmail.isPending} title="Resend this to your email now">
           <span className="flex items-center gap-1.5">
-            <Mail size={14} strokeWidth={2} />
+            <Mail size={14} strokeWidth={1.6} />
             {sendEmail.isPending ? 'Sending…' : 'Send now'}
           </span>
         </Button>
@@ -128,7 +128,7 @@ export default function DigestPage() {
   return (
     <div>
       <h1 className="mb-6 flex items-center gap-2 text-2xl font-bold tracking-tight">
-        <Sunrise size={22} strokeWidth={2} className="text-accent" /> Digest
+        <Sunrise size={22} strokeWidth={1.6} className="text-accent" /> Digest
       </h1>
 
       <MorningBriefCard />
@@ -136,7 +136,7 @@ export default function DigestPage() {
       {calendarResult === 'connected' && (
         <Card className="mb-4 flex items-center justify-between gap-3 border-green-600/40">
           <p className="flex items-center gap-1.5 text-sm">
-            <CheckCircle2 size={15} strokeWidth={2} className="text-green-600" /> Google Calendar connected.
+            <CheckCircle2 size={15} strokeWidth={1.6} className="text-green-600" /> Google Calendar connected.
           </p>
           <Button onClick={dismissCalendarResult}>Dismiss</Button>
         </Card>
@@ -144,7 +144,7 @@ export default function DigestPage() {
       {calendarResult === 'error' && (
         <Card className="mb-4 flex items-center justify-between gap-3">
           <p className="flex items-center gap-1.5 text-sm text-danger">
-            <TriangleAlert size={15} strokeWidth={2} /> Couldn't connect Google Calendar - please try again.
+            <TriangleAlert size={15} strokeWidth={1.6} /> Couldn't connect Google Calendar - please try again.
           </p>
           <Button onClick={dismissCalendarResult}>Dismiss</Button>
         </Card>
@@ -157,7 +157,7 @@ export default function DigestPage() {
           </p>
           <Button variant="primary" onClick={() => startConnect.mutate()} disabled={startConnect.isPending}>
             <span className="flex items-center gap-1.5">
-              <Calendar size={15} strokeWidth={2} /> Connect Google Calendar
+              <Calendar size={15} strokeWidth={1.6} /> Connect Google Calendar
             </span>
           </Button>
         </Card>
@@ -285,7 +285,7 @@ export default function DigestPage() {
                     </span>
                     <ChevronDown
                       size={13}
-                      strokeWidth={2}
+                      strokeWidth={1.6}
                       className={`mt-1 flex-shrink-0 text-text-faint transition-transform ${
                         isExpanded ? 'rotate-180' : ''
                       }`}
@@ -317,7 +317,7 @@ export default function DigestPage() {
                     </span>
                     <span>·</span>
                     <span className={`flex items-center gap-1 whitespace-nowrap ${due.overdue ? 'font-medium text-danger' : ''}`}>
-                      {due.overdue && <TriangleAlert size={12} strokeWidth={2} />}
+                      {due.overdue && <TriangleAlert size={12} strokeWidth={1.6} />}
                       {due.text}
                     </span>
                   </p>
@@ -364,7 +364,7 @@ export default function DigestPage() {
                           title="Remove from Google Calendar"
                         >
                           <span className="flex items-center gap-1">
-                            <CalendarCheck size={14} strokeWidth={2} /> On Calendar
+                            <CalendarCheck size={14} strokeWidth={1.6} /> On Calendar
                           </span>
                         </Button>
                       ) : (
@@ -380,7 +380,7 @@ export default function DigestPage() {
                           title="Schedule this meeting on Google Calendar"
                         >
                           <span className="flex items-center gap-1">
-                            <CalendarPlus size={14} strokeWidth={2} /> Schedule meet
+                            <CalendarPlus size={14} strokeWidth={1.6} /> Schedule meet
                           </span>
                         </Button>
                       )

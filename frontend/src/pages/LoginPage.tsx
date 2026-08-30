@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Brain } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../auth/AuthContext'
 import Button from '../components/Button'
+import ConfiaLogo from '../components/ConfiaLogo'
 import { Input, Label } from '../components/fields'
 
 type Mode = 'signin' | 'signup'
@@ -45,9 +45,9 @@ export default function LoginPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-bg p-4">
       <div className="mb-6 flex flex-col items-center gap-3">
         <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-soft text-accent">
-          <Brain size={26} strokeWidth={2} />
+          <ConfiaLogo size={26} />
         </span>
-        <span className="text-lg font-semibold tracking-tight text-text">Second Brain</span>
+        <span className="text-lg font-semibold tracking-[-0.02em] text-text">Confía</span>
       </div>
 
       <div className="w-full max-w-sm rounded-xl border border-border bg-bg-card p-6">
@@ -62,7 +62,7 @@ export default function LoginPage() {
                 setSignupDone(false)
               }}
               className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors ${
-                mode === m ? 'bg-accent text-white' : 'text-text-muted hover:text-text'
+                mode === m ? 'bg-accent text-accent-contrast' : 'text-text-muted hover:text-text'
               }`}
             >
               {m === 'signin' ? 'Sign in' : 'Sign up'}

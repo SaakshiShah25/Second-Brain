@@ -89,7 +89,7 @@ export default function Tour({ onDone }: TourProps) {
       <div className="w-full max-w-sm rounded-xl border border-border-strong bg-bg-elevated p-5 shadow-lg">
         <div className="mb-3 flex items-center gap-2">
           <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
-            <Icon size={18} strokeWidth={2} />
+            <Icon size={18} strokeWidth={1.6} />
           </span>
           <h3 className="text-base font-semibold">{current.title}</h3>
         </div>

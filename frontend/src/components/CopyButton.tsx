@@ -35,7 +35,7 @@ export default function CopyButton({ text }: { text: string }) {
       title={copied ? 'Copied' : 'Copy to clipboard'}
       className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-text-faint transition-colors hover:bg-white/10 hover:text-text"
     >
-      {copied ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={2} />}
+      {copied ? <Check size={14} strokeWidth={1.6} /> : <Copy size={14} strokeWidth={1.6} />}
     </button>
   )
 }

@@ -33,7 +33,7 @@ export default function SettingsPage() {
 
       <Card className="mb-4">
         <div className="mb-2 flex items-center gap-2">
-          <Lock size={15} strokeWidth={2} className="text-accent" />
+          <Lock size={15} strokeWidth={1.6} className="text-accent" />
           <h2 className="text-sm font-semibold tracking-tight text-text-muted">Privacy</h2>
         </div>
         <p className="text-xs leading-relaxed text-text-faint">
@@ -61,10 +61,10 @@ export default function SettingsPage() {
                 }`}
               >
                 <span className="flex items-center gap-2">
-                  <Icon size={16} strokeWidth={2} />
+                  <Icon size={16} strokeWidth={1.6} />
                   {label}
                 </span>
-                {active && <Check size={16} strokeWidth={2} />}
+                {active && <Check size={16} strokeWidth={1.6} />}
               </button>
             )
           })}
@@ -88,7 +88,7 @@ export default function SettingsPage() {
                 }`}
               >
                 <span className={`${sample} font-medium`}>{label}</span>
-                {active && <Check size={16} strokeWidth={2} />}
+                {active && <Check size={16} strokeWidth={1.6} />}
               </button>
             )
           })}
@@ -128,7 +128,7 @@ export default function SettingsPage() {
           onClick={() => startTour()}
           className="flex w-full items-center gap-2 rounded-lg py-1 text-left text-[15px] text-text transition-colors hover:text-accent"
         >
-          <Compass size={16} strokeWidth={2} />
+          <Compass size={16} strokeWidth={1.6} />
           Take the tour again
         </button>
       </Card>
@@ -139,7 +139,7 @@ export default function SettingsPage() {
           onClick={() => signOut()}
           className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium text-danger transition-colors hover:bg-danger/10"
         >
-          <LogOut size={16} strokeWidth={2} />
+          <LogOut size={16} strokeWidth={1.6} />
           Sign out
         </button>
       </Card>

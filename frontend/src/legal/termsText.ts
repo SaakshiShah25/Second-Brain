@@ -1,5 +1,5 @@
 // Standard Terms of Service + Privacy template, written specifically for
-// what Second Brain actually does (a personal notes/CRM app that sends
+// what Confía actually does (a personal notes/CRM app that sends
 // captured text to Groq, Cohere, and Supabase - named honestly below
 // rather than left as generic boilerplate). This is a reasonable starting
 // point, not a substitute for a lawyer's review before any real public
@@ -12,11 +12,11 @@ _Last updated: ${TERMS_LAST_UPDATED}_
 
 ## 1. Acceptance of Terms
 
-By creating an account or using Second Brain ("the App"), you agree to these Terms of Service and the Privacy section below. If you don't agree, please don't use the App.
+By creating an account or using Confía ("the App"), you agree to these Terms of Service and the Privacy section below. If you don't agree, please don't use the App.
 
 ## 2. What the App Does
 
-Second Brain lets you log notes about your conversations and contacts - by typing, speaking, or scanning a business card - and later ask questions about what you've recorded. To do this, the App sends the text you enter (and transcripts of any voice recordings) to third-party AI services for processing, and stores your notes, contacts, and account data with a third-party database provider. These are named specifically in the Privacy section below.
+Confía lets you log notes about your conversations and contacts - by typing, speaking, or scanning a business card - and later ask questions about what you've recorded. To do this, the App sends the text you enter (and transcripts of any voice recordings) to third-party AI services for processing, and stores your notes, contacts, and account data with a third-party database provider. These are named specifically in the Privacy section below.
 
 ## 3. Your Account
 

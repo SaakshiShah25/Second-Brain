@@ -118,7 +118,7 @@ export default function PersonDetailPage() {
     <div>
       <Button onClick={() => navigate('/people')} className="mb-4">
         <span className="flex items-center gap-1.5">
-          <ArrowLeft size={14} strokeWidth={2} /> Back to People
+          <ArrowLeft size={14} strokeWidth={1.6} /> Back to People
         </span>
       </Button>
 
@@ -150,7 +150,7 @@ export default function PersonDetailPage() {
                           className="flex-shrink-0 text-text-faint hover:text-danger"
                           title="Remove this note"
                         >
-                          <Trash2 size={13} strokeWidth={2} />
+                          <Trash2 size={13} strokeWidth={1.6} />
                         </button>
                       </li>
                     ))}
@@ -175,7 +175,7 @@ export default function PersonDetailPage() {
                   disabled={addPersonalNote.isPending || !newNoteText.trim()}
                   title="Add note"
                 >
-                  <Plus size={14} strokeWidth={2} />
+                  <Plus size={14} strokeWidth={1.6} />
                 </Button>
               </div>
             </div>
@@ -257,13 +257,13 @@ export default function PersonDetailPage() {
       <div className="mb-6 flex gap-2">
         <Button variant="primary" onClick={() => briefing.mutate()} disabled={briefing.isPending}>
           <span className="flex items-center gap-1.5">
-            <Sunrise size={15} strokeWidth={2} /> {briefing.isPending ? 'Preparing briefing…' : 'Get briefing'}
+            <Sunrise size={15} strokeWidth={1.6} /> {briefing.isPending ? 'Preparing briefing…' : 'Get briefing'}
           </span>
         </Button>
         {!isEditing && (
           <Button onClick={() => setIsEditing(true)}>
             <span className="flex items-center gap-1.5">
-              <Pencil size={14} strokeWidth={2} /> Edit info
+              <Pencil size={14} strokeWidth={1.6} /> Edit info
             </span>
           </Button>
         )}

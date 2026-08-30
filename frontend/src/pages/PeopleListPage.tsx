@@ -25,7 +25,7 @@ function CompanyBriefingSection() {
     <Card className="mb-4">
       <Label>
         <span className="flex items-center gap-1.5">
-          <Building2 size={13} strokeWidth={2} /> Company briefing
+          <Building2 size={13} strokeWidth={1.6} /> Company briefing
         </span>
       </Label>
       <p className="mb-2 text-xs text-text-muted">
@@ -84,7 +84,7 @@ export default function PeopleListPage() {
   return (
     <div>
       <h1 className="mb-4 flex items-center gap-2 text-2xl font-bold tracking-tight">
-        <Users size={22} strokeWidth={2} className="text-accent" /> People
+        <Users size={22} strokeWidth={1.6} className="text-accent" /> People
       </h1>
 
       <CompanyBriefingSection />

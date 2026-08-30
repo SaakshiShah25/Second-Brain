@@ -84,7 +84,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className="flex w-full items-end gap-1.5 rounded-3xl border border-border-strong bg-bg-card p-1.5 shadow-sm">
+      <div className="flex w-full items-end gap-1.5 rounded-full border border-border-strong bg-bg-card p-1.5 shadow-sm">
         {onAttachCard && (
           <>
             <button
@@ -94,7 +94,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
               title="Scan a business card"
               className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-bg-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Camera size={19} strokeWidth={2} />
+              <Camera size={19} strokeWidth={1.6} />
             </button>
             <input
               ref={cardInputRef}
@@ -122,9 +122,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
             }`}
           >
             {locationLoading ? (
-              <Loader2 size={18} strokeWidth={2} className="animate-spin" />
+              <Loader2 size={18} strokeWidth={1.6} className="animate-spin" />
             ) : (
-              <MapPin size={18} strokeWidth={2} />
+              <MapPin size={18} strokeWidth={1.6} />
             )}
           </button>
         )}
@@ -152,7 +152,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
             type="button"
             onClick={onSend}
             disabled={disabled}
-            className="flex h-11 flex-shrink-0 items-center justify-center rounded-full bg-accent px-5 text-[0.9375rem] font-semibold text-white shadow-sm transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-11 flex-shrink-0 items-center justify-center rounded-full bg-accent px-5 text-[0.9375rem] font-semibold text-accent-contrast shadow-sm transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
             Send
           </button>
@@ -170,7 +170,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
               onClick={onStop}
               className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-full bg-danger/15 text-danger shadow-sm transition-colors hover:bg-danger/25"
             >
-              <Square size={24} strokeWidth={2} fill="currentColor" />
+              <Square size={24} strokeWidth={1.6} fill="currentColor" />
             </button>
             <span className="text-xs font-medium text-text-muted">Stop</span>
           </div>
@@ -180,14 +180,14 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
               type="button"
               onClick={onToggleRecord}
               disabled={disabled}
-              className={`flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-full text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                isRecording ? 'bg-danger hover:bg-danger/85' : 'bg-accent hover:bg-accent-hover'
+              className={`flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-full shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                isRecording ? 'bg-danger text-white hover:bg-danger/85' : 'bg-accent text-accent-contrast hover:bg-accent-hover'
               }`}
             >
               {isRecording ? (
-                <Square size={26} strokeWidth={2} fill="currentColor" />
+                <Square size={26} strokeWidth={1.6} fill="currentColor" />
               ) : (
-                <Mic size={28} strokeWidth={2} />
+                <Mic size={28} strokeWidth={1.6} />
               )}
             </button>
             <span className="text-xs font-medium text-text-muted">

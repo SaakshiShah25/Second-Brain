@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Brain, MapPin, X } from 'lucide-react'
+import { MapPin, X } from 'lucide-react'
 import { useCaptureCard, useCaptureCardConfirm } from '../api/capture'
 import { useChat, useChatConfirm } from '../api/chat'
 import { useTranscribe } from '../api/voice'
 import type { CaptureResult, CaptureSavedResult, ChatResult } from '../api/types'
 import Button from '../components/Button'
+import ConfiaLogo from '../components/ConfiaLogo'
 import Greeting from '../components/Greeting'
 import { Input, Textarea } from '../components/fields'
 import ChatBubble from '../components/chat/ChatBubble'
@@ -248,7 +249,7 @@ export default function ChatPage() {
         {messages.length === 0 && !hasPending && (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-center">
             <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft text-accent">
-              <Brain size={22} strokeWidth={2} />
+              <ConfiaLogo size={22} />
             </div>
             <Greeting />
             <p className="max-w-xs text-sm text-text-muted">
@@ -297,7 +298,7 @@ export default function ChatPage() {
         {pendingCard && (
           <div className="flex items-start gap-3">
             <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-              <Brain size={15} strokeWidth={2} />
+              <ConfiaLogo size={15} />
             </div>
             <div className="min-w-0 flex-1 rounded-xl border border-border bg-bg-card p-4">
               <p className="mb-2 text-sm font-medium">Confirm the scanned details before saving:</p>
@@ -354,10 +355,10 @@ export default function ChatPage() {
           {pendingLocation && (
             <div className="mb-2 flex items-center gap-2 text-xs text-text-muted">
               <span className="flex items-center gap-1 rounded-full bg-accent-soft px-2 py-1 text-accent">
-                <MapPin size={12} strokeWidth={2} /> location attached
+                <MapPin size={12} strokeWidth={1.6} /> location attached
               </span>
               <button type="button" onClick={() => setPendingLocation(null)} className="hover:text-text">
-                <X size={13} strokeWidth={2} />
+                <X size={13} strokeWidth={1.6} />
               </button>
             </div>
           )}

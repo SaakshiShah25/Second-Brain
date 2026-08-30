@@ -36,7 +36,7 @@ export default function NotesPage() {
   return (
     <div>
       <h1 className="mb-4 flex items-center gap-2 text-2xl font-bold tracking-tight">
-        <NotebookText size={22} strokeWidth={2} className="text-accent" /> Notes
+        <NotebookText size={22} strokeWidth={1.6} className="text-accent" /> Notes
       </h1>
 
       {/* Initiatives moved here from Settings - this is where you're
@@ -59,7 +59,7 @@ export default function NotesPage() {
             tab === 'initiatives' ? 'border-accent text-accent' : 'border-transparent text-text-muted hover:text-text'
           }`}
         >
-          <ListTree size={14} strokeWidth={2} />
+          <ListTree size={14} strokeWidth={1.6} />
           Initiatives
         </button>
       </div>
