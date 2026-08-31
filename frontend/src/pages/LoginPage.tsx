@@ -44,7 +44,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-bg p-4">
       <div className="mb-6 flex flex-col items-center gap-3">
-        <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-soft text-accent">
+        <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-soft text-text">
           <ConfiaLogo size={26} />
         </span>
         <span className="text-lg font-semibold tracking-[-0.02em] text-text">Confía</span>

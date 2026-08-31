@@ -21,7 +21,7 @@ export default function ChatBubble({ message }: { message: ChatMessage }) {
 
   return (
     <div className="flex items-start gap-3">
-      <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+      <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-text">
         <ConfiaLogo size={15} />
       </div>
       <div className="relative min-w-0 flex-1 pr-8 pt-1">

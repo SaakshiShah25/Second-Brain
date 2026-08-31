@@ -15,8 +15,8 @@ export default defineConfig({
         name: 'Confía',
         short_name: 'Confía',
         description: 'Your personal second brain for people, conversations, and follow-ups',
-        theme_color: '#211e36',
-        background_color: '#211e36',
+        theme_color: '#171526',
+        background_color: '#171526',
         display: 'standalone',
         start_url: '/',
         icons: [

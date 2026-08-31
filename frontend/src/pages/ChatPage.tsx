@@ -248,7 +248,7 @@ export default function ChatPage() {
       <div className="mb-4 flex flex-1 flex-col space-y-4 overflow-y-auto">
         {messages.length === 0 && !hasPending && (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-center">
-            <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft text-accent">
+            <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft text-text">
               <ConfiaLogo size={22} />
             </div>
             <Greeting />
@@ -297,7 +297,7 @@ export default function ChatPage() {
 
         {pendingCard && (
           <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+            <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-text">
               <ConfiaLogo size={15} />
             </div>
             <div className="min-w-0 flex-1 rounded-xl border border-border bg-bg-card p-4">

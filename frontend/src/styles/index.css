@@ -15,10 +15,14 @@ utility classes (bg-accent, text-muted, etc.) can use them - extend
 these tokens rather than hardcoding a brand color inline anywhere.
 */
 :root {
-  --sb-bg: #211e36; /* indigo deep - dark-theme background */
-  --sb-bg-elevated: #28243f;
-  --sb-bg-card: #2d2a48;
-  --sb-bg-hover: #363151;
+  /* Darkest tier taken straight from the splash mockup's own gradient
+     stops (not a separate guess) - the splash reads noticeably darker
+     than a flat #211e36 page background did, so the base surface here
+     now matches that same darkest stop instead of its middle one. */
+  --sb-bg: #171526;
+  --sb-bg-elevated: #211e36; /* indigo deep - splash's middle gradient stop */
+  --sb-bg-card: #28243f;
+  --sb-bg-hover: #322c55; /* splash's lightest/center gradient stop */
   --sb-border: rgba(247, 240, 228, 0.08);
   --sb-border-strong: rgba(247, 240, 228, 0.18);
   --sb-text: #f7f0e4; /* cream/paper - dark-theme text on dark backgrounds */

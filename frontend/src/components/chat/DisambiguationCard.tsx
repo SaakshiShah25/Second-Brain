@@ -26,7 +26,7 @@ function candidateLabel(c: Candidate) {
 export default function DisambiguationCard({ prompt, candidates, onChoose, onNone, noneLabel, busy }: DisambiguationCardProps) {
   return (
     <div className="flex items-start gap-3">
-      <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+      <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-text">
         <ConfiaLogo size={15} />
       </div>
       <div className="min-w-0 flex-1 rounded-xl border border-border bg-bg-card p-4">

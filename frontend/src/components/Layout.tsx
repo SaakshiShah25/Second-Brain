@@ -19,7 +19,7 @@ export default function Layout() {
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:w-56 md:flex-shrink-0 md:flex-col md:border-r md:border-border md:bg-bg-elevated md:p-4">
         <div className="mb-6 flex items-center gap-2 px-2">
-          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
+          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-text">
             <ConfiaLogo size={18} />
           </span>
           <span className="text-base font-semibold tracking-[-0.02em]">Confía</span>

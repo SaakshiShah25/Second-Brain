@@ -210,7 +210,7 @@ export default function DigestPage() {
                 className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                   ownerFilter === f.value
                     ? f.value === 'them'
-                      ? 'border-amber-400/50 bg-amber-400/10 text-amber-500'
+                      ? 'border-danger/50 bg-danger/10 text-danger'
                       : 'border-accent bg-accent-soft text-accent'
                     : 'border-border-strong bg-bg-card text-text-muted hover:text-text'
                 }`}
@@ -232,7 +232,7 @@ export default function DigestPage() {
             <span className="h-2.5 w-2.5 rounded-full bg-accent" /> My tasks
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-amber-400" /> Their tasks
+            <span className="h-2.5 w-2.5 rounded-full bg-danger" /> Their tasks
           </span>
         </div>
       )}
@@ -245,7 +245,7 @@ export default function DigestPage() {
             <Card
               key={task.id}
               className={`!p-0 overflow-hidden border-l-4 ${
-                task.owner === 'them' ? 'border-l-amber-400' : 'border-l-accent'
+                task.owner === 'them' ? 'border-l-danger' : 'border-l-accent'
               }`}
             >
               {/* Collapsed row: just the essentials (what it is, who it's
@@ -336,7 +336,7 @@ export default function DigestPage() {
                       disabled={updateOwner.isPending}
                       className={`flex-shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium transition-colors disabled:cursor-not-allowed ${
                         task.owner === 'them'
-                          ? 'border-amber-400/40 bg-amber-400/10 text-amber-500 hover:border-amber-400/60'
+                          ? 'border-danger/40 bg-danger/10 text-danger hover:border-danger/60'
                           : 'border-accent bg-accent-soft text-accent'
                       }`}
                     >

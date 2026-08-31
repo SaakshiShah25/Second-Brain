@@ -3,7 +3,7 @@ import ConfiaLogo from '../ConfiaLogo'
 export default function TypingIndicator() {
   return (
     <div className="flex items-center gap-3">
-      <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+      <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-text">
         <ConfiaLogo size={15} />
       </div>
       <div className="flex items-center gap-1 py-1">
