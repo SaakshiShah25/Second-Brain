@@ -47,7 +47,7 @@ const STEPS: Step[] = [
   },
   {
     icon: Sunrise,
-    title: 'Digest',
+    title: 'Today',
     description: 'Your open tasks and today’s calendar, all in one place, plus a daily brief.',
     path: '/digest',
   },

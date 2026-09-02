@@ -237,13 +237,21 @@ export interface ChatMessage {
 }
 
 // ---------- Unified chat (single thread, no mode tabs) ----------
-// POST /api/chat classifies each message as capture-intent or ask-intent
-// and returns the matching existing result shape with an `intent` tag
-// added - see api/routers/chat.py's docstring.
+// POST /api/chat classifies each message as capture-intent, ask-intent,
+// or "blocked" (failed the moderation check, or out of scope for what
+// this product does - a joke/story/code request, not a note or a
+// question about the user's own data) - see api/routers/chat.py's
+// docstring.
 
 export type ChatCaptureResult = { intent: 'capture' } & CaptureResult
 export type ChatAskResult = { intent: 'ask' } & AskResult
-export type ChatResult = ChatCaptureResult | ChatAskResult
+export interface ChatBlockedResult {
+  intent: 'blocked'
+  status: 'answered'
+  reason: 'unsafe' | 'out_of_scope'
+  answer: string
+}
+export type ChatResult = ChatCaptureResult | ChatAskResult | ChatBlockedResult
 
 // ---------- Settings (theme, font size, Terms of Service) ----------
 

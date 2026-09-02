@@ -3,7 +3,7 @@ import { api } from './client'
 import type { CaptureResult, CardFields } from './types'
 
 // Invalidated by every successful capture path below, since a save can
-// create a person/interaction/task that the Digest and People pages
+// create a person/interaction/task that the Today and People pages
 // should reflect next time they're viewed.
 function useInvalidateOnCapture() {
   const queryClient = useQueryClient()

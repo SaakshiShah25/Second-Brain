@@ -5,7 +5,7 @@
 // point, not a substitute for a lawyer's review before any real public
 // or commercial launch.
 
-export const TERMS_LAST_UPDATED = 'August 26, 2026'
+export const TERMS_LAST_UPDATED = 'September 2, 2026'
 
 export const TERMS_TEXT = `
 _Last updated: ${TERMS_LAST_UPDATED}_
@@ -41,6 +41,8 @@ Each operates under its own terms and privacy policy, which we encourage you to 
 ## 6. Privacy
 
 We collect the account information you provide at signup (email), the content you choose to log (notes, transcribed voice recordings, scanned business card details), and, only if you explicitly opt in per note, your device's approximate location. We use this solely to operate the App's features for you - not for advertising, and not sold to third parties.
+
+**Please don't log anything you wouldn't want shared with our AI providers.** As described in Section 5, the content you enter is sent to Groq and Cohere to extract information, answer your questions, and power search - this is necessary for the App to work, and applies to everything you log, not just what you mark as sensitive. Avoid entering things like government ID numbers, passwords, financial account details, or other highly sensitive information you wouldn't want processed by a third-party AI service.
 
 You can request deletion of your account and associated data at any time.
 

@@ -99,7 +99,12 @@ export default function ChatPage() {
   }
 
   function handleChatResult(result: ChatResult) {
-    if (result.intent === 'capture') {
+    if (result.intent === 'blocked') {
+      // Failed the safety check, or asked for something this product
+      // isn't built to do (a joke, code, a story) - either way, a plain
+      // message, never a disambiguation prompt.
+      appendMessage('assistant', result.answer)
+    } else if (result.intent === 'capture') {
       if (result.status === 'saved') appendMessage('assistant', formatSavedMessage(result))
       else setPendingConfirm(result)
     } else {

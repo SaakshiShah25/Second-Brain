@@ -128,7 +128,7 @@ export default function DigestPage() {
   return (
     <div>
       <h1 className="mb-6 flex items-center gap-2 text-2xl font-bold tracking-tight">
-        <Sunrise size={22} strokeWidth={1.6} className="text-accent" /> Digest
+        <Sunrise size={22} strokeWidth={1.6} className="text-accent" /> Today
       </h1>
 
       <MorningBriefCard />

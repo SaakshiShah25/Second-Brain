@@ -6,7 +6,7 @@ import ConfiaLogo from './ConfiaLogo'
 const navItems: { to: string; label: string; icon: LucideIcon; end: boolean }[] = [
   { to: '/', label: 'Chat', icon: MessageSquare, end: true },
   { to: '/notes', label: 'Notes', icon: NotebookText, end: false },
-  { to: '/digest', label: 'Digest', icon: Sunrise, end: false },
+  { to: '/digest', label: 'Today', icon: Sunrise, end: false },
   { to: '/people', label: 'People', icon: Users, end: false },
   { to: '/settings', label: 'Settings', icon: Settings, end: false },
 ]
