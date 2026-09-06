@@ -53,3 +53,15 @@ def complete_tour(user_id: str = Depends(get_current_user_id)):
     """Marks the onboarding tour as seen - called whether the user finished
     it or hit Skip, same binary semantics as accept_terms() above."""
     return db.update_user_preference(user_id, tour_completed_at=datetime.now(timezone.utc).isoformat())
+
+
+@router.delete("/account", status_code=204)
+def delete_account(user_id: str = Depends(get_current_user_id)):
+    """Play Store's required account-and-data deletion action (Google's
+    "Account Deletion" policy: any app that supports creating an account
+    must let a user delete it, and everything tied to it). `user_id` is
+    the caller's own verified id from their session token - there is no
+    way to pass a different id here, so this can only ever delete your
+    own account. See db.delete_account() for what actually gets removed
+    (everything, via cascading foreign keys - one call covers it)."""
+    db.delete_account(user_id)

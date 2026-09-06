@@ -34,15 +34,14 @@ services:
         sync: false
       - key: GOOGLE_MAPS_API_KEY
         sync: false
-      - key: SMTP_HOST
+      # Daily brief email, sent via Resend's HTTP API (email_client.py) -
+      # not SMTP, which Render's free tier blocks outbound. See
+      # email_client.py's docstring for full setup (a verified sending
+      # domain is required for this to actually reach real users, not
+      # just the Resend account's own email).
+      - key: RESEND_API_KEY
         sync: false
-      - key: SMTP_PORT
-        sync: false
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: SMTP_FROM
+      - key: RESEND_FROM_EMAIL
         sync: false
       - key: CRON_SECRET
         sync: false

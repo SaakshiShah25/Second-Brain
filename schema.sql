@@ -513,3 +513,74 @@ alter table task add column if not exists person_id
 -- the same way, since there's no separate "explicitly skipped" state to
 -- track - either way, don't auto-show it again.
 alter table user_preference add column if not exists tour_completed_at timestamptz;
+
+-- 23. The `client`/`client_signatory` tables (section 15) were kept
+--     dormant, not dropped, when the Clients/Contracts feature itself
+--     was removed from the app - purely so any contract data already
+--     saved at the time wasn't destroyed. Confirmed empty (0 rows in
+--     both, already truncated back when the feature was removed) and no
+--     application code references them anymore (db.py has no
+--     client/client_signatory functions at all). Safe to actually drop
+--     now - uncomment and run these two lines yourself when ready
+--     (left commented rather than run automatically, since dropping a
+--     table is irreversible and this file's other statements are all
+--     deliberately non-destructive create/alter-if-not-exists):
+-- drop table if exists client_signatory;
+-- drop table if exists client;
+
+-- 24. Free/premium subscriptions (see entitlements.py). Kept as its own
+--     table rather than more columns on user_preference - this maps
+--     directly onto a payment provider's own webhook events
+--     (checkout completed / subscription updated / canceled), so it's
+--     natural for a webhook handler to upsert this whole row wholesale
+--     without touching unrelated UI settings. `tier` is the source of
+--     truth entitlements.py reads; the provider fields exist so a
+--     webhook can find the right row and so support can look up "what
+--     did this user actually pay for" without leaving this table.
+create table if not exists subscription (
+    user_id uuid primary key references auth.users(id) on delete cascade,
+    tier text not null default 'free',              -- 'free' | 'premium'
+    status text not null default 'active',          -- 'active' | 'canceled' | 'past_due'
+    provider text,                                   -- e.g. 'stripe' - null while still on free
+    provider_customer_id text,
+    provider_subscription_id text,
+    current_period_end timestamptz,                  -- premium access is honored through this date
+                                                       -- even after cancellation (paid-through period)
+    created_at timestamptz default now(),
+    updated_at timestamptz default now()
+);
+
+-- Monthly usage counters for free-tier metering (see entitlements.py's
+-- check_and_increment()). One row per (user, resource, calendar month) -
+-- `period` is the month's first day (e.g. '2026-09-01'), so "this
+-- month's count" is always a single-row lookup, and old rows are just
+-- inert history (nothing needs to actively reset them at month-end).
+create table if not exists usage_counter (
+    user_id uuid not null references auth.users(id) on delete cascade,
+    resource text not null,      -- e.g. 'interactions_logged', 'ai_questions_asked'
+    period date not null,        -- first day of the calendar month this count applies to
+    count integer not null default 0,
+    primary key (user_id, resource, period)
+);
+
+-- Atomic "insert or +1" for usage_counter, called via
+-- supabase.rpc("increment_usage_counter", {...}) from db.increment_usage().
+-- Needed because two concurrent requests each doing a Python-side
+-- read-then-write (get count, add 1, write) could both read the same
+-- starting value and one increment would be lost - `on conflict ... do
+-- update` pushes the read-modify-write into a single atomic statement
+-- instead.
+create or replace function increment_usage_counter (
+    p_user_id uuid,
+    p_resource text,
+    p_period date
+)
+returns integer
+language sql
+as $$
+    insert into usage_counter (user_id, resource, period, count)
+    values (p_user_id, p_resource, p_period, 1)
+    on conflict (user_id, resource, period)
+    do update set count = usage_counter.count + 1
+    returning count;
+$$;

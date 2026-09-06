@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ListTree,
+  MessageCircleQuestion,
   MessageSquare,
   NotebookText,
   Settings as SettingsIcon,
@@ -31,6 +32,12 @@ const STEPS: Step[] = [
     icon: MessageSquare,
     title: 'Log anything',
     description: 'Type or speak a note about anyone or anything — the AI figures out who it’s about and what to remember.',
+    path: '/',
+  },
+  {
+    icon: MessageCircleQuestion,
+    title: 'Ask anything',
+    description: 'The same chat window doubles as search — ask "what did Priya say about pricing?" or "who do I need to follow up with?" and it answers from your own notes.',
     path: '/',
   },
   {

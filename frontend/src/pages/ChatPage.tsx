@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { MapPin, X } from 'lucide-react'
 import { useCaptureCard, useCaptureCardConfirm } from '../api/capture'
 import { useChat, useChatConfirm } from '../api/chat'
+import { useCreateInitiative } from '../api/initiatives'
+import { useUpdateInteraction } from '../api/people'
 import { useTranscribe } from '../api/voice'
 import type { CaptureResult, CaptureSavedResult, ChatResult } from '../api/types'
 import Button from '../components/Button'
+import Card from '../components/Card'
 import ConfiaLogo from '../components/ConfiaLogo'
 import Greeting from '../components/Greeting'
 import { Input, Textarea } from '../components/fields'
@@ -13,11 +16,19 @@ import TypingIndicator from '../components/chat/TypingIndicator'
 import ChatInput, { type ChatInputHandle } from '../components/chat/ChatInput'
 import DisambiguationCard from '../components/chat/DisambiguationCard'
 import { useChatSession } from '../chat/ChatSessionContext'
+import { useLiveTranscript } from '../lib/useLiveTranscript'
 
 function formatSavedMessage(result: CaptureSavedResult): string {
-  const status = result.created_new ? 'New contact' : 'Matched to existing contact'
-  const lines = [`**${status}:** ${result.resolved_name}`]
-  if (result.meeting_type) lines.push(`**Meeting type:** ${result.meeting_type}`)
+  // Both of these only make sense when the note is actually about a
+  // person - a standalone personal note/reminder has neither a matched
+  // contact nor a real meeting, so showing "Matched to existing contact:
+  // null" / "Meeting type: other" is just noise, not information.
+  const lines: string[] = []
+  if (result.resolved_name) {
+    const status = result.created_new ? 'New contact' : 'Matched to existing contact'
+    lines.push(`**${status}:** ${result.resolved_name}`)
+    if (result.meeting_type) lines.push(`**Meeting type:** ${result.meeting_type}`)
+  }
   if (result.summary) lines.push(`**Summary:** ${result.summary}`)
   if (result.decisions.length > 0) {
     lines.push('**Decisions:**')
@@ -54,6 +65,15 @@ export default function ChatPage() {
   const [isBusy, setIsBusy] = useState(false)
   const [pendingLocation, setPendingLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [locationLoading, setLocationLoading] = useState(false)
+  // A capture that didn't fit any existing initiative but reads like a
+  // substantial-enough theme to deserve its own (extraction.py's
+  // "suggested_initiative") - offered as a one-off yes/no prompt after
+  // the note has already saved, never blocking the save itself the way
+  // person disambiguation does (see handleSavedCapture below).
+  const [pendingInitiativeSuggestion, setPendingInitiativeSuggestion] = useState<{
+    name: string
+    interactionId: number
+  } | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -66,10 +86,17 @@ export default function ChatPage() {
   const captureCard = useCaptureCard()
   const captureCardConfirm = useCaptureCardConfirm()
   const transcribe = useTranscribe()
+  const createInitiative = useCreateInitiative()
+  const updateInteraction = useUpdateInteraction()
+  // Live "types out as you speak" preview while recording (see
+  // useLiveTranscript.ts) - a browser-native best-effort layer on top of
+  // the actual recording; Whisper's transcript (below) still replaces
+  // this with a more accurate final version the moment recording stops.
+  const liveTranscript = useLiveTranscript(setInputText)
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages, pendingConfirm, pendingCard, isBusy])
+  }, [messages, pendingConfirm, pendingCard, pendingInitiativeSuggestion, isBusy])
 
   function appendMessage(role: 'user' | 'assistant', content: string) {
     setMessages((prev) => [...prev, { role, content }])
@@ -98,6 +125,18 @@ export default function ChatPage() {
     )
   }
 
+  // Shared tail for every path that can end in a saved capture (direct
+  // send, person-disambiguation confirm, card confirm) - posts the usual
+  // saved-note summary, then separately offers the new-initiative
+  // suggestion if extraction.py proposed one. Kept as one function so
+  // that offer doesn't need reimplementing at each of the three call sites.
+  function handleSavedCapture(result: CaptureSavedResult) {
+    appendMessage('assistant', formatSavedMessage(result))
+    if (result.suggested_initiative) {
+      setPendingInitiativeSuggestion({ name: result.suggested_initiative, interactionId: result.interaction_id })
+    }
+  }
+
   function handleChatResult(result: ChatResult) {
     if (result.intent === 'blocked') {
       // Failed the safety check, or asked for something this product
@@ -105,12 +144,37 @@ export default function ChatPage() {
       // message, never a disambiguation prompt.
       appendMessage('assistant', result.answer)
     } else if (result.intent === 'capture') {
-      if (result.status === 'saved') appendMessage('assistant', formatSavedMessage(result))
+      if (result.status === 'saved') handleSavedCapture(result)
       else setPendingConfirm(result)
     } else {
       if (result.status === 'answered') appendMessage('assistant', result.answer)
       else setPendingConfirm(result)
     }
+  }
+
+  function resolveInitiativeSuggestion(accepted: boolean) {
+    if (!pendingInitiativeSuggestion) return
+    const { name, interactionId } = pendingInitiativeSuggestion
+    setPendingInitiativeSuggestion(null)
+    if (!accepted) {
+      appendMessage('assistant', `Okay, left it uncategorized.`)
+      return
+    }
+    createInitiative.mutate(
+      { name },
+      {
+        onSuccess: (initiative) => {
+          updateInteraction.mutate(
+            { interactionId, fields: { initiative_id: initiative.id } },
+            {
+              onSuccess: () => appendMessage('assistant', `Added **${initiative.name}** and tagged this note with it.`),
+              onError: () => appendMessage('assistant', `Created **${name}**, but couldn't tag this note with it - you can do that from the Notes page.`),
+            },
+          )
+        },
+        onError: () => appendMessage('assistant', `Couldn't create that initiative - please try again from the Notes tab.`),
+      },
+    )
   }
 
   async function submitText(text: string) {
@@ -170,7 +234,7 @@ export default function ChatPage() {
             },
       )
       setPendingConfirm(null)
-      if (result.intent === 'capture' && result.status === 'saved') appendMessage('assistant', formatSavedMessage(result))
+      if (result.intent === 'capture' && result.status === 'saved') handleSavedCapture(result)
       if (result.intent === 'ask' && result.status === 'answered') appendMessage('assistant', result.answer)
     } catch (err) {
       appendMessage('assistant', `Something went wrong: ${err}`)
@@ -202,7 +266,7 @@ export default function ChatPage() {
       const result: CaptureResult = await captureCardConfirm.mutateAsync(pendingCard)
       setPendingCard(null)
       if (result.status === 'saved') {
-        appendMessage('assistant', formatSavedMessage(result))
+        handleSavedCapture(result)
       } else {
         const confirmResult: ChatResult = { intent: 'capture', ...result }
         if (confirmResult.status === 'confirm_required') setPendingConfirm(confirmResult)
@@ -215,18 +279,38 @@ export default function ChatPage() {
   }
 
   async function startRecording() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch {
+      // Mic permission denied, no microphone available, or the browser/
+      // OS blocked it outright (e.g. Android's system permission dialog
+      // was dismissed) - previously this rejected silently with no
+      // feedback at all, since getUserMedia() was awaited with nothing
+      // to catch it. A clear message here matters doubly on the Android
+      // TWA wrapper, where a denied permission is easy to run into on
+      // first use.
+      appendMessage(
+        'assistant',
+        "Couldn't access your microphone - check that this app has microphone permission, then try again.",
+      )
+      return
+    }
     const recorder = new MediaRecorder(stream)
     chunksRef.current = []
+    setInputText('')
     recorder.ondataavailable = (e) => chunksRef.current.push(e.data)
     recorder.onstop = async () => {
+      liveTranscript.stop()
       stream.getTracks().forEach((t) => t.stop())
       const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
       setIsBusy(true)
       try {
         const { transcript } = await transcribe.mutateAsync(blob)
-        // Populate the input rather than auto-sending, so the user can
-        // review/edit a misheard word before it goes anywhere.
+        // Whisper's transcript replaces whatever the live browser preview
+        // showed - it's the more accurate, authoritative result. Populate
+        // the input rather than auto-sending, so the user can review/edit
+        // a misheard word before it goes anywhere.
         setInputText(transcript)
         chatInputRef.current?.focus()
       } catch (err) {
@@ -236,6 +320,7 @@ export default function ChatPage() {
       }
     }
     recorder.start()
+    liveTranscript.start()
     mediaRecorderRef.current = recorder
     setIsRecording(true)
   }
@@ -245,7 +330,7 @@ export default function ChatPage() {
     setIsRecording(false)
   }
 
-  const hasPending = pendingConfirm !== null || pendingCard !== null
+  const hasPending = pendingConfirm !== null || pendingCard !== null || pendingInitiativeSuggestion !== null
   const showTyping = isBusy && !hasPending && !isRecording && !transcribe.isPending
 
   return (
@@ -298,6 +383,35 @@ export default function ChatPage() {
             noneLabel="None of these"
             busy={isBusy}
           />
+        )}
+
+        {pendingInitiativeSuggestion && (
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-text">
+              <ConfiaLogo size={15} />
+            </div>
+            <Card className="min-w-0 flex-1">
+              <p className="mb-3 text-sm text-text">
+                This seems to be about <strong>{pendingInitiativeSuggestion.name}</strong> - want me to add that as a
+                new initiative and tag this note with it?
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="primary"
+                  disabled={createInitiative.isPending || updateInteraction.isPending}
+                  onClick={() => resolveInitiativeSuggestion(true)}
+                >
+                  Yes, add it
+                </Button>
+                <Button
+                  disabled={createInitiative.isPending || updateInteraction.isPending}
+                  onClick={() => resolveInitiativeSuggestion(false)}
+                >
+                  No, leave uncategorized
+                </Button>
+              </div>
+            </Card>
+          </div>
         )}
 
         {pendingCard && (

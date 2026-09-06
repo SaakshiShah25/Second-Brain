@@ -134,7 +134,11 @@ export interface SecondaryMention {
     raw_text?: string
     location?: string | null
     appearance?: string
-    person: { id: number; name: string }
+    // null when the primary note itself was person-less (a personal
+    // task/reminder that merely named this person in passing, not an
+    // interaction with anyone) - this person is still "mentioned in" it,
+    // there's just no primary person to attribute the note to.
+    person: { id: number; name: string } | null
   }
 }
 
@@ -184,6 +188,10 @@ export interface CaptureSavedResult {
   created_new: boolean
   interaction_id: number
   initiative_id: number | null
+  // Only ever set when initiative_id is null - a proposed name for a new
+  // initiative this note seems to be about, for the frontend to offer as
+  // "add this as a new initiative?" (see ChatPage.tsx).
+  suggested_initiative: string | null
   summary: string
   tasks_created: { description: string; due_date: string | null; owner: TaskOwner }[]
   date_warning: string | null

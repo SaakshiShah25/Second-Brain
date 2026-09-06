@@ -14,12 +14,28 @@ from fastapi import APIRouter, Depends, HTTPException
 
 import db
 import embeddings
+import entitlements
 import person_match
 import retrieval
 from api.auth import get_current_user_id
 from api.schemas import AskConfirmRequest, AskRequest
 
 router = APIRouter()
+
+
+def _enforce(user_id: str, resource: str):
+    """Same free-tier gate as api/routers/capture.py's _enforce() - kept
+    as its own copy rather than a shared import, since the two files'
+    only common dependency should stay entitlements.py itself, not each
+    other. See capture.py's version for the full rationale."""
+    try:
+        entitlements.check_and_increment(user_id, resource)
+    except entitlements.LimitExceeded as e:
+        raise HTTPException(
+            402,
+            f"You've reached this month's free plan limit ({e.limit}/month) for this - it resets next month, "
+            "or upgrade to Premium for unlimited use.",
+        )
 
 
 def _proceed_with_retrieval(user_id: str, query: str, parsed: dict, person: Optional[dict]) -> str:
@@ -48,6 +64,7 @@ def _proceed_with_retrieval(user_id: str, query: str, parsed: dict, person: Opti
 
 @router.post("")
 def ask(body: AskRequest, user_id: str = Depends(get_current_user_id)):
+    _enforce(user_id, "ai_questions_asked")
     conversation_context = retrieval.format_recent_context(body.history)
     try:
         parsed = retrieval.parse_query(body.query, conversation_context=conversation_context)

@@ -1,8 +1,12 @@
-import { Check, Compass, LogOut, Lock, Moon, Sun } from 'lucide-react'
-import { useSettings, useUpdateSettings } from '../api/settings'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Check, Compass, LogOut, Lock, Moon, Sun, Trash2 } from 'lucide-react'
+import { useDeleteAccount, useSettings, useUpdateSettings } from '../api/settings'
 import type { FontSize, Theme } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import AppLockSettings from '../components/AppLockSettings'
 import Card from '../components/Card'
+import ConfirmDialog from '../components/ConfirmDialog'
 import { useTour } from '../components/TourGate'
 
 const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Sun }[] = [
@@ -21,6 +25,9 @@ export default function SettingsPage() {
   const updateSettings = useUpdateSettings()
   const { user, signOut } = useAuth()
   const { startTour } = useTour()
+  const deleteAccount = useDeleteAccount()
+  const navigate = useNavigate()
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   return (
     <div className="mx-auto max-w-xl">
@@ -43,6 +50,8 @@ export default function SettingsPage() {
           only. We never sell or share your data.
         </p>
       </Card>
+
+      <AppLockSettings />
 
       <Card className="mb-4">
         <h2 className="mb-3 text-sm font-semibold tracking-tight text-text-muted">Appearance</h2>
@@ -133,7 +142,7 @@ export default function SettingsPage() {
         </button>
       </Card>
 
-      <Card>
+      <Card className="mb-4">
         <button
           type="button"
           onClick={() => signOut()}
@@ -143,6 +152,43 @@ export default function SettingsPage() {
           Sign out
         </button>
       </Card>
+
+      <Card>
+        <h2 className="mb-3 text-sm font-semibold tracking-tight text-text-muted">Danger zone</h2>
+        <button
+          type="button"
+          onClick={() => setConfirmingDelete(true)}
+          disabled={deleteAccount.isPending}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-danger/40 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Trash2 size={16} strokeWidth={1.6} />
+          {deleteAccount.isPending ? 'Deleting…' : 'Delete account'}
+        </button>
+        <p className="mt-2 text-xs text-text-faint">
+          Permanently deletes your account and every note, contact, and task tied to it. This can't be undone.
+        </p>
+        {deleteAccount.isError && (
+          <p className="mt-2 text-xs text-danger">Something went wrong - please try again.</p>
+        )}
+      </Card>
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Delete your account?"
+          message="This permanently deletes your account and everything in it - every note, contact, and task. There's no way to undo this or recover the data afterward."
+          confirmLabel="Delete permanently"
+          onConfirm={() => {
+            setConfirmingDelete(false)
+            deleteAccount.mutate(undefined, {
+              onSuccess: async () => {
+                await signOut()
+                navigate('/login', { replace: true })
+              },
+            })
+          }}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
     </div>
   )
 }

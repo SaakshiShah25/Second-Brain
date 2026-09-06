@@ -123,9 +123,15 @@ def create_event(user_id: str, task: dict, event_date: Optional[str] = None) -> 
     # for a task I own with no one explicitly named, prefixing someone
     # else's name (e.g. "Sonali: Buy a sports t-shirt" for my own to-do)
     # is misleading, so leave the summary as just the task description.
-    person_name = (task.get("person") or {}).get("name")
+    def _real_name(name):
+        # "Unknown" is a real, explicit match, not the same as no person -
+        # but showing it literally in an event title ("Unknown: buy
+        # gear") reads as broken, so treat it the same as no name.
+        return name if name and name.strip().lower() != "unknown" else None
+
+    person_name = _real_name((task.get("person") or {}).get("name"))
     if not person_name and task.get("owner", "me") != "me":
-        person_name = ((task.get("interaction") or {}).get("person") or {}).get("name")
+        person_name = _real_name(((task.get("interaction") or {}).get("person") or {}).get("name"))
     summary = f"{person_name}: {task['description']}" if person_name else task["description"]
     description = "Created from Confía."
     if event_date and task.get("due_date") and event_date != task["due_date"]:

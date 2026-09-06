@@ -26,26 +26,31 @@ def _build_system_prompt(reference_date: str, reference_weekday: str, initiative
 The user logs three kinds of notes - read the note carefully and pick the right one, since this
 is the single most important decision you make:
 
-1. An INTERACTION - a conversation, meeting, or exchange that actually took place WITH one or
-   more people (a call, a chat, a meeting, running into someone). There's a real back-and-forth,
-   or at least the user directly observing/talking to that person, not just thinking about them.
+1. An INTERACTION, or a FACT ABOUT A SPECIFIC PERSON - either (a) a conversation, meeting, or
+   exchange that actually took place WITH one or more people (a call, a chat, a meeting, running
+   into someone), OR (b) the note's actual content IS information about a specific named person -
+   their role, their company, something you learned or now know about who they are - even with no
+   conversation described at all (e.g. "Shouvik is the head of IT support at IBM" - nothing
+   happened, but the note exists to record a fact about Shouvik specifically). The test for (b):
+   is the note fundamentally ABOUT that person - telling you something new about who they are -
+   rather than about something the user themselves needs to do?
 2. A PERSONAL TASK/REMINDER/IDEA - something the user needs to do, wants to remember, or is
    reflecting on. This can be entirely about the user themselves ("need to fix my sleep
-   schedule"), OR it can REFERENCE another person without any interaction with them having
-   happened ("I need to send David Okafor my new email id tonight", "remind me to call Priya
-   tomorrow", "idea: get Rohan a birthday gift"). Writing someone's name into a to-do does NOT
-   mean you had an interaction with them - it just means they're relevant to this task.
+   schedule"), OR it can name another person as the TARGET/RECIPIENT of that action, without the
+   note telling you anything ABOUT that person ("I need to send David Okafor my new email id
+   tonight", "remind me to call Priya tomorrow", "idea: get Rohan a birthday gift"). The
+   distinguishing test against kind 1(b): does the note describe a fact/trait/role belonging to
+   the named person (kind 1), or is the person just who the user's own to-do is directed at, with
+   nothing learned about them (kind 2)? Writing someone's name into a to-do does not, by itself,
+   make it about them.
 3. A standalone reflection/idea with genuinely no person involved at all.
 
 Today's date is {reference_date} ({reference_weekday}).
 
-"primary_person" is ONLY for kind 1 above - set it to JSON null (not an object, not the string
-"Unknown") for kind 2 and kind 3, EVEN IF a real person's name appears in the note or in a
-follow-up task. The test is: did an actual interaction/exchange with this person happen (or is
-the note directly about observing/being with them), or is the user just referencing them while
-doing something else (a task, a reminder, an idea)? Only the former gets primary_person filled
-in. Use "Unknown" for the name only when a person was clearly interacted with but wasn't named
-(e.g. "talked to someone at the gym about my diet").
+"primary_person" is for kind 1 above (both the conversation case AND the fact-about-someone
+case) - set it to JSON null (not an object, not the string "Unknown") for kind 2 and kind 3. Use
+"Unknown" for the name only when a person was clearly interacted with (or a fact is clearly about
+someone specific) but they weren't named (e.g. "talked to someone at the gym about my diet").
 
 CRITICAL: any person named ANYWHERE in the note - including inside a follow-up/task
 description, even when primary_person is null - MUST still appear in "other_people" below. This
@@ -63,6 +68,28 @@ pick null rather than guess when it's ambiguous.
 
 Initiatives:
 {initiatives_block}
+
+IMPORTANT - be careful with a broad, catch-all initiative like "Personal": it should only absorb
+genuinely one-off, miscellaneous notes with no specific identifiable theme (buying groceries, a
+random errand, a passing thought). Do NOT file something into a generic catch-all just because it
+technically fits - if the note is actually about a specific, nameable pursuit (studying for an
+exam, training for an event, a new hobby, a new job/role) and NONE of the initiatives above are
+specific to that pursuit, that's exactly the case "suggested_initiative" below exists for, even
+though the generic one would "work". Only skip the suggestion when the note truly has no
+identifiable theme of its own.
+
+If "initiative" above is null (the note doesn't fit any existing SPECIFIC initiative - as
+described above, don't count a generic catch-all as a fit here either when a more specific
+suggestion is warranted), consider whether this note represents a distinct, nameable theme or
+project worth tracking as its OWN new initiative going forward - not a one-off errand or
+something too vague to name (e.g. "buy milk", "felt tired today" should NOT get a suggestion). If
+it clearly does (e.g. "started training for the Mumbai marathon" when no fitness/running
+initiative exists, or "had my first day at the new consulting gig" when no such initiative
+exists), set "suggested_initiative" to a short, specific 2-4 word name for it, and leave
+"initiative" null. Otherwise, leave "suggested_initiative" null. Never suggest a name that
+duplicates or is a close variant of an existing initiative above - if something like it already
+exists, that's what "initiative" above should have matched instead. "suggested_initiative" must
+always be null whenever "initiative" is non-null - the two are mutually exclusive.
 
 IMPORTANT - for date/time references anchored to a WEEKDAY or to
 "today"/"tomorrow"/"yesterday" (e.g. "next Monday", "last Thursday", "by Friday",
@@ -100,6 +127,7 @@ Return ONLY valid JSON (no markdown fences, no preamble) matching this exact sch
     "personal_notes": "string - PERSONAL, non-professional details mentioned about them: family, hobbies/interests, alma mater, life events, upcoming personal plans (e.g. 'has two kids', 'into cycling on weekends', 'went to Stanford'). Kept separate from 'description' above, which is professional/stable demeanor and appearance only. Empty string if nothing personal was mentioned."
   }},
   "initiative": "string - the EXACT name of one initiative from the list above that this note best fits, or null if none confidently applies. Pick null rather than guess when uncertain - never invent a name not in the list.",
+  "suggested_initiative": "string - ONLY when 'initiative' above is null AND this note represents a substantial theme/project worth tracking as a new initiative (see instructions above) - a short 2-4 word proposed name. Null otherwise, and ALWAYS null when 'initiative' is non-null.",
   "other_people": [
     {{
       "name": "string - the other person's name as mentioned, or 'Unknown' if they're referred to only by role/title/relation and never actually named (e.g. 'the CTO', 'his manager') - put the role/title in 'relation' below instead, NEVER use a role/title as the name itself",
@@ -111,7 +139,7 @@ Return ONLY valid JSON (no markdown fences, no preamble) matching this exact sch
   "location": "string - location mentioned, else null",
   "appearance_this_meeting": "string - what the person was WEARING or looked like SPECIFICALLY at this particular meeting/interaction (e.g. 'wore a blue shirt and blazer'), as opposed to their general stable appearance. Empty string if nothing meeting-specific was mentioned.",
   "meeting_type": "string - the TYPE of this meeting/interaction. Must be one of: 'discovery', 'demo', 'negotiation', 'check-in', 'networking', 'contract', 'support', 'internal', 'other'. Always pick the closest fit from context (e.g. a first exploratory call is 'discovery', a casual run-in at an event is 'networking') - use 'other' only if genuinely nothing fits, never leave this blank.",
-  "summary": "string - a concise 1-3 sentence summary of what happened/was discussed",
+  "summary": "string - a concise 1-3 sentence summary of what happened/was discussed. NEVER refer to the note-taker (the person logging this note) as 'the user' or 'User' - that reads as a placeholder leaking through, not a real sentence. For a note involving another person, phrase it around what THEY said/did (e.g. 'Discussed pricing concerns with Arjun...'). For a personal note/reminder with no one else involved, phrase it in first person, matching how the note-taker would actually say it (e.g. 'Need to send David Okafor the new email address.', not 'User needs to send...').",
   "sentiments": [
     {{
       "topic": "string - the specific subject this sentiment is about, e.g. 'pricing'",
@@ -139,6 +167,8 @@ Notes:
 - If information for a field isn't present, use an empty string, empty list, or null as appropriate.
 - "primary_person" is null for a standalone personal note (idea/to-do/reflection with no one else involved) - most other fields (other_people, sentiments, appearance_this_meeting, etc.) will naturally be empty/null in that case too, which is expected, not an error.
 - "initiative" only ever names one of the initiatives listed above, verbatim, or null - never a name outside that list.
+- "suggested_initiative" is the one exception to "never invent a name" above - it's specifically FOR proposing a new one, but only when "initiative" is null and the note is substantial enough to deserve its own category (see instructions above), not for every uncategorized note.
+- Always output person names and company names in proper capitalization (e.g. "David Okafor", "IBM", "Acme Corp"), regardless of how they appear in the source text - voice transcripts in particular sometimes come through in lowercase or inconsistent casing, and that's a transcription artifact, not how the name should be recorded or displayed.
 """
 
 

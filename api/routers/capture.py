@@ -25,15 +25,35 @@ import capture
 import card_scan
 import db
 import embeddings
+import entitlements
 import extraction
 import google_maps
 import person_match
 import voice
 from api.auth import get_current_user_id
+from api.rate_limit import limiter
 from api.schemas import CandidateEnvelope, CaptureConfirmRequest, CaptureRequest, CardConfirmRequest
 from date_utils import resolve_relative_phrase
 
 router = APIRouter()
+
+
+def _enforce(user_id: str, resource: str):
+    """Raises a 402 with an upgrade-shaped message if this free-tier
+    account has hit its monthly cap for `resource` - called right before
+    the expensive step it protects (extraction/transcription/OCR), not
+    after, so an over-limit account never actually triggers the LLM call
+    it can't complete. Premium accounts (entitlements.get_tier) never hit
+    this. 402 Payment Required, not 429, since this isn't "slow down and
+    retry" (a rate limit) - it's "this needs an upgrade" (a plan limit)."""
+    try:
+        entitlements.check_and_increment(user_id, resource)
+    except entitlements.LimitExceeded as e:
+        raise HTTPException(
+            402,
+            f"You've reached this month's free plan limit ({e.limit}/month) for this - it resets next month, "
+            "or upgrade to Premium for unlimited use.",
+        )
 
 
 # ---------- Shared capture tail (mirrors chat_view.py) ----------
@@ -215,6 +235,16 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
         "created_new": created_new,
         "interaction_id": interaction_id,
         "initiative_id": initiative_id,
+        # Only ever non-null when initiative_id is null - extraction.py's
+        # prompt keeps the two mutually exclusive (a note that already
+        # matched an existing initiative has nothing to suggest). The
+        # frontend offers "add this as a new initiative?" off of this,
+        # and re-tags the interaction via the existing generic
+        # PATCH /api/people/interactions/{id} once the user says yes -
+        # no dedicated confirm endpoint needed for this, unlike person
+        # disambiguation, since accepting/declining doesn't block the
+        # note from having already saved successfully either way.
+        "suggested_initiative": extracted.get("suggested_initiative") or None,
         "summary": extracted.get("summary", ""),
         "tasks_created": tasks_created,
         "date_warning": date_warning,
@@ -309,6 +339,7 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
 
 @router.post("")
 async def capture_text(body: CaptureRequest, request: Request, user_id: str = Depends(get_current_user_id)):
+    await run_in_threadpool(_enforce, user_id, "interactions_logged")
     initiatives = await run_in_threadpool(db.get_initiatives, user_id)
     initiative_names = [i["name"] for i in initiatives]
     try:
@@ -385,12 +416,15 @@ def capture_confirm(body: CaptureConfirmRequest, user_id: str = Depends(get_curr
 
 
 @router.post("/voice")
+@limiter.limit("20/minute")
 async def capture_voice(
+    request: Request,
     file: UploadFile,
     geo_lat: Optional[float] = Form(None),
     geo_lng: Optional[float] = Form(None),
     user_id: str = Depends(get_current_user_id),
 ):
+    _enforce(user_id, "voice_transcriptions")
     audio_bytes = await file.read()
     try:
         text = voice.transcribe_audio(audio_bytes)
@@ -399,6 +433,10 @@ async def capture_voice(
     if not text or not text.strip():
         raise HTTPException(422, "Didn't catch anything in that recording - try again.")
 
+    # A voice note is ALSO a note - metered separately from the
+    # transcription cap above (extraction is a distinct LLM call/cost
+    # from Whisper), same as a typed capture would be.
+    _enforce(user_id, "interactions_logged")
     initiatives = db.get_initiatives(user_id)
     initiative_names = [i["name"] for i in initiatives]
     try:
@@ -412,11 +450,13 @@ async def capture_voice(
 
 
 @router.post("/card")
-async def capture_card(file: UploadFile, user_id: str = Depends(get_current_user_id)):
+@limiter.limit("20/minute")
+async def capture_card(request: Request, file: UploadFile, user_id: str = Depends(get_current_user_id)):
     """OCRs+structures a business card photo (card_scan.py). Returns the
     fields for the client to show an editable confirm form (see
     CardConfirmRequest) - card OCR isn't trusted as-is, unlike voice, so
     nothing is saved here yet."""
+    _enforce(user_id, "card_scans")
     image_bytes = await file.read()
     try:
         return card_scan.extract_business_card(image_bytes)
@@ -430,7 +470,14 @@ def capture_card_confirm(body: CardConfirmRequest, user_id: str = Depends(get_cu
     same extraction.py-shaped dict from the (possibly user-edited) card
     fields and feeds it through the same _process_extracted() a typed
     note uses - so a scanned name matching an existing person gets the
-    exact same /capture/confirm disambiguation as a typed note would."""
+    exact same /capture/confirm disambiguation as a typed note would.
+
+    Not separately metered against "interactions_logged" - the card scan
+    itself already spent this account's "card_scans" allowance (see
+    capture_card above), and no LLM extraction call happens here (the
+    dict below is built from already-structured OCR fields, not a fresh
+    extraction.extract_info() call) - so there's no extra AI cost this
+    step needs to protect against."""
     if not body.name.strip():
         raise HTTPException(400, "Name is required.")
     context_note = body.context_note.strip()

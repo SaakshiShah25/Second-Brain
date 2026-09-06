@@ -80,6 +80,16 @@ function dueLabel(dueDate: string | null, status: 'open' | 'done'): { text: stri
   return { text: overdue ? `overdue (${dueDate})` : `due ${dueDate}`, overdue }
 }
 
+// "Unknown" is a placeholder for "a person was involved but wasn't
+// named" - it's a real, explicit match (unlike a null person), so the
+// fallback chain below would otherwise show it literally. Showing the
+// literal word "Unknown" to the user reads as broken, not informative -
+// treat it the same as no person at all and fall through to the
+// initiative instead.
+function realName(name: string | null | undefined): string | undefined {
+  return name && name.trim().toLowerCase() !== 'unknown' ? name : undefined
+}
+
 type OwnerFilter = 'all' | 'me' | 'them'
 
 const OWNER_FILTERS: { value: OwnerFilter; label: string }[] = [
@@ -310,8 +320,8 @@ export default function DigestPage() {
                         one" reasoning as a fully standalone note. "Personal"
                         is the final fallback if there's neither. */}
                     <span className="truncate">
-                      {task.person?.name ??
-                        (task.owner === 'them' ? task.interaction?.person?.name : undefined) ??
+                      {realName(task.person?.name) ??
+                        (task.owner === 'them' ? realName(task.interaction?.person?.name) : undefined) ??
                         task.interaction?.initiative?.name ??
                         'Personal'}
                     </span>

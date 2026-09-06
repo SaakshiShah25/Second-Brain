@@ -16,14 +16,38 @@ load_dotenv()
 
 from fastapi import Depends, FastAPI, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 import db
 import voice
 from llm_client import get_client as get_llm_client
 from api.auth import get_current_user_id
+from api.rate_limit import limiter
 from api.routers import ask, brief, calendar, capture, chat, initiatives, notes, people, settings, tasks
 
 app = FastAPI(title="Confía API")
+
+# Rate limiting, keyed by client IP rather than user_id (see
+# api/rate_limit.py) - simpler (no extra auth round-trip just to get a
+# limiter key) and it also covers unauthenticated abuse (e.g. hammering
+# login) that a user_id-keyed limiter would miss entirely. This is the
+# single Render instance's in-memory store (slowapi's default) - fine at
+# current scale, but it resets on redeploy/restart and won't be shared
+# across multiple instances if this ever scales horizontally; swap the
+# storage_uri to Redis at that point, nothing else here needs to change.
+# The Limiter's own generous default (every route not explicitly
+# overridden) guards against basic abuse/DoS; the LLM-calling entry
+# points (chat.py, capture.py's voice/card endpoints) carry a tighter,
+# explicit @limiter.limit(...) since those are what actually cost money
+# against Groq/Cohere's shared, rate-limited free-tier quota - including
+# the one moderation.py fails OPEN under quota pressure (see its own
+# docstring), so protecting that quota is itself a safety measure, not
+# just a cost one.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # Vite's default dev server port always allowed (local dev); the deployed
 # frontend origin is added on top of that via FRONTEND_URL (the same env

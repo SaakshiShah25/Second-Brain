@@ -40,9 +40,17 @@ def _format_task_line(task: dict) -> str:
     # "Fitness"), same reasoning as a fully standalone/person-less note.
     interaction = task.get("interaction") or {}
     owner_raw = task.get("owner", "me")
-    person = (task.get("person") or {}).get("name")
+    # "Unknown" is a real, explicit match (a person was involved but
+    # wasn't named) - not the same as no person at all. Showing the
+    # literal word "Unknown" in the brief reads as broken, not
+    # informative, so treat it the same as no person and fall through to
+    # the initiative, same as DigestPage.tsx's realName().
+    def _real_name(name):
+        return name if name and name.strip().lower() != "unknown" else None
+
+    person = _real_name((task.get("person") or {}).get("name"))
     if not person and owner_raw != "me":
-        person = (interaction.get("person") or {}).get("name")
+        person = _real_name((interaction.get("person") or {}).get("name"))
     initiative = (interaction.get("initiative") or {}).get("name")
     who = f" ({person})" if person else (f" ({initiative})" if initiative else "")
     owner = "you" if owner_raw == "me" else "them"

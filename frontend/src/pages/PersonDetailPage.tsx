@@ -52,6 +52,7 @@ export default function PersonDetailPage() {
   const [mergeTargetId, setMergeTargetId] = useState<number | ''>('')
   const [confirmDialog, setConfirmDialog] = useState<'merge' | 'delete' | null>(null)
   const [newNoteText, setNewNoteText] = useState('')
+  const [pendingNoteDelete, setPendingNoteDelete] = useState<number | null>(null)
 
   useEffect(() => {
     if (data?.person) {
@@ -145,7 +146,7 @@ export default function PersonDetailPage() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => deletePersonalNote.mutate(index)}
+                          onClick={() => setPendingNoteDelete(index)}
                           disabled={deletePersonalNote.isPending}
                           className="flex-shrink-0 text-text-faint hover:text-danger"
                           title="Remove this note"
@@ -295,7 +296,9 @@ export default function PersonDetailPage() {
         {mentioned_in.map((m, i) => (
           <Disclosure
             key={i}
-            summary={`${m.interaction.date ?? 'unknown date'} — mentioned in a note about ${m.interaction.person.name}`}
+            summary={`${m.interaction.date ?? 'unknown date'} — mentioned in ${
+              m.interaction.person ? `a note about ${m.interaction.person.name}` : 'a personal note'
+            }`}
           >
             {m.relation && <p className="text-xs text-text-muted">Relation: {m.relation}</p>}
             {m.interaction.summary && <p className="mt-1 text-sm">{m.interaction.summary}</p>}
@@ -358,6 +361,18 @@ export default function PersonDetailPage() {
             handleDelete()
           }}
           onCancel={() => setConfirmDialog(null)}
+        />
+      )}
+      {pendingNoteDelete !== null && (
+        <ConfirmDialog
+          title="Remove this note?"
+          message="This personal note entry will be permanently removed. This cannot be undone."
+          confirmLabel="Remove"
+          onConfirm={() => {
+            deletePersonalNote.mutate(pendingNoteDelete)
+            setPendingNoteDelete(null)
+          }}
+          onCancel={() => setPendingNoteDelete(null)}
         />
       )}
     </div>

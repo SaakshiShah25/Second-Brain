@@ -658,6 +658,23 @@ def get_user_email(user_id: str) -> str:
     return user.user.email
 
 
+def delete_account(user_id: str) -> None:
+    """Permanently deletes the account and every row of their data - the
+    Play Store's required "delete my account and data" action (see
+    api/routers/settings.py's DELETE /account). Only needs to delete the
+    auth.users row itself: every app table (person, interaction, task,
+    interaction_person, google_credentials, oauth_state, user_preference,
+    initiative) declares its user_id column `references auth.users(id)
+    on delete cascade` in schema.sql, so Postgres cascades the rest for
+    free - no per-table cleanup to keep in sync here as new tables are
+    added. Uses the Auth admin API (same service-role client as
+    get_user_email above), since deleting another auth user is an
+    admin-only operation - a user can never do this to anyone but
+    themselves, enforced by api/auth.py resolving `user_id` from their
+    own verified session token, never a client-supplied value."""
+    get_client().auth.admin.delete_user(user_id)
+
+
 def get_users_with_daily_brief_enabled() -> list:
     """Every user_id that's opted into the scheduled daily-brief email
     (see schema.sql section 19) - used by the cron-triggered
@@ -719,6 +736,59 @@ def get_initiative_by_name(user_id: str, name: str):
     None if there's no match."""
     resp = get_client().table("initiative").select("*").eq("user_id", user_id).ilike("name", name).execute()
     return resp.data[0] if resp.data else None
+
+
+# ---------- Subscriptions & usage metering (schema.sql section 24, see entitlements.py) ----------
+
+def get_subscription(user_id: str) -> dict:
+    """Fetches the account's subscription row, creating a default 'free'
+    one on first read - same create-on-first-read pattern as
+    get_user_preference() above, so every existing account (which
+    predates this table) transparently gets one without a migration
+    backfill script."""
+    resp = get_client().table("subscription").select("*").eq("user_id", user_id).execute()
+    if resp.data:
+        return resp.data[0]
+    resp = get_client().table("subscription").insert({"user_id": user_id}).execute()
+    return resp.data[0]
+
+
+def upsert_subscription(user_id: str, **fields) -> dict:
+    """Used by the billing webhook handler to write the whole
+    provider-reported state at once (tier/status/provider ids/period
+    end) - a webhook always knows the full current state, not a partial
+    patch, so this mirrors that rather than offering field-by-field
+    updaters."""
+    row = {"user_id": user_id, "updated_at": datetime.now(timezone.utc).isoformat(), **fields}
+    resp = get_client().table("subscription").upsert(row).execute()
+    return resp.data[0]
+
+
+def get_usage_count(user_id: str, resource: str, period: str) -> int:
+    """`period` is the first day of a calendar month (YYYY-MM-01) - see
+    entitlements.py's _current_period(). Returns 0 for a month with no
+    rows yet rather than creating one, since a pure read shouldn't have a
+    write side effect."""
+    resp = (
+        get_client().table("usage_counter").select("count")
+        .eq("user_id", user_id).eq("resource", resource).eq("period", period)
+        .execute()
+    )
+    return resp.data[0]["count"] if resp.data else 0
+
+
+def increment_usage(user_id: str, resource: str, period: str) -> int:
+    """Atomically bumps this month's counter for (user, resource) by one,
+    creating the row if this is the first use this month. Uses Postgres's
+    own upsert-with-increment (via the increment_usage_counter() SQL
+    function, schema.sql section 24) rather than a read-then-write from
+    Python, which would race under concurrent requests (e.g. two rapid
+    captures) and could under-count. Returns the count AFTER
+    incrementing."""
+    resp = get_client().rpc(
+        "increment_usage_counter", {"p_user_id": user_id, "p_resource": resource, "p_period": period}
+    ).execute()
+    return resp.data
 
 
 if __name__ == "__main__":

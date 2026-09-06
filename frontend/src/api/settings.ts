@@ -39,3 +39,14 @@ export function useCompleteTour() {
     },
   })
 }
+
+// Permanently deletes the account and every row of data tied to it (see
+// api/routers/settings.py's DELETE /account) - the Play Store's required
+// account-deletion action. No cache update on success: the caller signs
+// the user out and navigates away immediately, so there's nothing left
+// to keep in sync.
+export function useDeleteAccount() {
+  return useMutation({
+    mutationFn: () => api.delete<void>('/api/settings/account'),
+  })
+}

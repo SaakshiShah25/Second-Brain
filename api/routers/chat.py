@@ -27,6 +27,7 @@ from starlette.concurrency import run_in_threadpool
 import intent
 import moderation
 from api.auth import get_current_user_id
+from api.rate_limit import limiter
 from api.routers import ask as ask_router
 from api.routers import capture as capture_router
 from api.schemas import (
@@ -50,6 +51,7 @@ _UNSAFE_MESSAGE = "I can't help with that request."
 
 
 @router.post("")
+@limiter.limit("20/minute")
 async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_current_user_id)):
     moderation_result = await run_in_threadpool(moderation.check, body.text)
     if not moderation_result["safe"]:
