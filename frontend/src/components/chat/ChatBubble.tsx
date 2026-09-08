@@ -7,13 +7,17 @@ import SpeakButton from '../SpeakButton'
 
 export default function ChatBubble({ message }: { message: ChatMessage }) {
   if (message.role === 'user') {
+    // No copy button here - deliberately. Every mainstream chat UI
+    // (ChatGPT, Claude, Gemini) only puts a copy affordance on the
+    // ASSISTANT's reply, never on your own sent message - you already
+    // have whatever you just typed, so there's nothing to copy back.
+    // Both bubbles showing the identical icon in the same corner was
+    // exactly what made it easy to click the wrong one; removing this
+    // one instead of trying to visually distinguish two copy buttons.
     return (
       <div className="flex justify-end">
-        <div className="relative max-w-[80%] rounded-2xl bg-accent-soft py-2.5 pl-4 pr-9 text-sm text-text">
+        <div className="max-w-[80%] rounded-2xl bg-accent-soft px-4 py-2.5 text-sm text-text">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-          <div className="absolute right-1.5 top-1.5">
-            <CopyButton text={message.content} />
-          </div>
         </div>
       </div>
     )

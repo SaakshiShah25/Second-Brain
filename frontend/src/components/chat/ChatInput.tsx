@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Camera, Loader2, MapPin, Mic, Square } from 'lucide-react'
 
 export interface ChatInputHandle {
@@ -50,7 +50,17 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
   }))
 
   // Auto-resize the textarea to fit its content, capped by max-h-40 below.
-  useEffect(() => {
+  // useLayoutEffect, NOT useEffect - this must run BEFORE the browser
+  // paints. useEffect fires after paint, so on every keystroke the
+  // browser would paint one frame with the OLD (too-short) height first
+  // - the row's height comes from its tallest child under items-end, so
+  // that stale-height frame flashes the whole input bar (and the
+  // camera/location/Send buttons riding along the bottom of it) at the
+  // wrong height for an instant before snapping to the corrected one.
+  // At normal typing speed that reads as the buttons visibly jumping/
+  // misaligning on every character. useLayoutEffect closes that gap by
+  // correcting the height synchronously before anything is painted.
+  useLayoutEffect(() => {
     const el = textareaRef.current
     if (!el) return
     el.style.height = '0px'
@@ -84,7 +94,16 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className="flex w-full items-end gap-1.5 rounded-full border border-border-strong bg-bg-card p-1.5 shadow-sm">
+      {/* rounded-[1.75rem], not rounded-full: a true pill (border-radius:
+          9999px) looks right for a short single-line box, since the
+          radius naturally caps at half the box's own height - but as
+          multi-line text grows this bar much taller, that SAME cap grows
+          right along with it, so the curve balloons and eats into the
+          sides, squeezing the button row against it. A fixed radius
+          (~half the single-line collapsed height, so it still reads as
+          a pill when short) keeps a consistent, sane rounded-rectangle
+          shape no matter how tall the box gets instead. */}
+      <div className="flex w-full items-end gap-1.5 rounded-[1.75rem] border border-border-strong bg-bg-card p-1.5 shadow-sm">
         {onAttachCard && (
           <>
             <button

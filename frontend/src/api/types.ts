@@ -192,6 +192,10 @@ export interface CaptureSavedResult {
   // initiative this note seems to be about, for the frontend to offer as
   // "add this as a new initiative?" (see ChatPage.tsx).
   suggested_initiative: string | null
+  // The existing initiative this note WAS tagged with, by name - null
+  // means Uncategorized. Mutually exclusive with suggested_initiative
+  // (extraction.py never sets both for the same note).
+  initiative_name: string | null
   summary: string
   tasks_created: { description: string; due_date: string | null; owner: TaskOwner }[]
   date_warning: string | null

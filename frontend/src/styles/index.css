@@ -118,6 +118,28 @@ html {
   }
 }
 
+/* Chrome/Safari paint their OWN background/text color onto an autofilled
+   input (the pale-yellow/lavender highlight you see on a saved login) -
+   it's an inset box-shadow trick that overrides any background-color the
+   site sets, not a real background, so `bg-bg-card` alone can never win
+   against it. This neutralizes that by filling the same huge inset
+   shadow with our own theme color instead, and forcing the text color -
+   the standard fix, since there's no other way to reach this browser
+   chrome from CSS. Uses the raw --sb-* variables (not the @theme-mapped
+   --color-* ones) since this needs to resolve under both themes exactly
+   like every other rule already does via :root[data-theme]. The absurd
+   transition delay keeps the fill from flashing back to the browser's
+   own color if the field is edited after being autofilled.  */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--sb-text);
+  -webkit-box-shadow: 0 0 0 1000px var(--sb-bg-card) inset;
+  box-shadow: 0 0 0 1000px var(--sb-bg-card) inset;
+  transition: background-color 600000s ease-in-out 0s;
+}
+
 html, body, #root {
   height: 100%;
 }

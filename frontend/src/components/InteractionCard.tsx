@@ -158,8 +158,13 @@ export default function InteractionCard({ interaction }: { interaction: Interact
           )}
           <div className="mt-3 flex gap-2">
             <Button onClick={() => setEditing(true)}>Edit</Button>
+            {/* "Delete" not "Delete interaction" - this card renders
+                every kind of note (an actual interaction, a standalone
+                personal task/reminder with no person involved at all,
+                etc. - see showNoteContext above), so a label naming one
+                specific kind is wrong for all the others. */}
             <Button variant="danger" onClick={() => setConfirmDelete(true)}>
-              Delete interaction
+              Delete
             </Button>
           </div>
         </>
@@ -238,7 +243,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
       {confirmDelete && (
         <ConfirmDialog
           title="Confirm delete"
-          message="Delete this interaction and its follow-up tasks? This cannot be undone."
+          message="Delete this note and its follow-up tasks? This cannot be undone."
           confirmLabel="Delete"
           onConfirm={() => {
             setConfirmDelete(false)

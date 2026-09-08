@@ -702,6 +702,28 @@ def get_initiatives(user_id: str) -> list:
     return resp.data
 
 
+def get_initiative(user_id: str, initiative_id: int):
+    """Single-initiative lookup by id - used by capture.py's
+    _finish_capture_storage() to report which initiative a note actually
+    landed in (name, not just the id) back to the chat UI. Returns None
+    if it doesn't exist (deleted between resolving initiative_id and this
+    lookup, or a bad id) rather than raising - this isn't a hard
+    dependency of the capture flow, just extra display info, so a miss
+    here shouldn't fail the whole request the way it would for a
+    person/task lookup. `.single()` raises on zero rows (same convention
+    as get_person/get_task elsewhere in this file), so that's caught here
+    specifically instead of switching query styles just for this one
+    optional lookup."""
+    try:
+        resp = (
+            get_client().table("initiative").select("*")
+            .eq("id", initiative_id).eq("user_id", user_id).single().execute()
+        )
+        return resp.data
+    except Exception:
+        return None
+
+
 def create_initiative(user_id: str, name: str, color: str = None) -> dict:
     """Raises ValueError if an initiative with this name already exists
     for this user (case-insensitive) - checked here in Python rather than

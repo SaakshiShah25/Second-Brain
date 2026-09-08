@@ -44,7 +44,7 @@ We collect the account information you provide at signup (email), the content yo
 
 **Please don't log anything you wouldn't want shared with our AI providers.** As described in Section 5, the content you enter is sent to Groq and Cohere to extract information, answer your questions, and power search - this is necessary for the App to work, and applies to everything you log, not just what you mark as sensitive. Avoid entering things like government ID numbers, passwords, financial account details, or other highly sensitive information you wouldn't want processed by a third-party AI service.
 
-You can request deletion of your account and associated data at any time.
+You can request deletion of your account and associated data at any time, from Settings inside the App or, if you can't log in, from [/account-deletion](/account-deletion) - no login required.
 
 ## 7. Acceptable Use
 

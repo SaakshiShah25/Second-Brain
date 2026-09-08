@@ -29,6 +29,12 @@ function formatSavedMessage(result: CaptureSavedResult): string {
     lines.push(`**${status}:** ${result.resolved_name}`)
     if (result.meeting_type) lines.push(`**Meeting type:** ${result.meeting_type}`)
   }
+  // Applies to any note (person-involving or standalone), unlike the
+  // fields above - so this isn't nested under the resolved_name check.
+  // Omitted entirely for Uncategorized rather than shown as "none",
+  // same convention as every other optional field here; the
+  // suggested_initiative follow-up prompt covers that case instead.
+  if (result.initiative_name) lines.push(`**Category:** ${result.initiative_name}`)
   if (result.summary) lines.push(`**Summary:** ${result.summary}`)
   if (result.decisions.length > 0) {
     lines.push('**Decisions:**')

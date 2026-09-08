@@ -30,7 +30,23 @@ export default function LoginPage() {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
       } else {
-        const { error } = await supabase.auth.signUp({ email, password })
+        // Without this, Supabase falls back to whatever "Site URL" is
+        // configured in its dashboard - which can drift out of date (a
+        // stale localhost:3000 from early development, in this app's
+        // case) and silently sends confirmation-link clicks to a URL
+        // that's no longer running anything. window.location.origin
+        // self-adapts to wherever signup is actually happening - local
+        // dev, the Vercel preview, or production - so this is correct
+        // regardless of what the dashboard default is set to. Supabase
+        // still requires this exact origin to be present in its
+        // Authentication > URL Configuration > Redirect URLs allow-list,
+        // or it rejects the redirect outright - that's a dashboard
+        // setting this code can't reach, so it must be added there too.
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: `${window.location.origin}/login` },
+        })
         if (error) throw error
         setSignupDone(true)
       }

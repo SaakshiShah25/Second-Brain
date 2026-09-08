@@ -19,7 +19,12 @@ import ConfiaLogo from './ConfiaLogo'
 // must not sit in the DOM at all while locked, not just be visually
 // covered, since real note/contact data underneath an overlay could
 // still be inspected via devtools or briefly flash on mount.
-const GRACE_MS = 30_000
+// A quick app-switch (checking a notification, glancing at another app)
+// shouldn't force a re-unlock every time - 75s sits in the middle of a
+// reasonable 60-90s window: long enough to not be annoying for a brief
+// switch away, short enough that leaving the phone unattended for real
+// still locks it back up promptly.
+const GRACE_MS = 75_000
 
 export default function AppLockGate({ children }: { children: ReactNode }) {
   const { signOut } = useAuth()

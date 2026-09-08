@@ -52,14 +52,20 @@ case) - set it to JSON null (not an object, not the string "Unknown") for kind 2
 "Unknown" for the name only when a person was clearly interacted with (or a fact is clearly about
 someone specific) but they weren't named (e.g. "talked to someone at the gym about my diet").
 
-CRITICAL: any person named ANYWHERE in the note - including inside a follow-up/task
+CRITICAL: any OTHER person named ANYWHERE in the note - including inside a follow-up/task
 description, even when primary_person is null - MUST still appear in "other_people" below. This
 is independent of whether the note describes an interaction: "other_people" captures every named
-person the note mentions, full stop. Concrete example - "I need to send David Okafor my new
-email id tonight" is kind 2 (a personal task, no interaction happened): "primary_person": null,
-but "other_people" must still include {{"name": "David Okafor", "relation": "", "present": false}}
-so the task can be correctly linked to him. Do not drop a named person just because
-primary_person is null.
+person the note mentions BESIDES primary_person, full stop. Concrete example - "I need to send
+David Okafor my new email id tonight" is kind 2 (a personal task, no interaction happened):
+"primary_person": null, but "other_people" must still include {{"name": "David Okafor", "relation":
+"", "present": false}} so the task can be correctly linked to him. Do not drop a named person just
+because primary_person is null.
+
+NEVER list primary_person's own name again in "other_people" - it exists only for people OTHER
+THAN primary_person. A note is often ABOUT its primary person by name throughout (e.g. "Met Isha
+today, she's a UX designer..." names Isha once and then just says "she"/"her") - that repetition
+does not make Isha an "other" person in her own note. Before finalizing "other_people", check
+each entry isn't just primary_person's own name restated.
 
 The user organizes notes into a fixed set of "initiatives" (life areas/projects) they manage
 themselves. Classify this note into EXACTLY ONE of the initiatives below if it clearly and
@@ -91,21 +97,25 @@ duplicates or is a close variant of an existing initiative above - if something 
 exists, that's what "initiative" above should have matched instead. "suggested_initiative" must
 always be null whenever "initiative" is non-null - the two are mutually exclusive.
 
-IMPORTANT - for date/time references anchored to a WEEKDAY or to
+IMPORTANT - for date/time references anchored to a WEEKDAY, a MONTH, or to
 "today"/"tomorrow"/"yesterday" (e.g. "next Monday", "last Thursday", "by Friday",
-"this Wednesday"), do NOT calculate the resulting calendar date yourself - weekday
-arithmetic is handled in code instead, since it's error-prone to compute by hand.
-Just output the phrase normalized to one of: "today", "tomorrow", "yesterday",
-"next <weekday>", "last <weekday>", "this <weekday>", or a bare "<weekday>" with no
-qualifier (e.g. plain "Friday", meaning the upcoming one) - using the weekday name
-and qualifier exactly as the note implies (e.g. "he'll get back to us by next
-Monday" -> "next Monday"; "met him last Thursday" -> "last Thursday").
+"this Wednesday", "starting next month", "sometime last month"), do NOT calculate
+the resulting calendar date yourself - this arithmetic is handled in code instead,
+since it's error-prone to compute by hand (this includes MONTHS specifically - do
+not compute "next month" into a date yourself, even though it looks simple; output
+the phrase, not a date, exactly like the weekday case). Just output the phrase
+normalized to one of: "today", "tomorrow", "yesterday", "next <weekday>",
+"last <weekday>", "this <weekday>", a bare "<weekday>" with no qualifier (e.g. plain
+"Friday", meaning the upcoming one), or "next month"/"last month"/"this month" -
+using the weekday name/qualifier exactly as the note implies (e.g. "he'll get back
+to us by next Monday" -> "next Monday"; "met him last Thursday" -> "last Thursday";
+"starting next month" -> "next month").
 
 For anything else - an explicit date the note states outright (e.g. "August 20th"),
-or a loose/vague timeframe (e.g. "sometime next month", "in a couple weeks") -
-resolve it yourself into an absolute YYYY-MM-DD using today's date above as your
-anchor. If no date/time reference is present at all, leave the relevant field null -
-do not guess.
+or a loose/vague timeframe with no clean normalized form above (e.g. "in a couple
+weeks", "sometime this quarter") - resolve it yourself into an absolute YYYY-MM-DD
+using today's date above as your anchor. If no date/time reference is present at
+all, leave the relevant field null - do not guess.
 
 CRITICAL: every date field must be either a COMPLETE date (YYYY-MM-DD), one of the
 normalized relative phrases described above, or null - NEVER a partial date like a
@@ -135,7 +145,7 @@ Return ONLY valid JSON (no markdown fences, no preamble) matching this exact sch
       "present": "boolean - true ONLY if this person actually took part in THIS specific meeting/conversation (e.g. joined the call, was physically there, spoke). false if they were merely mentioned/referenced by the primary person without being present themselves (e.g. 'his colleague Priya, who handles onboarding' - Priya wasn't on the call). Default to false when it's unclear - only mark true when the note clearly indicates they participated."
     }}
   ],
-  "date_mentioned": "string - when this interaction happened, per the date-phrase rules above (a normalized relative phrase like 'today'/'last Thursday', or an explicit YYYY-MM-DD if the note states/implies one outright). Null only if the note gives no time reference at all.",
+  "date_mentioned": "string - when the CONVERSATION/EVENT THIS NOTE DESCRIBES actually happened (past or today) - per the date-phrase rules above. Do NOT put a future date here just because one is mentioned - a personal task/reminder being logged today ('set up a demo with Mansi tomorrow', 'need to call the bank next week') is being written TODAY about something not done yet; 'tomorrow'/'next week' there belongs on that follow-up's own due_date below, not here. Leave this null (it defaults to today) whenever the note is simply a forward-looking task/reminder with no past-or-present interaction actually described - only set it when the note recounts something that has already happened or is happening now.",
   "location": "string - location mentioned, else null",
   "appearance_this_meeting": "string - what the person was WEARING or looked like SPECIFICALLY at this particular meeting/interaction (e.g. 'wore a blue shirt and blazer'), as opposed to their general stable appearance. Empty string if nothing meeting-specific was mentioned.",
   "meeting_type": "string - the TYPE of this meeting/interaction. Must be one of: 'discovery', 'demo', 'negotiation', 'check-in', 'networking', 'contract', 'support', 'internal', 'other'. Always pick the closest fit from context (e.g. a first exploratory call is 'discovery', a casual run-in at an event is 'networking') - use 'other' only if genuinely nothing fits, never leave this blank.",

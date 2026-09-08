@@ -288,23 +288,31 @@ export default function PersonDetailPage() {
         ))}
       </div>
 
-      <h2 className="mb-3 text-lg font-semibold tracking-tight">Mentioned in</h2>
-      {mentioned_in.length === 0 && (
-        <p className="mb-6 text-sm text-text-muted">Not mentioned as a secondary person in any other notes yet.</p>
+      {/* Only shown when it's actually relevant - a secondary-mention
+          note somewhere else (e.g. "Rhea, Priya's sister" showing up in
+          a note that's really about Priya). For someone you also have a
+          real interaction history with, an empty "Mentioned in: not
+          mentioned..." section right below a full timeline is just
+          clutter, not information - so this whole block, heading
+          included, only renders when there's at least one to show. */}
+      {mentioned_in.length > 0 && (
+        <>
+          <h2 className="mb-3 text-lg font-semibold tracking-tight">Mentioned in</h2>
+          <div className="mb-6 flex flex-col gap-2">
+            {mentioned_in.map((m, i) => (
+              <Disclosure
+                key={i}
+                summary={`${m.interaction.date ?? 'unknown date'} — mentioned in ${
+                  m.interaction.person ? `a note about ${m.interaction.person.name}` : 'a personal note'
+                }`}
+              >
+                {m.relation && <p className="text-xs text-text-muted">Relation: {m.relation}</p>}
+                {m.interaction.summary && <p className="mt-1 text-sm">{m.interaction.summary}</p>}
+              </Disclosure>
+            ))}
+          </div>
+        </>
       )}
-      <div className="mb-6 flex flex-col gap-2">
-        {mentioned_in.map((m, i) => (
-          <Disclosure
-            key={i}
-            summary={`${m.interaction.date ?? 'unknown date'} — mentioned in ${
-              m.interaction.person ? `a note about ${m.interaction.person.name}` : 'a personal note'
-            }`}
-          >
-            {m.relation && <p className="text-xs text-text-muted">Relation: {m.relation}</p>}
-            {m.interaction.summary && <p className="mt-1 text-sm">{m.interaction.summary}</p>}
-          </Disclosure>
-        ))}
-      </div>
 
       <Disclosure summary="Merge or delete this person">
         <div className="flex flex-col gap-3">

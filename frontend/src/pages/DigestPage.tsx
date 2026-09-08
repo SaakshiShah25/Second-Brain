@@ -320,10 +320,26 @@ export default function DigestPage() {
                         one" reasoning as a fully standalone note. "Personal"
                         is the final fallback if there's neither. */}
                     <span className="truncate">
-                      {realName(task.person?.name) ??
-                        (task.owner === 'them' ? realName(task.interaction?.person?.name) : undefined) ??
-                        task.interaction?.initiative?.name ??
-                        'Personal'}
+                      {(() => {
+                        const personLabel =
+                          realName(task.person?.name) ??
+                          (task.owner === 'them' ? realName(task.interaction?.person?.name) : undefined)
+                        if (!personLabel) return task.interaction?.initiative?.name ?? 'Personal'
+                        // A bare name here reads as "this task belongs to
+                        // them" - fine when they actually owe it, but
+                        // actively misleading for a task I OWN that
+                        // merely names them as the target (e.g. "Send
+                        // Pratik the link" showed as just "Pratik", which
+                        // read like the task was assigned to/by him
+                        // rather than something I need to do involving
+                        // him - the real distinction only showed up in
+                        // the "Owed by me" chip after expanding). "For X"
+                        // makes that relationship explicit right in the
+                        // collapsed summary line, with no extra click
+                        // needed. Left unprefixed when they actually owe
+                        // it - a bare name there already reads correctly.
+                        return task.owner === 'me' ? `For ${personLabel}` : personLabel
+                      })()}
                     </span>
                     <span>·</span>
                     <span className={`flex items-center gap-1 whitespace-nowrap ${due.overdue ? 'font-medium text-danger' : ''}`}>

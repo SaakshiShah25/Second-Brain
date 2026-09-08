@@ -192,8 +192,22 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
     # mention OTHER people in passing (e.g. "reminder to call Priya about
     # the trip") - other_people is independent of whether there's a
     # primary person at all.
+    #
+    # Defensively drop any entry that's just the primary person's own
+    # name restated (extraction.py instructs the model not to do this,
+    # but a note that repeats the primary person's name throughout - "Met
+    # Isha today, she's a UX designer..." - can still trip it up
+    # occasionally) - without this, that person ends up linked via
+    # interaction_person to their OWN interaction, which then shows up on
+    # their profile as a nonsensical "mentioned in a note about
+    # themselves" secondary mention, alongside the same note already
+    # correctly listed as a direct interaction.
+    other_people = [
+        o for o in (extracted.get("other_people", []) or [])
+        if not (resolved_name and isinstance(o, dict) and (o.get("name") or "").strip().lower() == resolved_name.strip().lower())
+    ]
     linked_others = capture.resolve_and_link_other_people(
-        user_id, interaction_id, extracted.get("other_people", []) or [], interaction_date
+        user_id, interaction_id, other_people, interaction_date
     )
     already_linked_ids = {person_id} | {o["person_id"] for o in linked_others}
     all_people = db.get_all_people(user_id)
@@ -245,6 +259,11 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
         # disambiguation, since accepting/declining doesn't block the
         # note from having already saved successfully either way.
         "suggested_initiative": extracted.get("suggested_initiative") or None,
+        # Name, not just the id, so the chat UI can tell the user which
+        # existing category this note landed in without a separate
+        # lookup - None here means Uncategorized (initiative_id is null,
+        # or the looked-up initiative no longer exists).
+        "initiative_name": (db.get_initiative(user_id, initiative_id) or {}).get("name") if initiative_id else None,
         "summary": extracted.get("summary", ""),
         "tasks_created": tasks_created,
         "date_warning": date_warning,

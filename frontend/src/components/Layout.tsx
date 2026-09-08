@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { MessageSquare, NotebookText, Settings, Sunrise, Users, type LucideIcon } from 'lucide-react'
+import { LogOut, MessageSquare, NotebookText, Settings, Sunrise, Users, type LucideIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import ConfiaLogo from './ConfiaLogo'
 
@@ -49,8 +49,9 @@ export default function Layout() {
             <button
               type="button"
               onClick={() => signOut()}
-              className="text-xs font-medium text-text-muted transition-colors hover:text-danger"
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition-colors hover:bg-danger/10 hover:text-danger"
             >
+              <LogOut size={18} strokeWidth={1.6} />
               Sign out
             </button>
           </div>
