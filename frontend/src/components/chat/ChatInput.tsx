@@ -1,9 +1,14 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { Camera, Loader2, MapPin, Mic, Square } from 'lucide-react'
+import { ArrowUp, Camera, Loader2, MapPin, Mic, Square } from 'lucide-react'
 
 export interface ChatInputHandle {
   focus: () => void
 }
+
+// Kept as a JS constant, not just a max-h-40 Tailwind class, so the
+// auto-resize effect below can compare against the exact same number
+// when deciding whether the textarea has actually overflowed it.
+const MAX_HEIGHT = 160
 
 interface ChatInputProps {
   value: string
@@ -49,7 +54,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
     focus: () => textareaRef.current?.focus(),
   }))
 
-  // Auto-resize the textarea to fit its content, capped by max-h-40 below.
+  // Auto-resize the textarea to fit its content, capped at MAX_HEIGHT.
   // useLayoutEffect, NOT useEffect - this must run BEFORE the browser
   // paints. useEffect fires after paint, so on every keystroke the
   // browser would paint one frame with the OLD (too-short) height first
@@ -60,11 +65,23 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
   // At normal typing speed that reads as the buttons visibly jumping/
   // misaligning on every character. useLayoutEffect closes that gap by
   // correcting the height synchronously before anything is painted.
+  //
+  // overflowY is also toggled here rather than left as a fixed class:
+  // a plain `overflow-y-auto` textarea can round its own scrollHeight up
+  // by a pixel vs. its set height even for perfectly-fitting single-line
+  // text, which keeps the scrollbar track visibly reserved/painted the
+  // whole time - it "looks like" there's a scrollbar on a box that isn't
+  // actually scrolled. Forcing `hidden` whenever content fits within
+  // MAX_HEIGHT, and only switching to `auto` once content genuinely
+  // exceeds it, means the scrollbar only ever appears once there's
+  // something to scroll to.
   useLayoutEffect(() => {
     const el = textareaRef.current
     if (!el) return
     el.style.height = '0px'
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+    const overflowing = el.scrollHeight > MAX_HEIGHT
+    el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`
+    el.style.overflowY = overflowing ? 'auto' : 'hidden'
   }, [value])
 
   useEffect(() => {
@@ -162,18 +179,26 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
-            className="max-h-40 flex-1 resize-none bg-transparent px-2 py-2.5 text-[0.9375rem] text-text placeholder:text-text-faint focus:outline-none disabled:opacity-50"
+            style={{ maxHeight: MAX_HEIGHT }}
+            className="flex-1 resize-none overflow-hidden bg-transparent px-2 py-2.5 text-[0.9375rem] text-text placeholder:text-text-faint focus:outline-none disabled:opacity-50"
           />
         )}
 
         {!showRecordButton && (
+          // A compact round icon button, not a "Send" text pill - the
+          // pill's width scaled with its label and ate into the row next
+          // to the camera/location buttons on narrow phone screens. An
+          // arrow (the same shape chat apps use for this exact control)
+          // says "send" just as clearly at a third of the width.
           <button
             type="button"
             onClick={onSend}
             disabled={disabled}
-            className="flex h-11 flex-shrink-0 items-center justify-center rounded-full bg-accent px-5 text-[0.9375rem] font-semibold text-accent-contrast shadow-sm transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Send"
+            title="Send"
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-sm transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Send
+            <ArrowUp size={20} strokeWidth={2.2} />
           </button>
         )}
       </div>

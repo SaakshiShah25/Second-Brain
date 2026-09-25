@@ -265,7 +265,7 @@ def get_people_with_last_interaction(user_id: str):
 def create_interaction(user_id: str, person_id=None, raw_text="", date=None, location=None, appearance="",
                         summary="", sentiment=None, topics=None, extracted_facts=None,
                         embedding=None, geo_lat=None, geo_lng=None, geo_address=None, maps_url=None,
-                        meeting_type="", decisions=None, concerns=None, initiative_id=None):
+                        decisions=None, concerns=None, initiative_id=None):
     resp = get_client().table("interaction").insert(_encrypt_fields("interaction", {
         "user_id": user_id,
         "person_id": person_id,                 # None for a standalone note not about any specific person
@@ -284,7 +284,6 @@ def create_interaction(user_id: str, person_id=None, raw_text="", date=None, loc
         "geo_lng": geo_lng,                     # user tapped "Add my location" on this specific note
         "geo_address": geo_address,
         "maps_url": maps_url,
-        "meeting_type": meeting_type,           # discovery/demo/negotiation/etc. - see extraction.py
         "decisions": decisions or [],           # settled outcomes, distinct from follow-up tasks
         "concerns": concerns or [],             # specific objections/hesitations raised
         "initiative_id": initiative_id,         # which user-managed initiative this note belongs to, if any
@@ -686,7 +685,7 @@ def get_users_with_daily_brief_enabled() -> list:
 
 # ---------- Initiatives (user-managed note categories - schema.sql section 20) ----------
 
-DEFAULT_INITIATIVES = ["Tenaxis AI", "Personal", "Job", "Fitness"]
+DEFAULT_INITIATIVES = ["Personal", "Job", "Fitness"]
 
 
 def get_initiatives(user_id: str) -> list:

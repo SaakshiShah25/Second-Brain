@@ -16,9 +16,12 @@ through two gates before reaching capture.py/ask.py:
      layer in front, none of the underlying extraction/retrieval logic is
      duplicated or changed.
 
-Business-card scanning stays a separate explicit action
-(POST /api/capture/card) since it's triggered by an attach/camera icon,
-not typed text there's anything to classify or moderate the same way.
+Business-card scanning stays a separate explicit action (POST
+/api/capture/card), triggered by an attach/camera icon rather than typed
+text to classify - it has no intent to classify (a scanned card is
+always a capture), but it still goes through moderation.py itself,
+directly in api/routers/capture.py, since the same safety gate has to
+apply no matter which entry point text/OCR'd text comes in through.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -34,7 +37,6 @@ from api.schemas import (
     AskConfirmRequest,
     AskRequest,
     CaptureConfirmRequest,
-    CaptureRequest,
     ChatConfirmRequest,
     ChatRequest,
 )
@@ -42,10 +44,9 @@ from api.schemas import (
 router = APIRouter()
 
 _OUT_OF_SCOPE_MESSAGE = (
-    "I'm built specifically to help you log and recall your own notes, contacts, and "
-    "follow-ups - I can't help with general requests like jokes, stories, code, or anything "
-    "unrelated to that. Try telling me about a conversation you had, or ask about someone "
-    "you've talked to before."
+    "That's not something I can help with here - I'm built specifically for logging and "
+    "recalling your own notes, contacts, and follow-ups. Try telling me about a conversation "
+    "you had, or ask about someone you've talked to before."
 )
 _UNSAFE_MESSAGE = "I can't help with that request."
 
@@ -68,13 +69,20 @@ async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_c
         }
 
     if detected == "capture":
-        result = await capture_router.capture_text(
-            CaptureRequest(raw_text=body.text, geo_lat=body.geo_lat, geo_lng=body.geo_lng), request, user_id,
-        )
+        # Calls the core function directly, not the capture_text ROUTE -
+        # we already ran moderation.check() above for this exact text;
+        # going through the route would run it again for no benefit. See
+        # _capture_text_core's own docstring for why this can't just be a
+        # bool kwarg on the route function instead.
+        result = await capture_router._capture_text_core(user_id, body.text, body.geo_lat, body.geo_lng, request)
         return {"intent": "capture", **result}
 
+    # _ask_core, not the ask() route - same reasoning as the capture
+    # branch above: moderation already ran on this exact text.
     try:
-        result = await run_in_threadpool(ask_router.ask, AskRequest(query=body.text, history=body.history), user_id)
+        result = await run_in_threadpool(
+            ask_router._ask_core, user_id, AskRequest(query=body.text, history=body.history)
+        )
     except HTTPException:
         raise
     return {"intent": "ask", **result}

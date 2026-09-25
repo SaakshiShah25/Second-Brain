@@ -177,13 +177,15 @@ export default function SettingsPage() {
           title="Delete your account?"
           message="This permanently deletes your account and everything in it - every note, contact, and task. There's no way to undo this or recover the data afterward."
           confirmLabel="Delete permanently"
+          busy={deleteAccount.isPending}
+          busyLabel="Deleting…"
           onConfirm={() => {
-            setConfirmingDelete(false)
             deleteAccount.mutate(undefined, {
               onSuccess: async () => {
                 await signOut()
                 navigate('/login', { replace: true })
               },
+              onError: () => setConfirmingDelete(false),
             })
           }}
           onCancel={() => setConfirmingDelete(false)}

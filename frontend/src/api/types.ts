@@ -119,8 +119,6 @@ export interface Interaction {
   geo_lng: number | null
   geo_address: string | null
   maps_url: string | null
-  // discovery/demo/negotiation/check-in/networking/contract/support/internal/other
-  meeting_type: string
   decisions: string[]
   concerns: string[]
 }
@@ -171,7 +169,6 @@ export interface ExtractedNote {
   date_mentioned: string | null
   location: string | null
   appearance_this_meeting?: string
-  meeting_type?: string
   summary: string
   sentiments?: SentimentEntry[]
   topics?: string[]
@@ -202,7 +199,6 @@ export interface CaptureSavedResult {
   skipped_due_dates: { description: string; raw_due_date: string }[]
   geo_address: string | null
   maps_url: string | null
-  meeting_type: string
   decisions: string[]
   concerns: string[]
 }

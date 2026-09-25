@@ -7,7 +7,6 @@ import { useCompanies, useCompanyBriefing, usePeople } from '../api/people'
 import Avatar from '../components/Avatar'
 import Button from '../components/Button'
 import Card from '../components/Card'
-import SpeakButton from '../components/SpeakButton'
 import { Input, Label } from '../components/fields'
 
 function CompanyBriefingSection() {
@@ -57,11 +56,10 @@ function CompanyBriefingSection() {
         </Button>
       </div>
       {briefing.data && (
-        <div className="mt-3 flex items-start justify-between gap-2 rounded-lg bg-accent-soft p-3">
-          <div className="prose-chat min-w-0 flex-1 text-sm">
+        <div className="mt-3 rounded-lg bg-accent-soft p-3">
+          <div className="prose-chat min-w-0 text-sm">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{briefing.data.briefing}</ReactMarkdown>
           </div>
-          <SpeakButton text={briefing.data.briefing} />
         </div>
       )}
     </Card>

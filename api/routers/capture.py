@@ -28,6 +28,7 @@ import embeddings
 import entitlements
 import extraction
 import google_maps
+import moderation
 import person_match
 import voice
 from api.auth import get_current_user_id
@@ -36,6 +37,29 @@ from api.schemas import CandidateEnvelope, CaptureConfirmRequest, CaptureRequest
 from date_utils import resolve_relative_phrase
 
 router = APIRouter()
+
+
+def _reject_if_unsafe(text: str) -> None:
+    """Raises a 400 if `text` fails moderation.py's check - shared by
+    every entry point that can turn free-form/OCR'd text into a stored
+    Person/Interaction, not just the ones the frontend's chat UI actually
+    calls. api/routers/chat.py already moderates text.text before it
+    ever reaches capture_text() below, but capture_text/capture_voice/
+    capture_card(_confirm) are ALSO their own independently-callable API
+    routes (verified: unused by this app's own frontend today, but a
+    live, authenticated endpoint all the same) - without this, hitting
+    one of those directly would skip moderation entirely, including for
+    business-card OCR text, which never went through ANY safety check
+    before this. That matters doubly here: unlike a live chat answer, a
+    saved Interaction's raw_text later comes back as "trusted" retrieved
+    context in a future ask/briefing answer (see retrieval.py) - so
+    letting unsafe or prompt-injection content into storage at all is a
+    bigger, longer-lived risk than one unmoderated live response would
+    be. See capture_text() below for how the one call this WOULD
+    double up on (the chat.py-mediated path) avoids re-checking."""
+    result = moderation.check(text)
+    if not result["safe"]:
+        raise HTTPException(400, "This content can't be logged - it looks unsafe or attempts to manipulate the assistant.")
 
 
 def _enforce(user_id: str, resource: str):
@@ -183,7 +207,6 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
         geo_lng=geo_lng,
         geo_address=geo_address,
         maps_url=maps_url,
-        meeting_type=extracted.get("meeting_type") or "",
         decisions=extracted.get("decisions") or [],
         concerns=extracted.get("concerns") or [],
     )
@@ -270,7 +293,6 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
         "skipped_due_dates": skipped_due_dates,
         "geo_address": geo_address,
         "maps_url": maps_url,
-        "meeting_type": extracted.get("meeting_type") or "",
         "decisions": extracted.get("decisions") or [],
         "concerns": extracted.get("concerns") or [],
     }
@@ -356,13 +378,25 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
 
 # ---------- Endpoints ----------
 
-@router.post("")
-async def capture_text(body: CaptureRequest, request: Request, user_id: str = Depends(get_current_user_id)):
+async def _capture_text_core(user_id: str, raw_text: str, geo_lat: Optional[float], geo_lng: Optional[float],
+                              request: Request) -> dict:
+    """The actual capture-text logic, factored out of capture_text() below
+    so api/routers/chat.py can call it directly after ITS OWN moderation
+    check without triggering a second one here - moderation.py is one
+    more Groq call, and chat.py already runs it (before intent
+    classification, covering the ask/out_of_scope branches too) for
+    every message on the app's main path. Deliberately not a bool kwarg
+    like `skip_moderation` on the route function itself: FastAPI would
+    expose that as a plain, undocumented `?skip_moderation=true` query
+    parameter on the real HTTP route, since it isn't a Pydantic body/
+    Depends/Path param - i.e. exactly the bypass this is meant to close.
+    Keeping the check OUT of this core function and only IN the thin
+    route wrapper (capture_text) is what makes that impossible."""
     await run_in_threadpool(_enforce, user_id, "interactions_logged")
     initiatives = await run_in_threadpool(db.get_initiatives, user_id)
     initiative_names = [i["name"] for i in initiatives]
     try:
-        extracted = await run_in_threadpool(extraction.extract_info, body.raw_text, None, initiative_names)
+        extracted = await run_in_threadpool(extraction.extract_info, raw_text, None, initiative_names)
     except Exception as e:
         raise HTTPException(500, f"Extraction failed: {e}")
     # Extraction (the LLM call above) is the slow part of a capture - if the
@@ -371,8 +405,18 @@ async def capture_text(body: CaptureRequest, request: Request, user_id: str = De
     if await request.is_disconnected():
         raise HTTPException(499, "Client disconnected")
     return await run_in_threadpool(
-        lambda: _process_extracted(user_id, body.raw_text, extracted, geo_lat=body.geo_lat, geo_lng=body.geo_lng)
+        lambda: _process_extracted(user_id, raw_text, extracted, geo_lat=geo_lat, geo_lng=geo_lng)
     )
+
+
+@router.post("")
+async def capture_text(body: CaptureRequest, request: Request, user_id: str = Depends(get_current_user_id)):
+    # Only reached directly here for a caller that ISN'T api/routers/chat.py
+    # (which calls _capture_text_core directly, above) - this is this
+    # route's one and only moderation check, not a second one layered on
+    # top of chat.py's.
+    await run_in_threadpool(_reject_if_unsafe, body.raw_text)
+    return await _capture_text_core(user_id, body.raw_text, body.geo_lat, body.geo_lng, request)
 
 
 @router.post("/confirm")
@@ -451,6 +495,11 @@ async def capture_voice(
         raise HTTPException(500, f"Transcription failed: {e}")
     if not text or not text.strip():
         raise HTTPException(422, "Didn't catch anything in that recording - try again.")
+    # This endpoint has no chat.py in front of it at all (the frontend's
+    # own mic flow goes through the separate /api/transcribe -> /api/chat
+    # path instead - see ChatPage.tsx) - moderation has never run on
+    # anything reaching this route, so there's no double-check to avoid.
+    _reject_if_unsafe(text)
 
     # A voice note is ALSO a note - metered separately from the
     # transcription cap above (extraction is a distinct LLM call/cost
@@ -478,9 +527,17 @@ async def capture_card(request: Request, file: UploadFile, user_id: str = Depend
     _enforce(user_id, "card_scans")
     image_bytes = await file.read()
     try:
-        return card_scan.extract_business_card(image_bytes)
+        fields = card_scan.extract_business_card(image_bytes)
     except Exception as e:
         raise HTTPException(422, str(e))
+    # OCR'd text is still attacker-controllable content (anyone can print
+    # or photograph arbitrary text onto a "card") and, unlike a live chat
+    # reply, whatever gets confirmed from this becomes a stored Person
+    # record later fed back as retrieved context to future ask/briefing
+    # answers - checked here on the raw OCR result so an unsafe card is
+    # rejected before the user is even shown it to confirm.
+    _reject_if_unsafe(" ".join(str(v) for v in fields.values() if v))
+    return fields
 
 
 @router.post("/card/confirm")
@@ -499,6 +556,12 @@ def capture_card_confirm(body: CardConfirmRequest, user_id: str = Depends(get_cu
     step needs to protect against."""
     if not body.name.strip():
         raise HTTPException(400, "Name is required.")
+    # capture_card() above only ever saw the ORIGINAL OCR result - the
+    # user can freely edit every field (including typing a fresh
+    # context_note that never went through OCR at all) in the confirm
+    # form before this actually saves, so this is checked independently
+    # right before storage rather than trusted from that earlier pass.
+    _reject_if_unsafe(f"{body.name} {body.role} {body.company} {body.context_note}")
     context_note = body.context_note.strip()
     raw_text = context_note or f"Scanned business card: {body.name}, {body.role} at {body.company}".strip()
     extracted = {

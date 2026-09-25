@@ -21,7 +21,11 @@ export default function LoadingScreen() {
   }, [])
 
   return (
-    <div className="confia-splash-bg relative flex h-screen flex-col items-center justify-center px-8 text-center">
+    // h-dvh, not h-screen - see Layout.tsx's comment on the same swap;
+    // the absolutely-positioned dots below are pinned relative to this
+    // container's height, so a 100vh/real-viewport mismatch on mobile
+    // would shift them out of the actually-visible area too.
+    <div className="confia-splash-bg relative flex h-dvh flex-col items-center justify-center px-8 text-center">
       <div className="confia-splash-glow mb-6 text-text">
         <ConfiaLogo size={88} />
       </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pencil, Plus, Sunrise, Trash2 } from 'lucide-react'
+import { ArrowLeft, Mail, Pencil, Phone, Plus, Sunrise, Trash2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -19,7 +19,6 @@ import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Disclosure from '../components/Disclosure'
 import InteractionCard from '../components/InteractionCard'
-import SpeakButton from '../components/SpeakButton'
 import { Input, Label, Textarea } from '../components/fields'
 
 interface PersonForm {
@@ -104,14 +103,24 @@ export default function PersonDetailPage() {
   }
 
   function handleDelete() {
-    deletePerson.mutate(id, { onSuccess: () => navigate('/people') })
+    // Dialog stays open (see the ConfirmDialog busy prop below) until
+    // this actually resolves - a cascading server-side delete (their
+    // interactions, tasks, etc.) isn't instant, and closing the dialog
+    // immediately on click left no visible sign anything was happening.
+    deletePerson.mutate(id, {
+      onSuccess: () => navigate('/people'),
+      onError: () => setConfirmDialog(null),
+    })
   }
 
   function handleMerge() {
     if (mergeTargetId === '') return
     mergePerson.mutate(
       { personId: id, targetId: mergeTargetId },
-      { onSuccess: (res) => navigate(`/people/${res.person_id}`) },
+      {
+        onSuccess: (res) => navigate(`/people/${res.person_id}`),
+        onError: () => setConfirmDialog(null),
+      },
     )
   }
 
@@ -191,8 +200,22 @@ export default function PersonDetailPage() {
             )}
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-faint">
               {person.first_met_date && <span>First met {person.first_met_date}</span>}
-              {person.phone && <span>{person.phone}</span>}
-              {person.email && <span>{person.email}</span>}
+              {/* Icon, not a text label ("Contact number:") - a phone
+                  number/email is already self-evident by format, so a
+                  compact icon reads clearly without lengthening this row
+                  on a narrow mobile screen the way a written label would. */}
+              {person.phone && (
+                <a href={`tel:${person.phone}`} className="flex items-center gap-1 hover:text-text-muted hover:underline">
+                  <Phone size={12} strokeWidth={1.6} />
+                  {person.phone}
+                </a>
+              )}
+              {person.email && (
+                <a href={`mailto:${person.email}`} className="flex items-center gap-1 hover:text-text-muted hover:underline">
+                  <Mail size={12} strokeWidth={1.6} />
+                  {person.email}
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -270,11 +293,10 @@ export default function PersonDetailPage() {
         )}
       </div>
       {briefing.data && (
-        <Card className="mb-6 flex items-start justify-between gap-2 bg-accent-soft">
-          <div className="prose-chat min-w-0 flex-1 text-sm">
+        <Card className="mb-6 bg-accent-soft">
+          <div className="prose-chat min-w-0 text-sm">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{briefing.data.briefing}</ReactMarkdown>
           </div>
-          <SpeakButton text={briefing.data.briefing} />
         </Card>
       )}
 
@@ -352,10 +374,9 @@ export default function PersonDetailPage() {
           title="Confirm merge"
           message={`Merge ${person.name} into the selected person? All of their interactions and follow-ups will be reassigned, and this person record will be removed. This cannot be undone.`}
           confirmLabel="Merge"
-          onConfirm={() => {
-            setConfirmDialog(null)
-            handleMerge()
-          }}
+          busy={mergePerson.isPending}
+          busyLabel="Merging…"
+          onConfirm={handleMerge}
           onCancel={() => setConfirmDialog(null)}
         />
       )}
@@ -364,10 +385,9 @@ export default function PersonDetailPage() {
           title="Confirm delete"
           message={`Delete ${person.name}? This also deletes all of their interactions and follow-up tasks. This cannot be undone.`}
           confirmLabel="Delete"
-          onConfirm={() => {
-            setConfirmDialog(null)
-            handleDelete()
-          }}
+          busy={deletePerson.isPending}
+          busyLabel="Deleting…"
+          onConfirm={handleDelete}
           onCancel={() => setConfirmDialog(null)}
         />
       )}
@@ -376,9 +396,10 @@ export default function PersonDetailPage() {
           title="Remove this note?"
           message="This personal note entry will be permanently removed. This cannot be undone."
           confirmLabel="Remove"
+          busy={deletePersonalNote.isPending}
+          busyLabel="Removing…"
           onConfirm={() => {
-            deletePersonalNote.mutate(pendingNoteDelete)
-            setPendingNoteDelete(null)
+            deletePersonalNote.mutate(pendingNoteDelete, { onSettled: () => setPendingNoteDelete(null) })
           }}
           onCancel={() => setPendingNoteDelete(null)}
         />

@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 import db
 import embeddings
 import entitlements
+import moderation
 import person_match
 import retrieval
 from api.auth import get_current_user_id
@@ -62,8 +63,13 @@ def _proceed_with_retrieval(user_id: str, query: str, parsed: dict, person: Opti
     return retrieval.synthesize_answer(query, selected, None)
 
 
-@router.post("")
-def ask(body: AskRequest, user_id: str = Depends(get_current_user_id)):
+def _ask_core(user_id: str, body: AskRequest) -> dict:
+    """The actual ask logic, factored out of ask() below for the same
+    reason capture.py splits capture_text/_capture_text_core: so
+    api/routers/chat.py can call this directly after ITS OWN
+    moderation.check() without paying for a second Groq call here too.
+    See capture.py's _capture_text_core docstring for why this can't
+    just be a bool kwarg on the route function instead."""
     _enforce(user_id, "ai_questions_asked")
     conversation_context = retrieval.format_recent_context(body.history)
     try:
@@ -93,6 +99,16 @@ def ask(body: AskRequest, user_id: str = Depends(get_current_user_id)):
     except Exception as e:
         raise HTTPException(500, f"Something went wrong while looking that up: {e}")
     return {"status": "answered", "answer": answer}
+
+
+@router.post("")
+def ask(body: AskRequest, user_id: str = Depends(get_current_user_id)):
+    # Only this route's own moderation check - api/routers/chat.py calls
+    # _ask_core directly and has already run its own before getting here.
+    result = moderation.check(body.query)
+    if not result["safe"]:
+        raise HTTPException(400, "I can't help with that request.")
+    return _ask_core(user_id, body)
 
 
 @router.post("/confirm")

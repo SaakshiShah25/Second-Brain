@@ -266,6 +266,13 @@ alter table task add column if not exists owner text default 'me';
 -- networking/contract/support/internal/other - free text (not a DB
 -- enum) for flexibility, but extraction.py's prompt constrains the LLM
 -- to that fixed set.
+--
+-- REMOVED as a feature (redundant once notes are already sorted into
+-- user-managed initiatives) - extraction.py no longer asks the LLM for
+-- it, nothing writes it going forward, and the UI no longer reads or
+-- edits it. Column kept, not dropped, same as the client/contract tables
+-- above - existing rows already tagged aren't destroyed, just no longer
+-- shown.
 alter table interaction add column if not exists meeting_type text default '';
 
 -- interaction.decisions: settled outcomes reached in the meeting,

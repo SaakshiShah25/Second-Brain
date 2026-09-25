@@ -37,8 +37,17 @@ export default function TourGate({ children }: { children: ReactNode }) {
   const completeTour = useCompleteTour()
   const [manualOpen, setManualOpen] = useState(false)
   const [welcomeAccepted, setWelcomeAccepted] = useState(false)
+  // Tracks "the first-time flow is done" independently of the server
+  // round-trip - completeTour.mutate() is async, so isFirstTime (derived
+  // from the cached settings query) still reads true for a moment after
+  // Finish is clicked, until that request resolves and invalidates the
+  // query. Without this flag, clearing welcomeAccepted back to false at
+  // that same moment made showWelcome's own formula (isFirstTime &&
+  // !welcomeAccepted && !manualOpen) briefly true again - the exact
+  // "Start Tour" card flashing back up right after clicking Finish.
+  const [firstTimeFlowDone, setFirstTimeFlowDone] = useState(false)
 
-  const isFirstTime = !!settings && !settings.tour_completed_at
+  const isFirstTime = !!settings && !settings.tour_completed_at && !firstTimeFlowDone
   const showWelcome = isFirstTime && !welcomeAccepted && !manualOpen
   const showTour = manualOpen || (isFirstTime && welcomeAccepted)
 
@@ -48,6 +57,7 @@ export default function TourGate({ children }: { children: ReactNode }) {
     // Only write the flag the first time - re-triggering from Settings
     // shouldn't need a fresh round-trip once it's already set.
     if (!settings?.tour_completed_at) {
+      setFirstTimeFlowDone(true)
       completeTour.mutate()
     }
   }

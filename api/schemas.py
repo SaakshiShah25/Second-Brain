@@ -16,11 +16,24 @@ never needs to re-look-up or re-guess what was shown to the user.
 
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+# Generous caps on every field that ends up inside an LLM prompt - not
+# about legitimate use (even a long rambling voice transcript is nowhere
+# near these), but a cheap, free mitigation against two real things: a
+# giant payload run up against Groq's shared per-account rate/cost
+# budget, and "burying" a prompt-injection attempt inside enough padding
+# that it's more likely to slip past both moderation.py and the model's
+# own attention. NOTE_MAX_LEN covers actual note/question content;
+# FIELD_MAX_LEN covers short structured fields (a name, a role) that
+# should never legitimately be long anyway.
+NOTE_MAX_LEN = 20_000
+QUERY_MAX_LEN = 2_000
+FIELD_MAX_LEN = 200
 
 
 class CaptureRequest(BaseModel):
-    raw_text: str
+    raw_text: str = Field(..., max_length=NOTE_MAX_LEN)
     # Opt-in device location (see ChatInput.tsx's location toggle) - None
     # unless the user tapped "Add my location" for this specific note.
     geo_lat: Optional[float] = None
@@ -34,7 +47,7 @@ class CandidateEnvelope(BaseModel):
 
 class CaptureConfirmRequest(BaseModel):
     extracted: dict[str, Any]
-    raw_text: str
+    raw_text: str = Field(..., max_length=NOTE_MAX_LEN)
     interaction_date: str
     date_warning: Optional[str] = None
     candidates: list[CandidateEnvelope]
@@ -45,7 +58,7 @@ class CaptureConfirmRequest(BaseModel):
 
 
 class AskRequest(BaseModel):
-    query: str
+    query: str = Field(..., max_length=QUERY_MAX_LEN)
     # Recent chat turns as [{"role": "user"|"assistant", "content": str}, ...] -
     # same shape the frontend already needs to render the conversation, and
     # the same shape retrieval.format_recent_context() expects (it does the
@@ -55,7 +68,7 @@ class AskRequest(BaseModel):
 
 
 class AskConfirmRequest(BaseModel):
-    query: str
+    query: str = Field(..., max_length=QUERY_MAX_LEN)
     parsed: dict[str, Any]
     candidates: list[CandidateEnvelope]
     choice: Optional[int] = None  # index into candidates, or None for "none of these"
@@ -65,7 +78,7 @@ class ChatRequest(BaseModel):
     """One unified chat input - api/routers/chat.py classifies it as
     capture or ask and delegates to the matching existing flow (see that
     module's docstring). Superset of CaptureRequest/AskRequest's fields."""
-    text: str
+    text: str = Field(..., max_length=NOTE_MAX_LEN)
     history: list[dict[str, Any]] = []
     geo_lat: Optional[float] = None
     geo_lng: Optional[float] = None
@@ -81,14 +94,14 @@ class ChatConfirmRequest(BaseModel):
     choice: Optional[int] = None
     # capture fields
     extracted: Optional[dict[str, Any]] = None
-    raw_text: Optional[str] = None
+    raw_text: Optional[str] = Field(None, max_length=NOTE_MAX_LEN)
     interaction_date: Optional[str] = None
     date_warning: Optional[str] = None
     initiative_id: Optional[int] = None
     geo_lat: Optional[float] = None
     geo_lng: Optional[float] = None
     # ask fields
-    query: Optional[str] = None
+    query: Optional[str] = Field(None, max_length=QUERY_MAX_LEN)
     parsed: Optional[dict[str, Any]] = None
 
 
@@ -117,7 +130,6 @@ class InteractionUpdate(BaseModel):
     appearance: Optional[str] = None
     summary: Optional[str] = None
     raw_text: Optional[str] = None
-    meeting_type: Optional[str] = None
     decisions: Optional[list[str]] = None
     concerns: Optional[list[str]] = None
     initiative_id: Optional[int] = None
@@ -131,12 +143,12 @@ class CardConfirmRequest(BaseModel):
     """Submitted after the client shows an editable form for the fields
     POST /api/capture/card returned - card OCR isn't trusted as-is,
     unlike voice, so this is a distinct step from a plain text capture."""
-    name: str
-    role: str = ""
-    company: str = ""
-    phone: str = ""
-    email: str = ""
-    context_note: str = ""
+    name: str = Field(..., max_length=FIELD_MAX_LEN)
+    role: str = Field("", max_length=FIELD_MAX_LEN)
+    company: str = Field("", max_length=FIELD_MAX_LEN)
+    phone: str = Field("", max_length=FIELD_MAX_LEN)
+    email: str = Field("", max_length=FIELD_MAX_LEN)
+    context_note: str = Field("", max_length=NOTE_MAX_LEN)
 
 
 class TaskStatusUpdate(BaseModel):

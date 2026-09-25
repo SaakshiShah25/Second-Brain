@@ -5,6 +5,7 @@ import { useInitiatives } from '../api/initiatives'
 import { useNotes } from '../api/notes'
 import InitiativesManager from '../components/InitiativesManager'
 import InteractionCard from '../components/InteractionCard'
+import { getInitiativeStyle } from '../lib/initiativeStyle'
 
 // null = "All", -1 = "Uncategorized" (sentinel, since real initiative ids
 // are always positive), else a real initiative id.
@@ -26,6 +27,18 @@ export default function NotesPage() {
   useEffect(() => {
     setTab(searchParams.get('tab') === 'initiatives' ? 'initiatives' : 'notes')
   }, [searchParams])
+
+  // If the initiative currently selected as a filter gets deleted (from
+  // the Initiatives tab), fall back to "All" instead of silently staying
+  // pointed at an id that no longer exists - without this, every note
+  // would appear to vanish ("No notes match this filter") with no chip
+  // even highlighted to explain why, since the deleted initiative's chip
+  // is gone too.
+  useEffect(() => {
+    if (typeof filter === 'number' && filter > 0 && initiatives && !initiatives.some((i) => i.id === filter)) {
+      setFilter(null)
+    }
+  }, [initiatives, filter])
 
   const visibleNotes = (notes ?? []).filter((n) => {
     if (filter === null) return true
@@ -81,19 +94,27 @@ export default function NotesPage() {
         >
           All
         </button>
-        {initiatives?.map((i) => (
-          <button
-            key={i.id}
-            onClick={() => setFilter(i.id)}
-            className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors ${
-              filter === i.id
-                ? 'border-accent bg-accent-soft text-accent'
-                : 'border-border-strong bg-bg-card text-text-muted hover:text-text'
-            }`}
-          >
-            {i.name}
-          </button>
-        ))}
+        {initiatives?.map((i) => {
+          const catStyle = getInitiativeStyle(i)
+          const active = filter === i.id
+          return (
+            <button
+              key={i.id}
+              onClick={() => setFilter(i.id)}
+              className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition-colors ${
+                active ? '' : 'border-border-strong bg-bg-card text-text-muted hover:text-text'
+              }`}
+              style={
+                active && catStyle
+                  ? { borderColor: catStyle.color, backgroundColor: `${catStyle.color}1a`, color: catStyle.color }
+                  : undefined
+              }
+            >
+              {catStyle && <catStyle.Icon size={13} strokeWidth={1.8} />}
+              {i.name}
+            </button>
+          )
+        })}
         {/* Uncategorized is a first-class, always-present filter - every
             pre-migration note (and anything the classifier wasn't
             confident about) lives here, not an edge case. */}

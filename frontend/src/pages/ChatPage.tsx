@@ -19,15 +19,14 @@ import { useChatSession } from '../chat/ChatSessionContext'
 import { useLiveTranscript } from '../lib/useLiveTranscript'
 
 function formatSavedMessage(result: CaptureSavedResult): string {
-  // Both of these only make sense when the note is actually about a
-  // person - a standalone personal note/reminder has neither a matched
-  // contact nor a real meeting, so showing "Matched to existing contact:
-  // null" / "Meeting type: other" is just noise, not information.
+  // Only makes sense when the note is actually about a person - a
+  // standalone personal note/reminder has no matched contact, so showing
+  // "Matched to existing contact: null" would just be noise, not
+  // information.
   const lines: string[] = []
   if (result.resolved_name) {
     const status = result.created_new ? 'New contact' : 'Matched to existing contact'
     lines.push(`**${status}:** ${result.resolved_name}`)
-    if (result.meeting_type) lines.push(`**Meeting type:** ${result.meeting_type}`)
   }
   // Applies to any note (person-involving or standalone), unlike the
   // fields above - so this isn't nested under the resolved_name check.

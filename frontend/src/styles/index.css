@@ -37,6 +37,13 @@ these tokens rather than hardcoding a brand color inline anywhere.
   --sb-accent-contrast: #211e36;
   --sb-danger: #c97186; /* rose - sparing secondary accent, not a primary color */
   --sb-success: #4ade80;
+  /* "Owed by them" task indicator (DigestPage) - a DIFFERENT color from
+     --sb-danger on purpose even though dark theme's value happens to
+     match it today: danger is reserved for destructive actions/errors,
+     this is reserved for "who owns this task", and the two only need to
+     look different from --sb-accent ("owed by me"), not from each other.
+     See the light-theme override below for why they diverge there. */
+  --sb-them-task: #c97186;
 
   /* Multiplier for the Settings page's font-size preference - applied on
      top of the responsive base size below via html's font-size formula. */
@@ -61,6 +68,13 @@ these tokens rather than hardcoding a brand color inline anywhere.
   --sb-accent-contrast: #ffffff;
   --sb-danger: #c97186;
   --sb-success: #16a34a;
+  /* Light theme's own accent is indigo, not amber, so pink was the only
+     warm color a "them" task chip had to borrow - reading as an error/
+     danger color it isn't. Using the brand's fixed amber (the logo's own
+     dot color, ConfiaLogo.tsx - #E9A73B always, not theme-dependent)
+     instead ties it back to the brand and keeps it visually distinct
+     from indigo "owed by me" without borrowing --sb-danger's meaning. */
+  --sb-them-task: #e9a73b;
 }
 
 @theme {
@@ -78,6 +92,7 @@ these tokens rather than hardcoding a brand color inline anywhere.
   --color-accent-soft: var(--sb-accent-soft);
   --color-accent-contrast: var(--sb-accent-contrast);
   --color-danger: var(--sb-danger);
+  --color-them-task: var(--sb-them-task);
   --color-success: var(--sb-success);
   /* True SF Pro on Apple devices/browsers; Inter (imported above - the
      closest open match to SF Pro's metrics and letterforms) as the
@@ -142,6 +157,16 @@ input:-webkit-autofill:active {
 
 html, body, #root {
   height: 100%;
+}
+
+/* Standard fix for the "first tap doesn't register" feel some mobile
+   browsers/WebViews have on interactive elements - without this, a tap
+   can be held briefly while the browser decides it isn't the start of a
+   double-tap-to-zoom or pinch gesture, which reads as the button being
+   unresponsive on the first try. touch-action: manipulation tells it
+   this element only cares about taps/pan, skipping that wait. */
+button, [role="button"], a {
+  touch-action: manipulation;
 }
 
 body {
@@ -236,6 +261,44 @@ body {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes tour-card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Onboarding tour spotlight (Tour.tsx) - the huge 9999px spread is what
+   dims the rest of the screen (this one box's shadow, not a separate
+   overlay element - see Tour.tsx's own comment for why), and the small
+   second shadow is a pulsing accent ring around the actual cutout, so
+   the highlighted icon keeps drawing the eye even after the card's own
+   one-shot entrance animation has finished. Tour.tsx sets BOTH this
+   pulse and the shared one-shot `fade-in` as one comma-separated inline
+   `animation` value (not this class) - inline style always wins over a
+   class for the same property, so declaring the pulse here too would
+   just get silently dropped the moment the element also needs fade-in.
+   This class exists solely so prefers-reduced-motion below has a
+   selector to override the inline value with `!important`. */
+@keyframes tour-spotlight-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55), 0 0 0 3px var(--sb-accent);
+  }
+  50% {
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55), 0 0 0 7px var(--sb-accent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-spotlight {
+    animation: none !important;
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55), 0 0 0 3px var(--sb-accent);
   }
 }
 

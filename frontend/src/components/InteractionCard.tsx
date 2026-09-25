@@ -1,26 +1,14 @@
 import { useState, type FormEvent } from 'react'
-import { CheckCircle2, MapPin, Tag, TriangleAlert } from 'lucide-react'
+import { CheckCircle2, MapPin, TriangleAlert } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useInitiatives } from '../api/initiatives'
 import { useDeleteInteraction, useUpdateInteraction } from '../api/people'
 import type { Interaction } from '../api/types'
+import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import Disclosure from './Disclosure'
 import { Input, Label, Textarea } from './fields'
-
-const MEETING_TYPES = [
-  '',
-  'discovery',
-  'demo',
-  'negotiation',
-  'check-in',
-  'networking',
-  'contract',
-  'support',
-  'internal',
-  'other',
-]
 
 const selectClass =
   'w-full rounded-lg border border-border-strong bg-bg-card px-3 py-2 text-sm text-text focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent'
@@ -43,6 +31,10 @@ export default function InteractionCard({ interaction }: { interaction: Interact
   // joined select) - PersonDetailPage's own interaction list doesn't
   // include them, so this header simply doesn't render there.
   const showNoteContext = interaction.person !== undefined
+  // Only meaningful on the Notes page (showNoteContext) - PersonDetailPage's
+  // own interaction cards aren't grouped by initiative, so they keep the
+  // plain uncolored border.
+  const initiativeStyle = showNoteContext ? getInitiativeStyle(interaction.initiative) : null
 
   const [form, setForm] = useState({
     date: interaction.date ?? '',
@@ -50,7 +42,6 @@ export default function InteractionCard({ interaction }: { interaction: Interact
     appearance: interaction.appearance ?? '',
     summary: interaction.summary ?? '',
     raw_text: interaction.raw_text ?? '',
-    meeting_type: interaction.meeting_type ?? '',
     decisions: (interaction.decisions ?? []).join('\n'),
     concerns: (interaction.concerns ?? []).join('\n'),
     initiative_id: interaction.initiative_id,
@@ -73,7 +64,29 @@ export default function InteractionCard({ interaction }: { interaction: Interact
   }
 
   return (
-    <Disclosure summary={`${interaction.date ?? 'unknown date'} — ${interaction.summary || '(no summary)'}`}>
+    <Disclosure
+      summary={
+        // The category icon rides along in the COLLAPSED row too, not
+        // just inside the expanded badge below - the border color alone
+        // means nothing until you already know "green = Fitness" from
+        // the filter chips, but an icon (a dumbbell, a briefcase) reads
+        // on its own without that lookup, even collapsed.
+        <span className="flex items-center gap-1.5 min-w-0">
+          {initiativeStyle && (
+            <initiativeStyle.Icon
+              size={13}
+              strokeWidth={2}
+              className="flex-shrink-0"
+              style={{ color: initiativeStyle.color }}
+            />
+          )}
+          <span className="truncate">
+            {interaction.date ?? 'unknown date'} — {interaction.summary || '(no summary)'}
+          </span>
+        </span>
+      }
+      accentColor={initiativeStyle?.color}
+    >
       {showNoteContext && (
         <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
           {interaction.person ? (
@@ -81,12 +94,24 @@ export default function InteractionCard({ interaction }: { interaction: Interact
               {interaction.person.name}
             </Link>
           ) : (
+            // "Personal" - not "No contact", which read like a gap/error
+            // rather than a deliberate kind of note. Same term DigestPage
+            // already falls back to for a task with no specific person
+            // attached, so this isn't a new piece of vocabulary - a note
+            // with no primary person is, by the same logic, one with
+            // nothing to attribute but the note-taker themselves.
             <span className="rounded-full border border-border-strong px-2 py-0.5 text-text-muted">
-              Standalone note
+              Personal
             </span>
           )}
-          {interaction.initiative ? (
-            <span className="rounded-full bg-accent-soft px-2 py-0.5 text-accent">{interaction.initiative.name}</span>
+          {interaction.initiative && initiativeStyle ? (
+            <span
+              className="flex items-center gap-1 rounded-full px-2 py-0.5 font-medium"
+              style={initiativeBadgeStyle(initiativeStyle.color)}
+            >
+              <initiativeStyle.Icon size={12} strokeWidth={1.8} />
+              {interaction.initiative.name}
+            </span>
           ) : (
             <span className="rounded-full border border-border-strong px-2 py-0.5 text-text-faint">
               Uncategorized
@@ -96,12 +121,6 @@ export default function InteractionCard({ interaction }: { interaction: Interact
       )}
       {!editing ? (
         <>
-          {interaction.meeting_type && (
-            <p className="mb-1 flex items-center gap-1 text-xs text-text-muted">
-              <Tag size={12} strokeWidth={1.6} className="flex-shrink-0" />
-              {interaction.meeting_type}
-            </p>
-          )}
           {interaction.location && <p className="text-xs text-text-muted">Location: {interaction.location}</p>}
           {interaction.appearance && (
             <p className="text-xs text-text-muted">Appearance that day: {interaction.appearance}</p>
@@ -174,20 +193,6 @@ export default function InteractionCard({ interaction }: { interaction: Interact
             <Label>Date</Label>
             <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
           </div>
-          <div>
-            <Label>Meeting type</Label>
-            <select
-              className={selectClass}
-              value={form.meeting_type}
-              onChange={(e) => setForm({ ...form, meeting_type: e.target.value })}
-            >
-              {MEETING_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t || '(none)'}
-                </option>
-              ))}
-            </select>
-          </div>
           {showNoteContext && (
             <div>
               <Label>Initiative</Label>
@@ -245,9 +250,10 @@ export default function InteractionCard({ interaction }: { interaction: Interact
           title="Confirm delete"
           message="Delete this note and its follow-up tasks? This cannot be undone."
           confirmLabel="Delete"
+          busy={deleteInteraction.isPending}
+          busyLabel="Deleting…"
           onConfirm={() => {
-            setConfirmDelete(false)
-            deleteInteraction.mutate(interaction.id)
+            deleteInteraction.mutate(interaction.id, { onSettled: () => setConfirmDelete(false) })
           }}
           onCancel={() => setConfirmDelete(false)}
         />

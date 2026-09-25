@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
 
 function timeGreeting(): string {
@@ -22,10 +23,26 @@ function nameFromEmail(email: string | undefined): string {
 export default function Greeting() {
   const { user } = useAuth()
   const name = nameFromEmail(user?.email)
+  // timeGreeting() only reflects the moment this ran - with no timer,
+  // that's just the moment this component last happened to render, which
+  // can be hours ago if the empty-state Chat screen was left open and
+  // nothing else caused a re-render since. That's what made the greeting
+  // look "wrong": it wasn't computing the wrong hour, it was silently
+  // stuck on an old one until some unrelated re-render finally refreshed
+  // it - reading as an abrupt, out-of-nowhere jump (e.g. straight from
+  // "Good night" to "Good evening") right as it was actually looked at,
+  // rather than a real, hours-long crossing between every bucket in
+  // between. Re-checking every minute keeps it correct for whoever is
+  // just glancing at an already-open tab, not only on a fresh mount.
+  const [greeting, setGreeting] = useState(timeGreeting)
+  useEffect(() => {
+    const interval = setInterval(() => setGreeting(timeGreeting()), 60_000)
+    return () => clearInterval(interval)
+  }, [])
 
   return (
     <h1 className="text-2xl font-semibold tracking-tight text-text">
-      {timeGreeting()}
+      {greeting}
       {name && <>, {name}</>}
     </h1>
   )

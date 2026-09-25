@@ -67,11 +67,11 @@ function MorningBriefCard() {
 }
 
 const FILTERS: { value: TaskFilter; label: string }[] = [
-  { value: 'overdue', label: 'Overdue' },
-  { value: 'due_soon', label: 'Due soon' },
-  { value: 'open', label: 'Open' },
-  { value: 'done', label: 'Done' },
   { value: 'all', label: 'All' },
+  { value: 'open', label: 'Open' },
+  { value: 'due_soon', label: 'Due soon' },
+  { value: 'done', label: 'Done' },
+  { value: 'overdue', label: 'Overdue' },
 ]
 
 function dueLabel(dueDate: string | null, status: 'open' | 'done'): { text: string; overdue: boolean } {
@@ -92,8 +92,13 @@ function realName(name: string | null | undefined): string | undefined {
 
 type OwnerFilter = 'all' | 'me' | 'them'
 
-const OWNER_FILTERS: { value: OwnerFilter; label: string }[] = [
-  { value: 'all', label: 'All open tasks' },
+// No separate "All open tasks" pill - it just duplicated the top-level
+// "All"/"Open" filters with a second, differently-scoped meaning of
+// "all" a couple lines below them. Clicking whichever of these two IS
+// active turns it back off (returning ownerFilter to 'all', i.e. no
+// owner filter) instead - the same one-tap-to-clear toggle behavior as
+// most filter-chip rows.
+const OWNER_FILTERS: { value: Exclude<OwnerFilter, 'all'>; label: string }[] = [
   { value: 'me', label: 'My tasks' },
   { value: 'them', label: 'Their tasks' },
 ]
@@ -216,11 +221,11 @@ export default function DigestPage() {
             {OWNER_FILTERS.map((f) => (
               <button
                 key={f.value}
-                onClick={() => setOwnerFilter(f.value)}
+                onClick={() => setOwnerFilter(ownerFilter === f.value ? 'all' : f.value)}
                 className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                   ownerFilter === f.value
                     ? f.value === 'them'
-                      ? 'border-danger/50 bg-danger/10 text-danger'
+                      ? 'border-them-task/50 bg-them-task/10 text-them-task'
                       : 'border-accent bg-accent-soft text-accent'
                     : 'border-border-strong bg-bg-card text-text-muted hover:text-text'
                 }`}
@@ -242,7 +247,7 @@ export default function DigestPage() {
             <span className="h-2.5 w-2.5 rounded-full bg-accent" /> My tasks
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-danger" /> Their tasks
+            <span className="h-2.5 w-2.5 rounded-full bg-them-task" /> Their tasks
           </span>
         </div>
       )}
@@ -255,7 +260,7 @@ export default function DigestPage() {
             <Card
               key={task.id}
               className={`!p-0 overflow-hidden border-l-4 ${
-                task.owner === 'them' ? 'border-l-danger' : 'border-l-accent'
+                task.owner === 'them' ? 'border-l-them-task' : 'border-l-accent'
               }`}
             >
               {/* Collapsed row: just the essentials (what it is, who it's
@@ -362,7 +367,7 @@ export default function DigestPage() {
                       disabled={updateOwner.isPending}
                       className={`flex-shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium transition-colors disabled:cursor-not-allowed ${
                         task.owner === 'them'
-                          ? 'border-danger/40 bg-danger/10 text-danger hover:border-danger/60'
+                          ? 'border-them-task/40 bg-them-task/10 text-them-task hover:border-them-task/60'
                           : 'border-accent bg-accent-soft text-accent'
                       }`}
                     >
