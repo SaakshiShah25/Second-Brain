@@ -29,7 +29,7 @@ export default function LoadingScreen() {
       <div className="confia-splash-glow mb-6 text-text">
         <ConfiaLogo size={88} />
       </div>
-      <div className="text-[34px] font-semibold tracking-[-0.02em] text-text">Confía</div>
+      <div className="text-[34px] font-semibold tracking-[-0.02em] text-text">MyConfía</div>
       <p className="mt-2.5 max-w-xs text-[15px] leading-[1.5] tracking-[-0.006em] text-text-muted">{TAGLINE}</p>
 
       <div className="absolute bottom-16 flex items-center gap-1.5">

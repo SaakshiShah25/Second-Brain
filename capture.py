@@ -271,7 +271,7 @@ def capture_note(raw_text: str, interaction_date: str = None):
 
 
 if __name__ == "__main__":
-    print("=== Second Brain: Capture a note ===")
+    print("=== MyConfía: Capture a note ===")
     print("(Make sure you've run schema.sql in Supabase and set SUPABASE_URL / "
           "SUPABASE_KEY / GROQ_API_KEY - see README.md)\n")
     print("Type or paste your note (a full conversation/observation). "

@@ -19,13 +19,13 @@ export default function AccountDeletionInfoPage() {
       <h1 className="mb-4 text-2xl font-bold tracking-tight">Delete your account and data</h1>
 
       <p className="mb-3 text-[15px] leading-relaxed text-text-muted">
-        You can permanently delete your Confía account and everything tied to it - every note, contact, and
+        You can permanently delete your MyConfía account and everything tied to it - every note, contact, and
         task - at any time, whether or not you still have the app installed.
       </p>
 
       <h2 className="mb-2 mt-6 text-sm font-semibold text-text-muted">If you can still log in</h2>
       <p className="mb-3 text-[15px] leading-relaxed text-text-muted">
-        Open Confía, go to <span className="font-medium text-text">Settings</span>, and use{' '}
+        Open MyConfía, go to <span className="font-medium text-text">Settings</span>, and use{' '}
         <span className="font-medium text-text">Danger zone → Delete account</span>. This deletes everything
         immediately - there's no waiting period.
       </p>
@@ -47,7 +47,7 @@ export default function AccountDeletionInfoPage() {
       </p>
 
       <Link to="/login" className="mt-8 text-sm text-accent underline">
-        Back to Confía
+        Back to MyConfía
       </Link>
     </div>
   )

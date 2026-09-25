@@ -12,9 +12,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
-        name: 'Confía',
-        short_name: 'Confía',
-        description: 'Your personal second brain for people, conversations, and follow-ups',
+        name: 'MyConfía',
+        short_name: 'MyConfía',
+        description: 'Your personal space for people, conversations, and follow-ups',
         theme_color: '#171526',
         background_color: '#171526',
         display: 'standalone',

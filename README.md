@@ -1,4 +1,4 @@
-# Second Brain — Prototype (Capture + Extraction + Storage)
+# MyConfía — Prototype (Capture + Extraction + Storage)
 
 Passive... no — **interactive-confirmation** person resolution (see below).
 Storage now runs on Supabase (Postgres + pgvector) instead of local SQLite.

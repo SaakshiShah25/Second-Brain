@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, type ReactNode } from 'react'
+import { useLayoutEffect, useEffect, type ReactNode } from 'react'
 import { useSettings } from '../api/settings'
 import type { FontSize, Theme } from '../api/types'
+import { applyPalette, getStoredPalette } from '../lib/palette'
 
 const THEME_KEY = 'sb-theme'
 const FONT_SIZE_KEY = 'sb-font-size'
@@ -23,6 +24,7 @@ export default function SettingsProvider({ children }: { children: ReactNode }) 
     const cachedTheme = (localStorage.getItem(THEME_KEY) as Theme | null) || 'dark'
     const cachedFontSize = (localStorage.getItem(FONT_SIZE_KEY) as FontSize | null) || 'default'
     applyToDocument(cachedTheme, cachedFontSize)
+    applyPalette(getStoredPalette())
   }, [])
 
   const { data: settings } = useSettings()

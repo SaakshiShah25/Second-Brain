@@ -26,9 +26,9 @@ router = APIRouter()
 
 
 def _brief_subject() -> str:
-    # e.g. "Your Confía morning brief - Wednesday, August 26, 2026" -
+    # e.g. "Your MyConfía morning brief - Wednesday, August 26, 2026" -
     # dated so it's identifiable at a glance in an inbox full of them.
-    return f"Your Confía morning brief - {date.today().strftime('%A, %B %d, %Y')}"
+    return f"Your MyConfía morning brief - {date.today().strftime('%A, %B %d, %Y')}"
 
 
 @router.get("/morning")

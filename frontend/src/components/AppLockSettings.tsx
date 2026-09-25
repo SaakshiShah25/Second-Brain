@@ -64,7 +64,7 @@ export default function AppLockSettings() {
         <h2 className="text-sm font-semibold tracking-tight text-text-muted">App lock</h2>
       </div>
       <p className="mb-3 text-xs leading-relaxed text-text-faint">
-        Require a PIN to reopen Confía on this device - stays signed in, but re-locks every time the app is
+        Require a PIN to reopen MyConfía on this device - stays signed in, but re-locks every time the app is
         closed or left in the background for a bit. Set separately per device; it isn't tied to your account.
       </p>
 

@@ -38,7 +38,7 @@ export default function Layout() {
           <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-text">
             <ConfiaLogo size={18} />
           </span>
-          <span className="text-base font-semibold tracking-[-0.02em]">Confía</span>
+          <span className="text-base font-semibold tracking-[-0.02em]">MyConfía</span>
         </Link>
         <nav className="flex flex-1 flex-col gap-1">
           {navItems.map((item) => (

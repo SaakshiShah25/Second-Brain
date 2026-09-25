@@ -20,7 +20,7 @@ export default function WelcomePrompt({ onStart, onSkip }: WelcomePromptProps) {
         <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-soft text-text">
           <ConfiaLogo size={28} />
         </span>
-        <h2 className="mb-2 text-lg font-semibold tracking-[-0.02em]">Welcome to Confía</h2>
+        <h2 className="mb-2 text-lg font-semibold tracking-[-0.02em]">Welcome to MyConfía</h2>
         <p className="mb-6 text-sm leading-relaxed text-text-muted">
           Your personal memory for people, conversations, and follow-ups. Take a 90-second tour to see where
           everything lives?

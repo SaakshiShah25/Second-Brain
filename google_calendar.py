@@ -133,7 +133,7 @@ def create_event(user_id: str, task: dict, event_date: Optional[str] = None) -> 
     if not person_name and task.get("owner", "me") != "me":
         person_name = _real_name(((task.get("interaction") or {}).get("person") or {}).get("name"))
     summary = f"{person_name}: {task['description']}" if person_name else task["description"]
-    description = "Created from Confía."
+    description = "Created from MyConfía."
     if event_date and task.get("due_date") and event_date != task["due_date"]:
         description += f" (Task due date: {task['due_date']})"
 
