@@ -57,7 +57,15 @@ def _proceed_with_retrieval(user_id: str, query: str, parsed: dict, person: Opti
                 "semantic search isn't available right now.")
     matches = db.search_interactions_by_embedding(user_id, query_embedding, top_k=5)
     if not matches:
-        return "I couldn't find anything matching that."
+        # "Nothing matched THIS question" and "there's nothing logged at
+        # all yet" read as the same generic non-answer otherwise - the
+        # second one is a brand-new account's very first question, and
+        # deserves pointing them at what to do next rather than a bare
+        # search-miss message that implies they have notes this just
+        # didn't find.
+        if not db.get_all_interactions(user_id):
+            return "You haven't logged any notes yet - tell me about a conversation or a person to get started."
+        return "I couldn't find anything matching that in your notes."
     selected = db.get_interactions_by_ids(user_id, [m["id"] for m in matches])
     selected = retrieval.attach_tasks(user_id, selected)
     return retrieval.synthesize_answer(query, selected, None)

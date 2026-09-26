@@ -166,9 +166,19 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
         )}
 
         {isRecording ? (
-          <div className="flex flex-1 items-center gap-2 px-3 py-2.5 text-sm text-text-muted">
-            <span className="h-2 w-2 rounded-full bg-danger" style={{ animation: 'pulse-rec 1s infinite' }} />
-            Recording… {elapsed}s
+          // useLiveTranscript (see ChatPage.tsx) already writes the live,
+          // word-by-word preview into `value` the whole time - this row
+          // was unconditionally showing a static "Recording... Xs"
+          // message instead of ever rendering it, so the live preview
+          // silently never appeared no matter how well speech recognition
+          // was working. Falls back to the elapsed-time message only
+          // before any words have been recognized yet.
+          <div className="flex flex-1 items-start gap-2 px-3 py-2.5 text-sm text-text-muted">
+            <span
+              className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-danger"
+              style={{ animation: 'pulse-rec 1s infinite' }}
+            />
+            <span className="whitespace-pre-wrap">{value.trim() || `Recording… ${elapsed}s`}</span>
           </div>
         ) : (
           <textarea
