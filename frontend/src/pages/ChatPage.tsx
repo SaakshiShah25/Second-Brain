@@ -68,6 +68,7 @@ export default function ChatPage() {
   const [inputText, setInputText] = useState('')
   const [isRecording, setIsRecording] = useState(false)
   const [isBusy, setIsBusy] = useState(false)
+  const [stage, setStage] = useState<string | null>(null)
   const [pendingLocation, setPendingLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [locationLoading, setLocationLoading] = useState(false)
   // A capture that didn't fit any existing initiative but reads like a
@@ -79,6 +80,8 @@ export default function ChatPage() {
     name: string
     interactionId: number
   } | null>(null)
+  const [namingCustomInitiative, setNamingCustomInitiative] = useState(false)
+  const [customInitiativeName, setCustomInitiativeName] = useState('')
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -138,6 +141,8 @@ export default function ChatPage() {
   function handleSavedCapture(result: CaptureSavedResult) {
     appendMessage('assistant', formatSavedMessage(result))
     if (result.suggested_initiative) {
+      setNamingCustomInitiative(false)
+      setCustomInitiativeName('')
       setPendingInitiativeSuggestion({ name: result.suggested_initiative, interactionId: result.interaction_id })
     }
   }
@@ -157,14 +162,21 @@ export default function ChatPage() {
     }
   }
 
-  function resolveInitiativeSuggestion(accepted: boolean) {
+  // Three ways to resolve the suggestion: accept it as-is, swap in a name
+  // the user types themselves (same create+tag flow, just a different
+  // name), or decline it entirely (note stays in Others). `customName` is
+  // only read for the 'custom' choice.
+  function resolveInitiativeSuggestion(choice: 'accept' | 'custom' | 'decline', customName?: string) {
     if (!pendingInitiativeSuggestion) return
-    const { name, interactionId } = pendingInitiativeSuggestion
-    setPendingInitiativeSuggestion(null)
-    if (!accepted) {
-      appendMessage('assistant', `Okay, left it uncategorized.`)
+    const { name: suggestedName, interactionId } = pendingInitiativeSuggestion
+    if (choice === 'decline') {
+      setPendingInitiativeSuggestion(null)
+      appendMessage('assistant', `Okay, left it in Others.`)
       return
     }
+    const name = choice === 'custom' ? (customName ?? '').trim() : suggestedName
+    if (!name) return
+    setPendingInitiativeSuggestion(null)
     createInitiative.mutate(
       { name },
       {
@@ -193,6 +205,7 @@ export default function ChatPage() {
       const result = await chatMutation.mutateAsync({
         body: { text, history: historyForRequest, geoLat: pendingLocation?.lat, geoLng: pendingLocation?.lng },
         signal: controller.signal,
+        onStage: setStage,
       })
       setPendingLocation(null) // one-shot per note, not sticky across future sends
       handleChatResult(result)
@@ -204,6 +217,7 @@ export default function ChatPage() {
       }
     } finally {
       setIsBusy(false)
+      setStage(null)
       abortControllerRef.current = null
     }
   }
@@ -400,21 +414,60 @@ export default function ChatPage() {
                 This seems to be about <strong>{pendingInitiativeSuggestion.name}</strong> - want me to add that as a
                 new initiative and tag this note with it?
               </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="primary"
-                  disabled={createInitiative.isPending || updateInteraction.isPending}
-                  onClick={() => resolveInitiativeSuggestion(true)}
-                >
-                  Yes, add it
-                </Button>
-                <Button
-                  disabled={createInitiative.isPending || updateInteraction.isPending}
-                  onClick={() => resolveInitiativeSuggestion(false)}
-                >
-                  No, leave uncategorized
-                </Button>
-              </div>
+              {namingCustomInitiative ? (
+                <div className="flex flex-col gap-2">
+                  <Input
+                    autoFocus
+                    placeholder="Initiative name"
+                    value={customInitiativeName}
+                    onChange={(e) => setCustomInitiativeName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && customInitiativeName.trim()) {
+                        resolveInitiativeSuggestion('custom', customInitiativeName)
+                      }
+                    }}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant="primary"
+                      disabled={
+                        !customInitiativeName.trim() || createInitiative.isPending || updateInteraction.isPending
+                      }
+                      onClick={() => resolveInitiativeSuggestion('custom', customInitiativeName)}
+                    >
+                      Add
+                    </Button>
+                    <Button
+                      disabled={createInitiative.isPending || updateInteraction.isPending}
+                      onClick={() => setNamingCustomInitiative(false)}
+                    >
+                      Back
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="primary"
+                    disabled={createInitiative.isPending || updateInteraction.isPending}
+                    onClick={() => resolveInitiativeSuggestion('accept')}
+                  >
+                    Yes, add '{pendingInitiativeSuggestion.name}'
+                  </Button>
+                  <Button
+                    disabled={createInitiative.isPending || updateInteraction.isPending}
+                    onClick={() => setNamingCustomInitiative(true)}
+                  >
+                    Let me name it
+                  </Button>
+                  <Button
+                    disabled={createInitiative.isPending || updateInteraction.isPending}
+                    onClick={() => resolveInitiativeSuggestion('decline')}
+                  >
+                    No thanks
+                  </Button>
+                </div>
+              )}
             </Card>
           </div>
         )}
@@ -469,7 +522,7 @@ export default function ChatPage() {
           </div>
         )}
 
-        {showTyping && <TypingIndicator />}
+        {showTyping && <TypingIndicator stage={stage} />}
 
         <div ref={scrollAnchorRef} />
       </div>

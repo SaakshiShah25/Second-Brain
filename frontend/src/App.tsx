@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom'
 import RequireAuth from './auth/RequireAuth'
 import Layout from './components/Layout'
 import LoginPage from './pages/LoginPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 import DigestPage from './pages/DigestPage'
 import ChatPage from './pages/ChatPage'
 import PeopleListPage from './pages/PeopleListPage'
@@ -20,6 +21,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       {/* Public, no-auth routes required for Play Store submission: a
           privacy policy URL reachable without signing in (for the store
           listing), and an account-deletion path reachable without the

@@ -4,6 +4,7 @@ import { useAcceptTerms, useSettings } from '../api/settings'
 import { useAuth } from '../auth/AuthContext'
 import Button from '../components/Button'
 import LoadingScreen from '../components/LoadingScreen'
+import TermsTextModal from './TermsTextModal'
 
 // Gates the authenticated app behind a Terms of Service acceptance,
 // mounted around the same route tree as ChatSessionProvider (see
@@ -34,6 +35,7 @@ export default function TermsGate({ children }: { children: ReactNode }) {
   const { signOut } = useAuth()
   const acceptTerms = useAcceptTerms()
   const [checked, setChecked] = useState(false)
+  const [showFullText, setShowFullText] = useState(false)
 
   if (isLoading) {
     return <LoadingScreen />
@@ -73,9 +75,13 @@ export default function TermsGate({ children }: { children: ReactNode }) {
               className="mt-0.5 h-4 w-4 flex-shrink-0 accent-accent"
             />
             I've read and agree to the full{' '}
-            <a href="/privacy" target="_blank" rel="noreferrer" className="text-accent underline">
+            <button
+              type="button"
+              onClick={() => setShowFullText(true)}
+              className="text-accent underline"
+            >
               Terms of Service &amp; Privacy Policy
-            </a>
+            </button>
           </label>
         </div>
         <div className="flex flex-col-reverse gap-2 border-t border-border p-4 sm:flex-row sm:justify-end">
@@ -92,6 +98,7 @@ export default function TermsGate({ children }: { children: ReactNode }) {
           </Button>
         </div>
       </div>
+      {showFullText && <TermsTextModal onClose={() => setShowFullText(false)} />}
     </div>
   )
 }

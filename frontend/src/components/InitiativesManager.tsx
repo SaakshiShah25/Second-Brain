@@ -170,7 +170,7 @@ export default function InitiativesManager() {
       {confirmDeleteId !== null && (
         <ConfirmDialog
           title="Delete initiative"
-          message="Notes tagged with this initiative will become Uncategorized, not deleted."
+          message="Notes tagged with this initiative will become Others, not deleted."
           confirmLabel="Delete"
           busy={deleteInitiative.isPending}
           busyLabel="Deleting…"

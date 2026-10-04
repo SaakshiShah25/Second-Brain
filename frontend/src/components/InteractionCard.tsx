@@ -114,7 +114,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
             </span>
           ) : (
             <span className="rounded-full border border-border-strong px-2 py-0.5 text-text-faint">
-              Uncategorized
+              Others
             </span>
           )}
         </div>
@@ -201,7 +201,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
                 value={form.initiative_id ?? ''}
                 onChange={(e) => setForm({ ...form, initiative_id: e.target.value ? Number(e.target.value) : null })}
               >
-                <option value="">Uncategorized</option>
+                <option value="">Others</option>
                 {initiatives?.map((i) => (
                   <option key={i.id} value={i.id}>
                     {i.name}
