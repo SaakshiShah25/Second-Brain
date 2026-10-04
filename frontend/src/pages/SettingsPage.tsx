@@ -7,6 +7,7 @@ import { useAuth } from '../auth/AuthContext'
 import AppLockSettings from '../components/AppLockSettings'
 import Card from '../components/Card'
 import ConfirmDialog from '../components/ConfirmDialog'
+import PageIntro from '../components/PageIntro'
 import { useTour } from '../components/TourGate'
 import { applyPalette, getStoredPalette, PALETTE_OPTIONS, setStoredPalette, type Palette } from '../lib/palette'
 
@@ -39,7 +40,8 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-xl">
-      <h1 className="mb-6 text-2xl font-bold tracking-tight">Settings</h1>
+      <h1 className="mb-1 text-2xl font-bold tracking-tight">Settings</h1>
+      <PageIntro>Manage your theme, text size, and privacy — and you can always take the tour again from here.</PageIntro>
 
       <Card className="mb-4">
         <h2 className="mb-3 text-sm font-semibold tracking-tight text-text-muted">Profile</h2>

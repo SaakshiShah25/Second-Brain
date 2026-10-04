@@ -31,7 +31,7 @@ from datetime import date, datetime
 
 import db
 import text_utils
-from llm_client import get_client, MODEL_NAME
+from llm_client import get_client, MODEL_NAME, FAST_MODEL_NAME
 from embeddings import compute_embedding
 from person_match import score_candidates
 
@@ -108,7 +108,7 @@ def parse_query(user_query: str, reference_date: date = None, conversation_conte
 
     client = get_client()
     response = client.chat.completions.create(
-        model=MODEL_NAME,
+        model=FAST_MODEL_NAME,
         messages=[
             {"role": "system", "content": _build_query_parse_prompt(reference_date.isoformat())},
             {"role": "user", "content": user_message},

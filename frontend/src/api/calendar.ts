@@ -17,6 +17,10 @@ export function useStartCalendarConnect() {
     onSuccess: ({ authorize_url }) => {
       window.location.href = authorize_url
     },
+    // No onError here before - a failed /connect/start (e.g. the backend's
+    // Google OAuth env vars aren't configured, which raises a 503) just
+    // left the button looking like it did nothing. isError/error below are
+    // surfaced in DigestPage so the real problem is visible instead.
   })
 }
 

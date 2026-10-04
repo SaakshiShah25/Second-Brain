@@ -15,8 +15,9 @@ imports by their full module path (`capture` vs `api.routers.capture`),
 not the importing file's own name.
 """
 
+import time
 from datetime import date
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 from starlette.concurrency import run_in_threadpool
@@ -31,6 +32,7 @@ import google_maps
 import moderation
 import person_match
 import voice
+from timing import step
 from api.auth import get_current_user_id
 from api.rate_limit import limiter
 from api.schemas import CandidateEnvelope, CaptureConfirmRequest, CaptureRequest, CardConfirmRequest
@@ -174,7 +176,8 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
                              raw_text: str, extracted: dict, interaction_date: str, date_warning: Optional[str],
                              initiative_id: Optional[int] = None,
                              geo_lat: Optional[float] = None, geo_lng: Optional[float] = None) -> dict:
-    embedding = embeddings.compute_embedding(raw_text)
+    with step("embedding"):
+        embedding = embeddings.compute_embedding(raw_text)
     sentiments = extracted.get("sentiments") or []
     extracted_facts = {
         "other_people": extracted.get("other_people", []),
@@ -190,6 +193,7 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
         maps_url = google_maps.build_maps_url(geo_lat, geo_lng)
         geo_address = google_maps.reverse_geocode(geo_lat, geo_lng)
 
+    _t_db0 = time.perf_counter()
     interaction_id = db.create_interaction(
         user_id,
         person_id=person_id,
@@ -264,6 +268,8 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
         tasks_created.append({
             "description": task_desc, "due_date": due_date, "owner": owner, "person_id": task_person_id,
         })
+
+    print(f"[timing] db_writes: {time.perf_counter() - _t_db0:.2f}s")
 
     return {
         "status": "saved",
@@ -342,14 +348,15 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
             initiative_id=initiative_id, geo_lat=geo_lat, geo_lng=geo_lng,
         )
 
-    people = db.get_all_people(user_id)
-    # "Unknown" is a placeholder, not an identity - text-matching it
-    # against a DIFFERENT unnamed person from another note is meaningless
-    # and risks merging unrelated people. Skip candidate matching
-    # entirely in that case and always create a fresh record (still
-    # worth keeping here since there IS other distinguishing info, e.g.
-    # "Unknown - President").
-    candidates = [] if is_unnamed else person_match.score_candidates(name, people)
+    with step("person_match"):
+        people = db.get_all_people(user_id)
+        # "Unknown" is a placeholder, not an identity - text-matching it
+        # against a DIFFERENT unnamed person from another note is
+        # meaningless and risks merging unrelated people. Skip candidate
+        # matching entirely in that case and always create a fresh record
+        # (still worth keeping here since there IS other distinguishing
+        # info, e.g. "Unknown - President").
+        candidates = [] if is_unnamed else person_match.score_candidates(name, people)
 
     if not candidates:
         person_id = db.create_person(
@@ -379,7 +386,7 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
 # ---------- Endpoints ----------
 
 async def _capture_text_core(user_id: str, raw_text: str, geo_lat: Optional[float], geo_lng: Optional[float],
-                              request: Request) -> dict:
+                              request: Request, on_stage: Optional[Callable[[str], Awaitable[None]]] = None) -> dict:
     """The actual capture-text logic, factored out of capture_text() below
     so api/routers/chat.py can call it directly after ITS OWN moderation
     check without triggering a second one here - moderation.py is one
@@ -391,12 +398,27 @@ async def _capture_text_core(user_id: str, raw_text: str, geo_lat: Optional[floa
     parameter on the real HTTP route, since it isn't a Pydantic body/
     Depends/Path param - i.e. exactly the bypass this is meant to close.
     Keeping the check OUT of this core function and only IN the thin
-    route wrapper (capture_text) is what makes that impossible."""
-    await run_in_threadpool(_enforce, user_id, "interactions_logged")
-    initiatives = await run_in_threadpool(db.get_initiatives, user_id)
+    route wrapper (capture_text) is what makes that impossible.
+
+    `on_stage`, if given, is awaited with a short stage name right before
+    each major step - used by chat.py's streaming endpoint to tell the
+    frontend what's happening live. Only two stages are emitted ("extracting"
+    and "saving") rather than one per line above: the 2026-10 timing
+    instrumentation showed extraction is essentially the entire duration of
+    a slow capture, while entitlement-check/get_initiatives/person-matching/
+    embeddings/db-writes are consistently sub-second - not worth
+    distinguishing to the user. The plain (non-streaming) capture_text route
+    below never passes on_stage, so this is a no-op for every other caller."""
+    with step("enforce_entitlement"):
+        await run_in_threadpool(_enforce, user_id, "interactions_logged")
+    with step("get_initiatives"):
+        initiatives = await run_in_threadpool(db.get_initiatives, user_id)
     initiative_names = [i["name"] for i in initiatives]
+    if on_stage:
+        await on_stage("extracting")
     try:
-        extracted = await run_in_threadpool(extraction.extract_info, raw_text, None, initiative_names)
+        with step("extraction"):
+            extracted = await run_in_threadpool(extraction.extract_info, raw_text, None, initiative_names)
     except Exception as e:
         raise HTTPException(500, f"Extraction failed: {e}")
     # Extraction (the LLM call above) is the slow part of a capture - if the
@@ -404,9 +426,12 @@ async def _capture_text_core(user_id: str, raw_text: str, geo_lat: Optional[floa
     # running, don't go on to save a note the user just told us to cancel.
     if await request.is_disconnected():
         raise HTTPException(499, "Client disconnected")
-    return await run_in_threadpool(
-        lambda: _process_extracted(user_id, raw_text, extracted, geo_lat=geo_lat, geo_lng=geo_lng)
-    )
+    if on_stage:
+        await on_stage("saving")
+    with step("process_extracted"):
+        return await run_in_threadpool(
+            lambda: _process_extracted(user_id, raw_text, extracted, geo_lat=geo_lat, geo_lng=geo_lng)
+        )
 
 
 @router.post("")

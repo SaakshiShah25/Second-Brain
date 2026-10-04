@@ -49,11 +49,14 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
-# Vite's default dev server port always allowed (local dev); the deployed
-# frontend origin is added on top of that via FRONTEND_URL (the same env
-# var api/routers/calendar.py already uses for the OAuth redirect), so
-# this doesn't need a second, separate env var to configure.
-_origins = ["http://localhost:5173"]
+# Vite's default dev server port always allowed (local dev), plus the
+# next few ports it falls back to when 5173 is already taken by some
+# other project on the machine (Vite just picks the next free one rather
+# than failing - see the "Port 5173 is in use" line it prints on start).
+# The deployed frontend origin is added on top of that via FRONTEND_URL
+# (the same env var api/routers/calendar.py already uses for the OAuth
+# redirect), so this doesn't need a second, separate env var to configure.
+_origins = [f"http://localhost:{p}" for p in range(5173, 5178)]
 _frontend_url = os.environ.get("FRONTEND_URL")
 if _frontend_url and _frontend_url not in _origins:
     _origins.append(_frontend_url)

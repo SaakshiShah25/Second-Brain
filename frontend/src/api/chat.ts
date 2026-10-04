@@ -23,14 +23,29 @@ export interface ChatBody {
 }
 
 // `signal` lets the caller cancel an in-flight send (the Stop button) -
-// see api/client.ts's api.post.
+// see api/client.ts's api.post. `onStage` fires as the backend's SSE
+// stream (/api/chat/stream, api/routers/chat.py) reports progress
+// ("moderating" -> "classifying" -> "extracting"/"thinking" ->
+// "saving") - ChatPage.tsx feeds it to TypingIndicator so the UI shows
+// what's actually happening instead of a bare spinner, which matters
+// since a slow extraction call can run 40s+ (see the 2026-10 timing
+// instrumentation in api/routers/capture.py).
 export function useChat() {
   const invalidate = useInvalidateOnCapture()
   return useMutation({
-    mutationFn: ({ body, signal }: { body: ChatBody; signal?: AbortSignal }) =>
-      api.post<ChatResult>(
-        '/api/chat',
+    mutationFn: ({
+      body,
+      signal,
+      onStage,
+    }: {
+      body: ChatBody
+      signal?: AbortSignal
+      onStage?: (stage: string) => void
+    }) =>
+      api.postStream<ChatResult>(
+        '/api/chat/stream',
         { text: body.text, history: body.history, geo_lat: body.geoLat, geo_lng: body.geoLng },
+        onStage ?? (() => {}),
         signal,
       ),
     onSuccess: (result) => {

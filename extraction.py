@@ -10,7 +10,9 @@ Then set it as an environment variable:
 import json
 from datetime import date
 
+import gemini_client
 import text_utils
+from groq import RateLimitError
 from llm_client import get_client, MODEL_NAME
 
 
@@ -213,17 +215,29 @@ def extract_info(raw_text: str, reference_date: date = None, initiative_names: l
     # to treat everything inside them as data, not instructions - a plain
     # unwrapped user turn reads too much like a normal conversational
     # message the model might feel obligated to respond/comply with.
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"<note>\n{raw_text}\n</note>"},
-        ],
-        temperature=0.2,
-        response_format={"type": "json_object"},
-    )
-
-    content = text_utils.normalize_text(response.choices[0].message.content)
+    user_content = f"<note>\n{raw_text}\n</note>"
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=0.2,
+            response_format={"type": "json_object"},
+        )
+        content = text_utils.normalize_text(response.choices[0].message.content)
+    except RateLimitError:
+        # Groq's account-wide free-tier TPM budget is shared across every
+        # user's extraction calls (see gemini_client.py's docstring) - on
+        # a 429, fall back to Gemini's more generous free tier rather than
+        # failing the user's note outright. Only if GEMINI_API_KEY is set;
+        # otherwise re-raise so callers see the same error as before.
+        if not gemini_client.available():
+            raise
+        content = text_utils.normalize_text(
+            gemini_client.generate_json(system_prompt, user_content, temperature=0.2)
+        )
 
     try:
         return json.loads(content)

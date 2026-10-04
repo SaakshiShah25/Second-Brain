@@ -5,6 +5,7 @@ import { useInitiatives } from '../api/initiatives'
 import { useNotes } from '../api/notes'
 import InitiativesManager from '../components/InitiativesManager'
 import InteractionCard from '../components/InteractionCard'
+import PageIntro from '../components/PageIntro'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
 
 // null = "All", -1 = "Uncategorized" (sentinel, since real initiative ids
@@ -48,9 +49,14 @@ export default function NotesPage() {
 
   return (
     <div>
-      <h1 className="mb-4 flex items-center gap-2 text-2xl font-bold tracking-tight">
+      <h1 className="mb-1 flex items-center gap-2 text-2xl font-bold tracking-tight">
         <NotebookText size={22} strokeWidth={1.6} className="text-accent" /> Notes
       </h1>
+      <PageIntro>
+        {tab === 'initiatives'
+          ? 'Your own categories — Job, Fitness, Personal, or anything else — that notes get automatically sorted into.'
+          : "Every note lands here, whether it's about a person or just an idea, filterable by initiative."}
+      </PageIntro>
 
       {/* Initiatives moved here from Settings - this is where you're
           actually filtering/thinking about them, not a one-time config
@@ -126,7 +132,7 @@ export default function NotesPage() {
               : 'border-border-strong bg-bg-card text-text-muted hover:text-text'
           }`}
         >
-          Uncategorized
+          Others
         </button>
       </div>
 

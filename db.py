@@ -685,11 +685,11 @@ def get_users_with_daily_brief_enabled() -> list:
 
 # ---------- Initiatives (user-managed note categories - schema.sql section 20) ----------
 
-DEFAULT_INITIATIVES = ["Personal", "Job", "Fitness"]
+DEFAULT_INITIATIVES = ["Personal", "Work"]
 
 
 def get_initiatives(user_id: str) -> list:
-    """Every initiative for this user, seeding the 4 starter initiatives
+    """Every initiative for this user, seeding the 2 starter initiatives
     on first read if none exist yet - same create-default-on-first-read
     shape as get_user_preference(), so this works for the existing
     account and any future signup with no separate seed step needed."""

@@ -10,6 +10,7 @@ import {
   Mail,
   Sunrise,
   TriangleAlert,
+  UserRoundX,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -26,6 +27,7 @@ import {
 import type { TaskFilter } from '../api/types'
 import Card from '../components/Card'
 import Button from '../components/Button'
+import PageIntro from '../components/PageIntro'
 
 function MorningBriefCard() {
   const { data, isLoading } = useMorningBrief()
@@ -142,9 +144,10 @@ export default function DigestPage() {
 
   return (
     <div>
-      <h1 className="mb-6 flex items-center gap-2 text-2xl font-bold tracking-tight">
+      <h1 className="mb-1 flex items-center gap-2 text-2xl font-bold tracking-tight">
         <Sunrise size={22} strokeWidth={1.6} className="text-accent" /> Today
       </h1>
+      <PageIntro>Your open tasks and today's calendar, all in one place, plus a daily brief.</PageIntro>
 
       <MorningBriefCard />
 
@@ -166,37 +169,55 @@ export default function DigestPage() {
       )}
 
       {calendarStatus && !calendarStatus.connected && (
-        <Card className="mb-4 flex items-center justify-between gap-3">
-          <p className="text-sm text-text-muted">
-            Connect Google Calendar to schedule meetings for individual tasks - on the due date or any date before it.
-          </p>
-          <Button variant="primary" onClick={() => startConnect.mutate()} disabled={startConnect.isPending}>
-            <span className="flex items-center gap-1.5">
-              <Calendar size={15} strokeWidth={1.6} /> Connect Google Calendar
-            </span>
-          </Button>
+        <Card className="mb-4 flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-text-muted">
+              Connect Google Calendar to schedule meetings for individual tasks - on the due date or any date before it.
+            </p>
+            <Button variant="primary" onClick={() => startConnect.mutate()} disabled={startConnect.isPending}>
+              <span className="flex items-center gap-1.5">
+                <Calendar size={15} strokeWidth={1.6} />
+                {startConnect.isPending ? 'Connecting…' : 'Connect Google Calendar'}
+              </span>
+            </Button>
+          </div>
+          {/* Previously this mutation had no onError handling at all, so a
+              failed /connect/start (e.g. the backend's Google OAuth env
+              vars not configured, a 503) just made the button look like it
+              did nothing. Surface the real reason here instead. */}
+          {startConnect.isError && (
+            <p className="flex items-center gap-1.5 text-xs text-danger">
+              <TriangleAlert size={13} strokeWidth={1.6} />
+              {startConnect.error instanceof Error
+                ? startConnect.error.message
+                : "Couldn't start the connection - please try again."}
+            </p>
+          )}
         </Card>
       )}
 
       <h2 className="mb-3 text-lg font-semibold tracking-tight">Tasks</h2>
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card className="text-center">
+      {/* One compact strip instead of 4 separate bordered Cards - same
+          counts, far less visual weight before you even reach the actual
+          task list. */}
+      <Card className="mb-4 flex items-center justify-between gap-2 divide-x divide-border text-center">
+        <div className="flex-1">
           <div className="text-xs text-text-muted">Overdue</div>
-          <div className="text-2xl font-bold tracking-tight">{data?.counts.overdue ?? '—'}</div>
-        </Card>
-        <Card className="text-center">
+          <div className="text-xl font-bold tracking-tight">{data?.counts.overdue ?? '—'}</div>
+        </div>
+        <div className="flex-1">
           <div className="text-xs text-text-muted">Due in 7 days</div>
-          <div className="text-2xl font-bold tracking-tight">{data?.counts.due_soon ?? '—'}</div>
-        </Card>
-        <Card className="text-center">
+          <div className="text-xl font-bold tracking-tight">{data?.counts.due_soon ?? '—'}</div>
+        </div>
+        <div className="flex-1">
           <div className="text-xs text-text-muted">Open</div>
-          <div className="text-2xl font-bold tracking-tight">{data?.counts.open ?? '—'}</div>
-        </Card>
-        <Card className="text-center">
+          <div className="text-xl font-bold tracking-tight">{data?.counts.open ?? '—'}</div>
+        </div>
+        <div className="flex-1">
           <div className="text-xs text-text-muted">Done</div>
-          <div className="text-2xl font-bold tracking-tight">{data?.counts.done ?? '—'}</div>
-        </Card>
-      </div>
+          <div className="text-xl font-bold tracking-tight">{data?.counts.done ?? '—'}</div>
+        </div>
+      </Card>
 
       <div className="mb-4 flex flex-wrap gap-2">
         {FILTERS.map((f) => (
@@ -241,17 +262,12 @@ export default function DigestPage() {
       {isLoading && <p className="text-sm text-text-muted">Loading…</p>}
       {!isLoading && visibleTasks.length === 0 && <p className="text-sm text-text-muted">Nothing here.</p>}
 
-      {visibleTasks.length > 0 && (
-        <div className="mb-3 flex items-center gap-4 text-xs text-text-muted">
-          <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-accent" /> My tasks
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-them-task" /> Their tasks
-          </span>
-        </div>
-      )}
-
+      {/* No separate "My tasks"/"Their tasks" color-swatch legend here
+          anymore - each row's own text already says "For X" (mine) vs a
+          bare name (theirs), so the left-border color is a reinforcing
+          detail, not the only way to tell them apart. A legend that only
+          explains a color was one more thing to parse before the actual
+          list. */}
       <div className="mb-8 flex flex-col gap-2">
         {visibleTasks.map((task) => {
           const due = dueLabel(task.due_date, task.status)
@@ -454,12 +470,22 @@ export default function DigestPage() {
         })}
       </div>
 
-      <h2 className="mb-1 text-lg font-semibold tracking-tight">Relationships gone quiet</h2>
-      <p className="mb-3 text-xs text-text-muted">Open their profile on the People page for a full "Get briefing".</p>
+      {/* Renamed from the bare "Relationships gone quiet" + a separate
+          one-line hint - that left people unsure what the section was
+          for until they'd already scanned the list below it. The intro
+          now says the "why" up front (so you don't lose touch), and the
+          slider label says what it actually does ("Show", not "Flag" -
+          nothing is marked/flagged anywhere, it just filters this list). */}
+      <h2 className="mb-1 flex items-center gap-2 text-lg font-semibold tracking-tight">
+        <UserRoundX size={18} strokeWidth={1.6} className="text-text-muted" /> People you haven't talked to in a while
+      </h2>
+      <PageIntro>
+        People from your People list with no logged interaction recently - so you don't lose touch. Tap someone to
+        open their profile, where "Get briefing" can suggest how to reconnect.
+      </PageIntro>
 
       <label className="mb-4 block text-sm">
-        Flag people not contacted in the last{' '}
-        <span className="font-semibold text-accent">{threshold}</span> days
+        Show people not talked to in the last <span className="font-semibold text-accent">{threshold}</span> days
         <input
           type="range"
           min={7}
@@ -472,7 +498,7 @@ export default function DigestPage() {
 
       {staleLoading && <p className="text-sm text-text-muted">Loading…</p>}
       {!staleLoading && stalePeople?.length === 0 && (
-        <p className="text-sm text-text-muted">No relationships have gone quiet by that threshold.</p>
+        <p className="text-sm text-text-muted">Nobody's gone quiet by that threshold - you're caught up.</p>
       )}
       <div className="flex flex-col gap-2">
         {stalePeople?.map((p) => (

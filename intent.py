@@ -17,7 +17,7 @@ filtering happens earlier, in moderation.py, before this ever runs.
 
 import json
 
-from llm_client import get_client, MODEL_NAME
+from llm_client import get_client, FAST_MODEL_NAME
 
 _SYSTEM_PROMPT = """You classify a message sent to a personal-CRM chat app as one of:
 
@@ -29,7 +29,12 @@ _SYSTEM_PROMPT = """You classify a message sent to a personal-CRM chat app as on
 - "ask": the user is asking a question about THEIR OWN logged data - a specific person, a past
   interaction, an open follow-up, or searching for something discussed before (e.g. "What did
   Priya say about pricing?", "Who do I need to follow up with?", "Summarize my last call with
-  Arjun", "When did I last talk to Rohan?").
+  Arjun", "When did I last talk to Rohan?"). This also covers forward-looking prep questions
+  about a specific named person - "What should I talk to Sunil about?", "Any prep tips before I
+  meet Priya?", "What should I bring up with Arjun?" - these still need the person's past
+  interactions to answer well (open follow-ups, unresolved concerns, last topics discussed), so
+  they're "ask", not "out_of_scope", even though they're phrased as asking for advice rather than
+  asking what was literally said.
 - "out_of_scope": the user is asking for something a general-purpose chat assistant does, with
   no connection to their own logged notes/contacts/tasks - a joke, a story, a poem, code, an
   image, general trivia or how-to knowledge, or anything else this product isn't built to do.
@@ -57,7 +62,7 @@ def classify(text: str) -> str:
     try:
         client = get_client()
         response = client.chat.completions.create(
-            model=MODEL_NAME,
+            model=FAST_MODEL_NAME,
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": text},

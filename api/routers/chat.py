@@ -24,11 +24,17 @@ directly in api/routers/capture.py, since the same safety gate has to
 apply no matter which entry point text/OCR'd text comes in through.
 """
 
+import asyncio
+import json
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 import intent
 import moderation
+from timing import step
 from api.auth import get_current_user_id
 from api.rate_limit import limiter
 from api.routers import ask as ask_router
@@ -54,13 +60,17 @@ _UNSAFE_MESSAGE = "I can't help with that request."
 @router.post("")
 @limiter.limit("20/minute")
 async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_current_user_id)):
-    moderation_result = await run_in_threadpool(moderation.check, body.text)
+    t_start = time.perf_counter()
+    with step("moderation"):
+        moderation_result = await run_in_threadpool(moderation.check, body.text)
     if not moderation_result["safe"]:
         return {"intent": "blocked", "status": "answered", "reason": "unsafe", "answer": _UNSAFE_MESSAGE}
 
-    detected = await run_in_threadpool(intent.classify, body.text)
+    with step("intent_classify"):
+        detected = await run_in_threadpool(intent.classify, body.text)
 
     if detected == "out_of_scope":
+        print(f"[timing] chat_total: {time.perf_counter() - t_start:.2f}s")
         return {
             "intent": "blocked",
             "status": "answered",
@@ -74,18 +84,107 @@ async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_c
         # going through the route would run it again for no benefit. See
         # _capture_text_core's own docstring for why this can't just be a
         # bool kwarg on the route function instead.
-        result = await capture_router._capture_text_core(user_id, body.text, body.geo_lat, body.geo_lng, request)
+        with step("capture_total"):
+            result = await capture_router._capture_text_core(user_id, body.text, body.geo_lat, body.geo_lng, request)
+        print(f"[timing] chat_total: {time.perf_counter() - t_start:.2f}s")
         return {"intent": "capture", **result}
 
     # _ask_core, not the ask() route - same reasoning as the capture
     # branch above: moderation already ran on this exact text.
     try:
+        with step("ask_total"):
+            result = await run_in_threadpool(
+                ask_router._ask_core, user_id, AskRequest(query=body.text, history=body.history)
+            )
+    except HTTPException:
+        raise
+    print(f"[timing] chat_total: {time.perf_counter() - t_start:.2f}s")
+    return {"intent": "ask", **result}
+
+
+def _sse(event: str, data) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, queue: "asyncio.Queue") -> None:
+    """Does the exact same work as chat() above, but pushes a ("stage", name)
+    onto `queue` before each major step instead of returning once at the
+    end - run as a background task by chat_stream() below, concurrently
+    with that endpoint's loop draining the queue, so stage events reach the
+    client as they happen rather than all at once after the fact. Always
+    finishes by pushing exactly one ("result", ...) or ("error", ...)."""
+    try:
+        await queue.put(("stage", "moderating"))
+        moderation_result = await run_in_threadpool(moderation.check, body.text)
+        if not moderation_result["safe"]:
+            await queue.put(("result", {"intent": "blocked", "status": "answered", "reason": "unsafe", "answer": _UNSAFE_MESSAGE}))
+            return
+
+        await queue.put(("stage", "classifying"))
+        detected = await run_in_threadpool(intent.classify, body.text)
+
+        if detected == "out_of_scope":
+            await queue.put((
+                "result",
+                {"intent": "blocked", "status": "answered", "reason": "out_of_scope", "answer": _OUT_OF_SCOPE_MESSAGE},
+            ))
+            return
+
+        if detected == "capture":
+            async def on_stage(stage: str) -> None:
+                await queue.put(("stage", stage))
+
+            result = await capture_router._capture_text_core(
+                user_id, body.text, body.geo_lat, body.geo_lng, request, on_stage=on_stage
+            )
+            await queue.put(("result", {"intent": "capture", **result}))
+            return
+
+        await queue.put(("stage", "thinking"))
         result = await run_in_threadpool(
             ask_router._ask_core, user_id, AskRequest(query=body.text, history=body.history)
         )
-    except HTTPException:
-        raise
-    return {"intent": "ask", **result}
+        await queue.put(("result", {"intent": "ask", **result}))
+    except HTTPException as e:
+        await queue.put(("error", {"detail": e.detail, "status_code": e.status_code}))
+    except Exception as e:
+        await queue.put(("error", {"detail": str(e), "status_code": 500}))
+
+
+async def _chat_stream_body(body: ChatRequest, request: Request, user_id: str):
+    queue: asyncio.Queue = asyncio.Queue()
+    task = asyncio.create_task(_run_chat_pipeline(body, request, user_id, queue))
+    try:
+        while True:
+            kind, payload = await queue.get()
+            yield _sse(kind, payload)
+            if kind in ("result", "error"):
+                break
+    finally:
+        # The client navigating away or hitting Stop closes the response
+        # stream from fastapi's side - without this, the background task
+        # above would keep running (and keep spending Groq/Gemini tokens)
+        # for a request nobody's listening to anymore.
+        if not task.done():
+            task.cancel()
+
+
+@router.post("/stream")
+@limiter.limit("20/minute")
+async def chat_stream(body: ChatRequest, request: Request, user_id: str = Depends(get_current_user_id)):
+    """Server-Sent Events version of chat() above, for the frontend's main
+    send path - same moderation -> intent -> capture/ask logic (actually
+    runs through it, via _run_chat_pipeline, not a reimplementation), but
+    emits a `stage` event before each major step so the UI can show live
+    progress ("Extracting the details...", "Saving...") instead of a bare
+    spinner for however long extraction happens to take. Ends with exactly
+    one `result` event (the same JSON body chat() would have returned) or
+    one `error` event. chat() itself stays as-is for any other caller."""
+    return StreamingResponse(
+        _chat_stream_body(body, request, user_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/confirm")

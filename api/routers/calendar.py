@@ -9,6 +9,7 @@ parameter carries the user's identity across that unauthenticated hop
 instead.
 """
 
+import logging
 import os
 import secrets
 from typing import Optional
@@ -19,6 +20,8 @@ from fastapi.responses import RedirectResponse
 import db
 import google_calendar
 from api.auth import get_current_user_id
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -51,6 +54,11 @@ def oauth_callback(code: Optional[str] = None, state: Optional[str] = None, erro
     try:
         google_calendar.exchange_code(user_id, code)
     except Exception:
+        # Previously swallowed with no trace at all, so a failing connect
+        # (bad redirect URI, invalid_grant, a missing refresh_token on
+        # Google's response, etc.) was undiagnosable from the UI's generic
+        # error banner alone - at least log it server-side.
+        logger.exception("Google Calendar OAuth exchange failed for user %s", user_id)
         return RedirectResponse(f"{FRONTEND_URL}/digest?calendar=error")
     return RedirectResponse(f"{FRONTEND_URL}/digest?calendar=connected")
 

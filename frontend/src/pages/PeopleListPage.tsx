@@ -8,6 +8,7 @@ import Avatar from '../components/Avatar'
 import Button from '../components/Button'
 import Card from '../components/Card'
 import { Input, Label } from '../components/fields'
+import PageIntro from '../components/PageIntro'
 
 function CompanyBriefingSection() {
   const { data: companies } = useCompanies()
@@ -81,9 +82,10 @@ export default function PeopleListPage() {
 
   return (
     <div>
-      <h1 className="mb-4 flex items-center gap-2 text-2xl font-bold tracking-tight">
+      <h1 className="mb-1 flex items-center gap-2 text-2xl font-bold tracking-tight">
         <Users size={22} strokeWidth={1.6} className="text-accent" /> People
       </h1>
+      <PageIntro>Everyone you've talked about, with their full history in one timeline.</PageIntro>
 
       <CompanyBriefingSection />
 
