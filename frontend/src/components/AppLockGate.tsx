@@ -81,7 +81,7 @@ export default function AppLockGate({ children }: { children: ReactNode }) {
       <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft text-text">
         <ConfiaLogo size={22} />
       </div>
-      <h1 className="mb-1 text-lg font-semibold tracking-tight text-text">Confía is locked</h1>
+      <h1 className="mb-1 text-lg font-semibold tracking-tight text-text">MyConfía is locked</h1>
       <p className="mb-6 flex items-center gap-1 text-sm text-text-muted">
         <ShieldCheck size={14} strokeWidth={1.6} />
         Enter your PIN to continue

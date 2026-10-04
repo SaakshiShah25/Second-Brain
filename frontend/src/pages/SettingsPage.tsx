@@ -8,6 +8,7 @@ import AppLockSettings from '../components/AppLockSettings'
 import Card from '../components/Card'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useTour } from '../components/TourGate'
+import { applyPalette, getStoredPalette, PALETTE_OPTIONS, setStoredPalette, type Palette } from '../lib/palette'
 
 const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Sun }[] = [
   { value: 'light', label: 'Light', icon: Sun },
@@ -28,6 +29,13 @@ export default function SettingsPage() {
   const deleteAccount = useDeleteAccount()
   const navigate = useNavigate()
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [palette, setPalette] = useState<Palette>(() => getStoredPalette())
+
+  function choosePalette(value: Palette) {
+    setPalette(value)
+    setStoredPalette(value)
+    applyPalette(value)
+  }
 
   return (
     <div className="mx-auto max-w-xl">
@@ -52,6 +60,35 @@ export default function SettingsPage() {
       </Card>
 
       <AppLockSettings />
+
+      <Card className="mb-4">
+        <h2 className="mb-3 text-sm font-semibold tracking-tight text-text-muted">Color palette</h2>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {PALETTE_OPTIONS.map(({ value, label, description, bg, accent }) => {
+            const active = palette === value
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => choosePalette(value)}
+                title={description}
+                className={`flex flex-col items-start gap-2 rounded-lg border p-3 text-left transition-colors ${
+                  active ? 'border-accent bg-accent-soft' : 'border-border-strong hover:border-accent/50'
+                }`}
+              >
+                <span className="flex w-full items-center justify-between">
+                  <span
+                    className="h-6 w-6 flex-shrink-0 rounded-full border border-border-strong"
+                    style={{ background: `conic-gradient(${accent} 0 50%, ${bg} 50% 100%)` }}
+                  />
+                  {active && <Check size={14} strokeWidth={2} className="text-accent" />}
+                </span>
+                <span className={`text-xs font-medium ${active ? 'text-accent' : 'text-text'}`}>{label}</span>
+              </button>
+            )
+          })}
+        </div>
+      </Card>
 
       <Card className="mb-4">
         <h2 className="mb-3 text-sm font-semibold tracking-tight text-text-muted">Appearance</h2>

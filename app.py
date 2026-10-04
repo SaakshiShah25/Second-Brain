@@ -1,5 +1,5 @@
 """
-app.py — Entry point for the Second Brain Streamlit app.
+app.py — Entry point for the MyConfía Streamlit app.
 
 A thin router: sets up the page and hands off to one of three pages, each
 implemented in views/ and reusing the same underlying building blocks
@@ -28,7 +28,7 @@ import streamlit as st
 
 from views import chat_view, people_view, digest_view
 
-st.set_page_config(page_title="Second Brain", page_icon="🧠", layout="centered")
+st.set_page_config(page_title="MyConfía", page_icon="🧠", layout="centered")
 
 # Custom theme (assets/style.css) - applies to every page since this
 # entry script fully re-executes on every navigation. Complements

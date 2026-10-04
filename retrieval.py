@@ -628,7 +628,7 @@ def answer_query(user_query: str, conversation_context: str = "") -> str:
 
 
 if __name__ == "__main__":
-    print("=== Second Brain: Ask a question ===")
+    print("=== MyConfía: Ask a question ===")
     print("(Make sure SUPABASE_URL / SUPABASE_KEY / GROQ_API_KEY are set - see README.md)\n")
     history = []  # tracks this session's turns so pronouns/back-references resolve correctly
     while True:

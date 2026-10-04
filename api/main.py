@@ -1,5 +1,5 @@
 """
-api/main.py — FastAPI entry point for the Second Brain backend
+api/main.py — FastAPI entry point for the MyConfía backend
 (Phase 1 of the Streamlit -> PWA migration - see the plan/README).
 
 Run with (from repo root, so `import db` etc. resolve the same way
@@ -27,7 +27,7 @@ from api.auth import get_current_user_id
 from api.rate_limit import limiter
 from api.routers import ask, brief, calendar, capture, chat, initiatives, notes, people, settings, tasks
 
-app = FastAPI(title="Confía API")
+app = FastAPI(title="MyConfía API")
 
 # Rate limiting, keyed by client IP rather than user_id (see
 # api/rate_limit.py) - simpler (no extra auth round-trip just to get a

@@ -1,5 +1,5 @@
 """
-db.py — Supabase (Postgres + pgvector) storage layer for the "Second Brain" prototype.
+db.py — Supabase (Postgres + pgvector) storage layer for the "MyConfía" prototype.
 
 Replaces the earlier local-SQLite version. Structured data (Person, Interaction,
 Task) lives in Postgres tables; embeddings live in a real pgvector `vector`

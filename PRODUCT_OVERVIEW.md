@@ -1,4 +1,4 @@
-# Confía — Product & Technical Overview
+# MyConfía — Product & Technical Overview
 
 _Last updated: August 31, 2026_
 
