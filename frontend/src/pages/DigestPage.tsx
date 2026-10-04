@@ -4,9 +4,9 @@ import {
   Calendar,
   CalendarCheck,
   CalendarPlus,
+  Check,
   CheckCircle2,
   ChevronDown,
-  Circle,
   Mail,
   Sunrise,
   TriangleAlert,
@@ -37,7 +37,7 @@ function MorningBriefCard() {
         <h2 className="text-sm font-semibold tracking-tight text-text-muted">Morning brief</h2>
         <Button onClick={() => sendEmail.mutate()} disabled={sendEmail.isPending} title="Resend this to your email now">
           <span className="flex items-center gap-1.5">
-            <Mail size={14} strokeWidth={2} />
+            <Mail size={14} strokeWidth={1.6} />
             {sendEmail.isPending ? 'Sending…' : 'Send now'}
           </span>
         </Button>
@@ -67,11 +67,11 @@ function MorningBriefCard() {
 }
 
 const FILTERS: { value: TaskFilter; label: string }[] = [
-  { value: 'overdue', label: 'Overdue' },
-  { value: 'due_soon', label: 'Due soon' },
-  { value: 'open', label: 'Open' },
-  { value: 'done', label: 'Done' },
   { value: 'all', label: 'All' },
+  { value: 'open', label: 'Open' },
+  { value: 'due_soon', label: 'Due soon' },
+  { value: 'done', label: 'Done' },
+  { value: 'overdue', label: 'Overdue' },
 ]
 
 function dueLabel(dueDate: string | null, status: 'open' | 'done'): { text: string; overdue: boolean } {
@@ -80,10 +80,25 @@ function dueLabel(dueDate: string | null, status: 'open' | 'done'): { text: stri
   return { text: overdue ? `overdue (${dueDate})` : `due ${dueDate}`, overdue }
 }
 
+// "Unknown" is a placeholder for "a person was involved but wasn't
+// named" - it's a real, explicit match (unlike a null person), so the
+// fallback chain below would otherwise show it literally. Showing the
+// literal word "Unknown" to the user reads as broken, not informative -
+// treat it the same as no person at all and fall through to the
+// initiative instead.
+function realName(name: string | null | undefined): string | undefined {
+  return name && name.trim().toLowerCase() !== 'unknown' ? name : undefined
+}
+
 type OwnerFilter = 'all' | 'me' | 'them'
 
-const OWNER_FILTERS: { value: OwnerFilter; label: string }[] = [
-  { value: 'all', label: 'All open tasks' },
+// No separate "All open tasks" pill - it just duplicated the top-level
+// "All"/"Open" filters with a second, differently-scoped meaning of
+// "all" a couple lines below them. Clicking whichever of these two IS
+// active turns it back off (returning ownerFilter to 'all', i.e. no
+// owner filter) instead - the same one-tap-to-clear toggle behavior as
+// most filter-chip rows.
+const OWNER_FILTERS: { value: Exclude<OwnerFilter, 'all'>; label: string }[] = [
   { value: 'me', label: 'My tasks' },
   { value: 'them', label: 'Their tasks' },
 ]
@@ -128,7 +143,7 @@ export default function DigestPage() {
   return (
     <div>
       <h1 className="mb-6 flex items-center gap-2 text-2xl font-bold tracking-tight">
-        <Sunrise size={22} strokeWidth={2} className="text-accent" /> Digest
+        <Sunrise size={22} strokeWidth={1.6} className="text-accent" /> Today
       </h1>
 
       <MorningBriefCard />
@@ -136,7 +151,7 @@ export default function DigestPage() {
       {calendarResult === 'connected' && (
         <Card className="mb-4 flex items-center justify-between gap-3 border-green-600/40">
           <p className="flex items-center gap-1.5 text-sm">
-            <CheckCircle2 size={15} strokeWidth={2} className="text-green-600" /> Google Calendar connected.
+            <CheckCircle2 size={15} strokeWidth={1.6} className="text-green-600" /> Google Calendar connected.
           </p>
           <Button onClick={dismissCalendarResult}>Dismiss</Button>
         </Card>
@@ -144,7 +159,7 @@ export default function DigestPage() {
       {calendarResult === 'error' && (
         <Card className="mb-4 flex items-center justify-between gap-3">
           <p className="flex items-center gap-1.5 text-sm text-danger">
-            <TriangleAlert size={15} strokeWidth={2} /> Couldn't connect Google Calendar - please try again.
+            <TriangleAlert size={15} strokeWidth={1.6} /> Couldn't connect Google Calendar - please try again.
           </p>
           <Button onClick={dismissCalendarResult}>Dismiss</Button>
         </Card>
@@ -157,7 +172,7 @@ export default function DigestPage() {
           </p>
           <Button variant="primary" onClick={() => startConnect.mutate()} disabled={startConnect.isPending}>
             <span className="flex items-center gap-1.5">
-              <Calendar size={15} strokeWidth={2} /> Connect Google Calendar
+              <Calendar size={15} strokeWidth={1.6} /> Connect Google Calendar
             </span>
           </Button>
         </Card>
@@ -206,11 +221,11 @@ export default function DigestPage() {
             {OWNER_FILTERS.map((f) => (
               <button
                 key={f.value}
-                onClick={() => setOwnerFilter(f.value)}
+                onClick={() => setOwnerFilter(ownerFilter === f.value ? 'all' : f.value)}
                 className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                   ownerFilter === f.value
                     ? f.value === 'them'
-                      ? 'border-amber-400/50 bg-amber-400/10 text-amber-500'
+                      ? 'border-them-task/50 bg-them-task/10 text-them-task'
                       : 'border-accent bg-accent-soft text-accent'
                     : 'border-border-strong bg-bg-card text-text-muted hover:text-text'
                 }`}
@@ -226,12 +241,28 @@ export default function DigestPage() {
       {isLoading && <p className="text-sm text-text-muted">Loading…</p>}
       {!isLoading && visibleTasks.length === 0 && <p className="text-sm text-text-muted">Nothing here.</p>}
 
+      {visibleTasks.length > 0 && (
+        <div className="mb-3 flex items-center gap-4 text-xs text-text-muted">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-accent" /> My tasks
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-them-task" /> Their tasks
+          </span>
+        </div>
+      )}
+
       <div className="mb-8 flex flex-col gap-2">
         {visibleTasks.map((task) => {
           const due = dueLabel(task.due_date, task.status)
           const isExpanded = expandedTaskId === task.id
           return (
-            <Card key={task.id} className="!p-0 overflow-hidden">
+            <Card
+              key={task.id}
+              className={`!p-0 overflow-hidden border-l-4 ${
+                task.owner === 'them' ? 'border-l-them-task' : 'border-l-accent'
+              }`}
+            >
               {/* Collapsed row: just the essentials (what it is, who it's
                   about, when it's due) - everything else (owner, calendar
                   scheduling) is an action, revealed on tap instead of
@@ -245,13 +276,17 @@ export default function DigestPage() {
                   }
                   disabled={updateStatus.isPending}
                   title={task.status === 'open' ? 'Mark done' : 'Reopen'}
-                  className="mt-0.5 flex-shrink-0 text-text-faint transition-colors hover:text-success disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-0.5 flex-shrink-0 disabled:cursor-not-allowed"
                 >
-                  {task.status === 'done' ? (
-                    <CheckCircle2 size={20} strokeWidth={2} className="text-success" />
-                  ) : (
-                    <Circle size={20} strokeWidth={2} />
-                  )}
+                  <span
+                    className={`flex h-5 w-5 items-center justify-center rounded-[5px] border-2 transition-colors ${
+                      task.status === 'done'
+                        ? 'border-success bg-success text-white'
+                        : 'border-text-faint text-transparent hover:border-success'
+                    }`}
+                  >
+                    <Check size={13} strokeWidth={3} />
+                  </span>
                 </button>
 
                 <button
@@ -265,17 +300,55 @@ export default function DigestPage() {
                     </span>
                     <ChevronDown
                       size={13}
-                      strokeWidth={2}
+                      strokeWidth={1.6}
                       className={`mt-1 flex-shrink-0 text-text-faint transition-transform ${
                         isExpanded ? 'rotate-180' : ''
                       }`}
                     />
                   </span>
                   <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-text-muted">
-                    <span className="truncate">{task.interaction?.person?.name ?? 'Unknown'}</span>
+                    {/* Prefer the task's own directly-linked person (who
+                        this SPECIFIC follow-up is about) - set only when
+                        the task text explicitly names someone, so it's
+                        always safe to show regardless of owner (e.g.
+                        "Send Vikas a proposal" naming Vikas even though I
+                        own it). Only default to the note's PRIMARY person
+                        when THEY own the task - that's the one case where
+                        "no one specific was named" reasonably means "the
+                        person this note is about". For a task I own with
+                        no one named, defaulting to the note's primary
+                        person is actively misleading (e.g. my fitness
+                        trainer mentions I should buy new workout gear -
+                        that's MY to-do, not hers) - fall straight to the
+                        note's initiative instead (e.g. "Fitness"), same
+                        "no person to show because there genuinely isn't
+                        one" reasoning as a fully standalone note. "Personal"
+                        is the final fallback if there's neither. */}
+                    <span className="truncate">
+                      {(() => {
+                        const personLabel =
+                          realName(task.person?.name) ??
+                          (task.owner === 'them' ? realName(task.interaction?.person?.name) : undefined)
+                        if (!personLabel) return task.interaction?.initiative?.name ?? 'Personal'
+                        // A bare name here reads as "this task belongs to
+                        // them" - fine when they actually owe it, but
+                        // actively misleading for a task I OWN that
+                        // merely names them as the target (e.g. "Send
+                        // Pratik the link" showed as just "Pratik", which
+                        // read like the task was assigned to/by him
+                        // rather than something I need to do involving
+                        // him - the real distinction only showed up in
+                        // the "Owed by me" chip after expanding). "For X"
+                        // makes that relationship explicit right in the
+                        // collapsed summary line, with no extra click
+                        // needed. Left unprefixed when they actually owe
+                        // it - a bare name there already reads correctly.
+                        return task.owner === 'me' ? `For ${personLabel}` : personLabel
+                      })()}
+                    </span>
                     <span>·</span>
                     <span className={`flex items-center gap-1 whitespace-nowrap ${due.overdue ? 'font-medium text-danger' : ''}`}>
-                      {due.overdue && <TriangleAlert size={12} strokeWidth={2} />}
+                      {due.overdue && <TriangleAlert size={12} strokeWidth={1.6} />}
                       {due.text}
                     </span>
                   </p>
@@ -292,14 +365,27 @@ export default function DigestPage() {
                         updateOwner.mutate({ taskId: task.id, owner: task.owner === 'them' ? 'me' : 'them' })
                       }
                       disabled={updateOwner.isPending}
-                      className={`flex-shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      className={`flex-shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium transition-colors disabled:cursor-not-allowed ${
                         task.owner === 'them'
-                          ? 'border-amber-400/40 bg-amber-400/10 text-amber-500 hover:border-amber-400/60'
+                          ? 'border-them-task/40 bg-them-task/10 text-them-task hover:border-them-task/60'
                           : 'border-accent bg-accent-soft text-accent'
                       }`}
                     >
                       {task.owner === 'them' ? 'Owed by them' : 'Owed by me'}
                     </button>
+                    <Button
+                      onClick={() =>
+                        updateStatus.mutate({ taskId: task.id, status: task.status === 'open' ? 'done' : 'open' })
+                      }
+                      disabled={updateStatus.isPending}
+                      className={
+                        task.status === 'open'
+                          ? 'border-success/40 bg-success/10 text-success hover:border-success/60'
+                          : 'border-border-strong bg-bg-card text-text-muted hover:text-text'
+                      }
+                    >
+                      {task.status === 'open' ? 'Mark done' : 'Reopen'}
+                    </Button>
                     <span className="flex-1" />
                     {calendarStatus?.connected && task.due_date && (
                       task.calendar_event_id ? (
@@ -309,7 +395,7 @@ export default function DigestPage() {
                           title="Remove from Google Calendar"
                         >
                           <span className="flex items-center gap-1">
-                            <CalendarCheck size={14} strokeWidth={2} /> On Calendar
+                            <CalendarCheck size={14} strokeWidth={1.6} /> On Calendar
                           </span>
                         </Button>
                       ) : (
@@ -325,7 +411,7 @@ export default function DigestPage() {
                           title="Schedule this meeting on Google Calendar"
                         >
                           <span className="flex items-center gap-1">
-                            <CalendarPlus size={14} strokeWidth={2} /> Schedule meet
+                            <CalendarPlus size={14} strokeWidth={1.6} /> Schedule meet
                           </span>
                         </Button>
                       )

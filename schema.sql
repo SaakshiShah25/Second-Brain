@@ -266,6 +266,13 @@ alter table task add column if not exists owner text default 'me';
 -- networking/contract/support/internal/other - free text (not a DB
 -- enum) for flexibility, but extraction.py's prompt constrains the LLM
 -- to that fixed set.
+--
+-- REMOVED as a feature (redundant once notes are already sorted into
+-- user-managed initiatives) - extraction.py no longer asks the LLM for
+-- it, nothing writes it going forward, and the UI no longer reads or
+-- edits it. Column kept, not dropped, same as the client/contract tables
+-- above - existing rows already tagged aren't destroyed, just no longer
+-- shown.
 alter table interaction add column if not exists meeting_type text default '';
 
 -- interaction.decisions: settled outcomes reached in the meeting,
@@ -276,12 +283,15 @@ alter table interaction add column if not exists decisions jsonb default '[]'::j
 -- from the general topic-level `sentiment` column.
 alter table interaction add column if not exists concerns jsonb default '[]'::jsonb;
 
--- 15. Phase 10: Clients dashboard. Once a deal closes, the finalized
---     agreement (PDF/.docx/scanned photo) is uploaded, structured into
---     these fields by document_extract.py, and the original file is kept
---     in Supabase Storage (see storage.py) - client.document_path is a
---     storage path, not the file itself; the file is only ever served
---     back out via a short-lived signed URL.
+-- 15. Phase 10: Clients dashboard. REMOVED from the app (frontend pages,
+--     api/routers/clients.py, document_extract.py, and storage.py are all
+--     deleted) - these two tables are deliberately left here rather than
+--     dropped, so any contract data already saved isn't destroyed; they're
+--     just dormant now. Original comment, kept for context: once a deal
+--     closed, the finalized agreement (PDF/.docx/scanned photo) was
+--     uploaded, structured into these fields, and the original file kept
+--     in Supabase Storage - client.document_path was a storage path, not
+--     the file itself, served back out via a short-lived signed URL.
 
 create table if not exists client (
     id bigint generated always as identity primary key,
@@ -441,3 +451,143 @@ create table if not exists user_preference (
 --     page is a separate, explicit per-click resend and is unaffected by
 --     this flag either way.
 alter table user_preference add column if not exists daily_brief_email_enabled boolean not null default true;
+
+-- 20. Phase 11: Notes / Initiatives. A note (interaction) no longer has
+--     to be about a specific person - it can be a standalone idea/
+--     reminder (person_id now nullable). Notes can also be classified
+--     into a user-managed "initiative" (Tenaxis AI, Personal, Job,
+--     Fitness, etc.) - a per-NOTE category, distinct from person.tags
+--     (which tags a PERSON, e.g. "client"/"friend").
+
+alter table interaction alter column person_id drop not null;
+
+create table if not exists initiative (
+    id bigint generated always as identity primary key,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    name text not null,
+    color text,                              -- optional hex, nullable - no v1 color-picker UI
+    created_at timestamptz not null default now()
+);
+
+create unique index if not exists initiative_user_id_lower_name_idx
+    on initiative (user_id, lower(name));
+
+alter table initiative enable row level security;
+drop policy if exists "Users manage their own initiatives" on initiative;
+create policy "Users manage their own initiatives" on initiative
+    for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ON DELETE SET NULL - deleting an initiative un-categorizes its notes
+-- rather than destroying them or blocking the delete.
+alter table interaction add column if not exists initiative_id
+    bigint references initiative(id) on delete set null;
+
+-- 21. A follow-up task can be about someone OTHER than the interaction's
+--     primary person (e.g. a note about a meeting with two people, where
+--     the follow-up is specifically for the secondary one) - task.person_id
+--     lets a task carry its own specific person instead of always
+--     inheriting the interaction's primary person for display. Nullable
+--     and ON DELETE SET NULL: null means "use the interaction's primary
+--     person" (the existing/default behavior, and what every pre-existing
+--     task already implicitly does), not an error state.
+alter table task add column if not exists person_id
+    bigint references person(id) on delete set null;
+
+-- 22. Encrypt-at-rest for note/person/task content (see crypto_utils.py
+--     and db.py's _encrypt_fields()/_decrypt_row()). The app-level key
+--     (ENCRYPTION_KEY) encrypts before every write and decrypts after
+--     every read - this DDL alone does NOT encrypt any existing data.
+--     Existing rows are migrated by the one-off
+--     scripts/encrypt_existing_data.py, run once after ENCRYPTION_KEY is
+--     in place. No column-type changes needed here: jsonb happily stores
+--     a scalar string (a Fernet ciphertext token is just base64 text,
+--     and `"a-string"` is valid JSON), so sentiment/topics/
+--     extracted_facts/decisions/concerns/personal_notes stay jsonb -
+--     confirmed live against production before writing this migration.
+--
+--     NOT encrypted, deliberately: person.name/aliases/role/company/
+--     phone/email/tags and initiative.name - these are used for actual
+--     server-side matching (candidate resolution during capture, ilike
+--     company grouping, alias lookup) and encrypting them would break
+--     that matching.
+
+-- Onboarding tour "seen it" flag - same shape/reasoning as
+-- user_preference.terms_accepted_at (section 18): stored server-side,
+-- not localStorage, so it follows the account across the web app and
+-- the Android app rather than needing to be re-shown on each. Null
+-- until the user finishes or skips the tour (see
+-- POST /api/settings/complete-tour); both finishing and skipping set it
+-- the same way, since there's no separate "explicitly skipped" state to
+-- track - either way, don't auto-show it again.
+alter table user_preference add column if not exists tour_completed_at timestamptz;
+
+-- 23. The `client`/`client_signatory` tables (section 15) were kept
+--     dormant, not dropped, when the Clients/Contracts feature itself
+--     was removed from the app - purely so any contract data already
+--     saved at the time wasn't destroyed. Confirmed empty (0 rows in
+--     both, already truncated back when the feature was removed) and no
+--     application code references them anymore (db.py has no
+--     client/client_signatory functions at all). Safe to actually drop
+--     now - uncomment and run these two lines yourself when ready
+--     (left commented rather than run automatically, since dropping a
+--     table is irreversible and this file's other statements are all
+--     deliberately non-destructive create/alter-if-not-exists):
+-- drop table if exists client_signatory;
+-- drop table if exists client;
+
+-- 24. Free/premium subscriptions (see entitlements.py). Kept as its own
+--     table rather than more columns on user_preference - this maps
+--     directly onto a payment provider's own webhook events
+--     (checkout completed / subscription updated / canceled), so it's
+--     natural for a webhook handler to upsert this whole row wholesale
+--     without touching unrelated UI settings. `tier` is the source of
+--     truth entitlements.py reads; the provider fields exist so a
+--     webhook can find the right row and so support can look up "what
+--     did this user actually pay for" without leaving this table.
+create table if not exists subscription (
+    user_id uuid primary key references auth.users(id) on delete cascade,
+    tier text not null default 'free',              -- 'free' | 'premium'
+    status text not null default 'active',          -- 'active' | 'canceled' | 'past_due'
+    provider text,                                   -- e.g. 'stripe' - null while still on free
+    provider_customer_id text,
+    provider_subscription_id text,
+    current_period_end timestamptz,                  -- premium access is honored through this date
+                                                       -- even after cancellation (paid-through period)
+    created_at timestamptz default now(),
+    updated_at timestamptz default now()
+);
+
+-- Monthly usage counters for free-tier metering (see entitlements.py's
+-- check_and_increment()). One row per (user, resource, calendar month) -
+-- `period` is the month's first day (e.g. '2026-09-01'), so "this
+-- month's count" is always a single-row lookup, and old rows are just
+-- inert history (nothing needs to actively reset them at month-end).
+create table if not exists usage_counter (
+    user_id uuid not null references auth.users(id) on delete cascade,
+    resource text not null,      -- e.g. 'interactions_logged', 'ai_questions_asked'
+    period date not null,        -- first day of the calendar month this count applies to
+    count integer not null default 0,
+    primary key (user_id, resource, period)
+);
+
+-- Atomic "insert or +1" for usage_counter, called via
+-- supabase.rpc("increment_usage_counter", {...}) from db.increment_usage().
+-- Needed because two concurrent requests each doing a Python-side
+-- read-then-write (get count, add 1, write) could both read the same
+-- starting value and one increment would be lost - `on conflict ... do
+-- update` pushes the read-modify-write into a single atomic statement
+-- instead.
+create or replace function increment_usage_counter (
+    p_user_id uuid,
+    p_resource text,
+    p_period date
+)
+returns integer
+language sql
+as $$
+    insert into usage_counter (user_id, resource, period, count)
+    values (p_user_id, p_resource, p_period, 1)
+    on conflict (user_id, resource, period)
+    do update set count = usage_counter.count + 1
+    returning count;
+$$;

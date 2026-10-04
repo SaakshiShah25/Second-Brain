@@ -1,5 +1,5 @@
 """
-api/main.py — FastAPI entry point for the Second Brain backend
+api/main.py — FastAPI entry point for the MyConfía backend
 (Phase 1 of the Streamlit -> PWA migration - see the plan/README).
 
 Run with (from repo root, so `import db` etc. resolve the same way
@@ -16,14 +16,38 @@ load_dotenv()
 
 from fastapi import Depends, FastAPI, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 import db
 import voice
 from llm_client import get_client as get_llm_client
 from api.auth import get_current_user_id
-from api.routers import ask, brief, calendar, capture, chat, clients, people, settings, tasks
+from api.rate_limit import limiter
+from api.routers import ask, brief, calendar, capture, chat, initiatives, notes, people, settings, tasks
 
-app = FastAPI(title="Second Brain API")
+app = FastAPI(title="MyConfía API")
+
+# Rate limiting, keyed by client IP rather than user_id (see
+# api/rate_limit.py) - simpler (no extra auth round-trip just to get a
+# limiter key) and it also covers unauthenticated abuse (e.g. hammering
+# login) that a user_id-keyed limiter would miss entirely. This is the
+# single Render instance's in-memory store (slowapi's default) - fine at
+# current scale, but it resets on redeploy/restart and won't be shared
+# across multiple instances if this ever scales horizontally; swap the
+# storage_uri to Redis at that point, nothing else here needs to change.
+# The Limiter's own generous default (every route not explicitly
+# overridden) guards against basic abuse/DoS; the LLM-calling entry
+# points (chat.py, capture.py's voice/card endpoints) carry a tighter,
+# explicit @limiter.limit(...) since those are what actually cost money
+# against Groq/Cohere's shared, rate-limited free-tier quota - including
+# the one moderation.py fails OPEN under quota pressure (see its own
+# docstring), so protecting that quota is itself a safety measure, not
+# just a cost one.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # Vite's default dev server port always allowed (local dev); the deployed
 # frontend origin is added on top of that via FRONTEND_URL (the same env
@@ -48,9 +72,10 @@ app.include_router(capture.router, prefix="/api/capture", tags=["capture"])
 app.include_router(ask.router, prefix="/api/ask", tags=["ask"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(calendar.router, prefix="/api/calendar", tags=["calendar"])
-app.include_router(clients.router, prefix="/api/clients", tags=["clients"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(brief.router, prefix="/api/brief", tags=["brief"])
+app.include_router(initiatives.router, prefix="/api/initiatives", tags=["initiatives"])
+app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
 
 
 @app.get("/api/health")

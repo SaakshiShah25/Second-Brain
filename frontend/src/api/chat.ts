@@ -3,7 +3,7 @@ import { api } from './client'
 import type { Candidate, ChatMessage, ChatResult } from './types'
 
 // Invalidated on every successful capture-intent save, since a note can
-// create a person/interaction/task the Digest and People pages should
+// create a person/interaction/task the Today and People pages should
 // reflect next time they're viewed - same reasoning as api/capture.ts's
 // useInvalidateOnCapture.
 function useInvalidateOnCapture() {
@@ -11,6 +11,7 @@ function useInvalidateOnCapture() {
   return () => {
     queryClient.invalidateQueries({ queryKey: ['tasks'] })
     queryClient.invalidateQueries({ queryKey: ['people'] })
+    queryClient.invalidateQueries({ queryKey: ['notes'] })
   }
 }
 
@@ -47,6 +48,7 @@ export interface ChatConfirmBody {
   raw_text?: string
   interaction_date?: string
   date_warning?: string | null
+  initiative_id?: number | null
   geo_lat?: number | null
   geo_lng?: number | null
   // ask fields

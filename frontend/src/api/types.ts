@@ -53,7 +53,15 @@ export interface Task {
     date: string | null
     summary: string | null
     person: { id: number; name: string } | null
+    initiative: { id: number; name: string } | null
   } | null
+  // Who this SPECIFIC task is about, when that's someone other than the
+  // interaction's primary person (e.g. a note involving two people, where
+  // this follow-up is for the secondary one) - null means "use the
+  // interaction's primary person" (interaction.person above), the
+  // pre-existing default. Prefer this field over interaction.person when
+  // both are present.
+  person?: { id: number; name: string } | null
 }
 
 export interface TaskCounts {
@@ -75,9 +83,23 @@ export interface SentimentEntry {
   sentiment: string
 }
 
+// ---------- Initiatives (user-managed note categories) ----------
+
+export interface Initiative {
+  id: number
+  name: string
+  color: string | null
+  created_at: string
+}
+
 export interface Interaction {
   id: number
-  person_id: number
+  person_id: number | null // null for a standalone note not about any specific person
+  initiative_id: number | null // which user-managed initiative this note belongs to, if any - null = Uncategorized
+  // Only present on GET /api/notes' joined response (not on a person's
+  // own interaction list, which is inherently already scoped to them).
+  person?: { id: number; name: string } | null
+  initiative?: { id: number; name: string; color: string | null } | null
   raw_text: string
   date: string | null
   location: string | null
@@ -97,8 +119,6 @@ export interface Interaction {
   geo_lng: number | null
   geo_address: string | null
   maps_url: string | null
-  // discovery/demo/negotiation/check-in/networking/contract/support/internal/other
-  meeting_type: string
   decisions: string[]
   concerns: string[]
 }
@@ -112,7 +132,11 @@ export interface SecondaryMention {
     raw_text?: string
     location?: string | null
     appearance?: string
-    person: { id: number; name: string }
+    // null when the primary note itself was person-less (a personal
+    // task/reminder that merely named this person in passing, not an
+    // interaction with anyone) - this person is still "mentioned in" it,
+    // there's just no primary person to attribute the note to.
+    person: { id: number; name: string } | null
   }
 }
 
@@ -139,12 +163,12 @@ export interface ExtractedPrimaryPerson {
 }
 
 export interface ExtractedNote {
-  primary_person: ExtractedPrimaryPerson
+  primary_person: ExtractedPrimaryPerson | null // null = a standalone note, no person involved at all
+  initiative?: string | null // the initiative name the LLM classified this note into, or null
   other_people?: { name: string; relation: string }[]
   date_mentioned: string | null
   location: string | null
   appearance_this_meeting?: string
-  meeting_type?: string
   summary: string
   sentiments?: SentimentEntry[]
   topics?: string[]
@@ -156,17 +180,25 @@ export interface ExtractedNote {
 
 export interface CaptureSavedResult {
   status: 'saved'
-  person_id: number
-  resolved_name: string
+  person_id: number | null
+  resolved_name: string | null
   created_new: boolean
   interaction_id: number
+  initiative_id: number | null
+  // Only ever set when initiative_id is null - a proposed name for a new
+  // initiative this note seems to be about, for the frontend to offer as
+  // "add this as a new initiative?" (see ChatPage.tsx).
+  suggested_initiative: string | null
+  // The existing initiative this note WAS tagged with, by name - null
+  // means Uncategorized. Mutually exclusive with suggested_initiative
+  // (extraction.py never sets both for the same note).
+  initiative_name: string | null
   summary: string
   tasks_created: { description: string; due_date: string | null; owner: TaskOwner }[]
   date_warning: string | null
   skipped_due_dates: { description: string; raw_due_date: string }[]
   geo_address: string | null
   maps_url: string | null
-  meeting_type: string
   decisions: string[]
   concerns: string[]
 }
@@ -177,6 +209,7 @@ export interface CaptureConfirmRequiredResult {
   raw_text: string
   interaction_date: string
   date_warning: string | null
+  initiative_id: number | null
   candidates: Candidate[]
   geo_lat: number | null
   geo_lng: number | null
@@ -212,84 +245,21 @@ export interface ChatMessage {
 }
 
 // ---------- Unified chat (single thread, no mode tabs) ----------
-// POST /api/chat classifies each message as capture-intent or ask-intent
-// and returns the matching existing result shape with an `intent` tag
-// added - see api/routers/chat.py's docstring.
+// POST /api/chat classifies each message as capture-intent, ask-intent,
+// or "blocked" (failed the moderation check, or out of scope for what
+// this product does - a joke/story/code request, not a note or a
+// question about the user's own data) - see api/routers/chat.py's
+// docstring.
 
 export type ChatCaptureResult = { intent: 'capture' } & CaptureResult
 export type ChatAskResult = { intent: 'ask' } & AskResult
-export type ChatResult = ChatCaptureResult | ChatAskResult
-
-// ---------- Clients (Phase 10) ----------
-
-export type ExpiryState = 'active' | 'expiring_soon' | 'expired' | 'terminated'
-
-export interface Signatory {
-  name: string
-  role: string
-  side: 'client' | 'provider'
+export interface ChatBlockedResult {
+  intent: 'blocked'
+  status: 'answered'
+  reason: 'unsafe' | 'out_of_scope'
+  answer: string
 }
-
-export interface ClientSignatory extends Signatory {
-  id: number
-  person_id: number | null
-  person: { id: number; name: string } | null
-}
-
-export interface Client {
-  id: number
-  company: string
-  client_legal_name: string
-  provider_legal_name: string
-  effective_date: string | null
-  term_months: number | null
-  end_date: string | null
-  auto_renews: boolean
-  renewal_notice_days: number | null
-  fee_amount: number | null
-  fee_currency: string
-  fee_frequency: string
-  payment_terms: string
-  termination_terms: string
-  other_terms: string
-  status: string
-  document_path: string | null
-  document_filename: string
-  created_at: string
-  expiry_state: ExpiryState
-}
-
-export interface ClientDetail extends Client {
-  signatories: ClientSignatory[]
-}
-
-// What POST /api/clients/upload returns - fields extracted from the
-// document for review, plus the original file round-tripped as base64
-// so /api/clients/confirm can save it without a second upload.
-export interface AgreementExtracted {
-  client_company: string
-  client_legal_name: string
-  provider_legal_name: string
-  effective_date: string | null
-  term_months: number | null
-  end_date: string | null
-  auto_renews: boolean
-  renewal_notice_days: number | null
-  fee_amount: number | null
-  fee_currency: string
-  fee_frequency: string
-  payment_terms: string
-  termination_terms: string
-  other_terms: string
-  signatories: Signatory[]
-}
-
-export interface AgreementUploadResult {
-  extracted: AgreementExtracted
-  file_base64: string
-  filename: string
-  content_type: string
-}
+export type ChatResult = ChatCaptureResult | ChatAskResult | ChatBlockedResult
 
 // ---------- Settings (theme, font size, Terms of Service) ----------
 
@@ -302,6 +272,7 @@ export interface UserPreference {
   font_size: FontSize
   terms_accepted_at: string | null
   daily_brief_email_enabled: boolean
+  tour_completed_at: string | null
   updated_at: string
 }
 

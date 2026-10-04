@@ -1,28 +1,48 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 /*
-Same palette as the Streamlit app's assets/style.css - cool/modern dark
-theme, indigo-violet accent - kept for visual continuity across the
-migration. Exposed as CSS variables here and mapped into Tailwind's
-theme below via @theme, so both plain CSS and Tailwind utility classes
-(bg-surface, text-muted, etc.) can use them.
+Confía brand palette - indigo/amber, replacing the old purple/violet
+"Second Brain" theme (see git history for that palette). Indigo is the
+light-theme primary (buttons, active nav, primary actions); amber takes
+over as the primary action color in dark theme instead - the brand
+explicitly treats amber as "dark-theme primary actions," not a flat
+accent reused unchanged across both themes. Rose is a deliberately
+sparing secondary accent (used here for danger/delete, not a primary
+action, in either theme). Exposed as CSS variables here and mapped into
+Tailwind's theme below via @theme, so both plain CSS and Tailwind
+utility classes (bg-accent, text-muted, etc.) can use them - extend
+these tokens rather than hardcoding a brand color inline anywhere.
 */
 :root {
-  --sb-bg: #0a0c12;
-  --sb-bg-elevated: #12151e;
-  --sb-bg-card: #161a24;
-  --sb-bg-hover: #1c212e;
-  --sb-border: rgba(255, 255, 255, 0.08);
-  --sb-border-strong: rgba(255, 255, 255, 0.16);
-  --sb-text: #e8eaf0;
-  --sb-text-muted: #9098a8;
-  --sb-text-faint: #6b7280;
-  --sb-accent: #7c6cf6;
-  --sb-accent-hover: #6c5ce8;
-  --sb-accent-soft: rgba(124, 108, 246, 0.16);
-  --sb-danger: #f27272;
+  /* Darkest tier taken straight from the splash mockup's own gradient
+     stops (not a separate guess) - the splash reads noticeably darker
+     than a flat #211e36 page background did, so the base surface here
+     now matches that same darkest stop instead of its middle one. */
+  --sb-bg: #171526;
+  --sb-bg-elevated: #211e36; /* indigo deep - splash's middle gradient stop */
+  --sb-bg-card: #28243f;
+  --sb-bg-hover: #322c55; /* splash's lightest/center gradient stop */
+  --sb-border: rgba(247, 240, 228, 0.08);
+  --sb-border-strong: rgba(247, 240, 228, 0.18);
+  --sb-text: #f7f0e4; /* cream/paper - dark-theme text on dark backgrounds */
+  --sb-text-muted: #b8b2ce;
+  --sb-text-faint: #7a7492;
+  --sb-accent: #e9a73b; /* amber - dark-theme primary actions */
+  --sb-accent-hover: #d89530;
+  --sb-accent-soft: rgba(233, 167, 59, 0.15);
+  /* Text/icon color drawn ON TOP of --sb-accent (e.g. a filled button,
+     the mic button) - amber is light, so it needs dark text on it,
+     unlike the light theme's indigo accent which wants white on it. */
+  --sb-accent-contrast: #211e36;
+  --sb-danger: #c97186; /* rose - sparing secondary accent, not a primary color */
   --sb-success: #4ade80;
+  /* "Owed by them" task indicator (DigestPage) - a DIFFERENT color from
+     --sb-danger on purpose even though dark theme's value happens to
+     match it today: danger is reserved for destructive actions/errors,
+     this is reserved for "who owns this task", and the two only need to
+     look different from --sb-accent ("owed by me"), not from each other.
+     See the light-theme override below for why they diverge there. */
+  --sb-them-task: #c97186;
 
   /* Multiplier for the Settings page's font-size preference - applied on
      top of the responsive base size below via html's font-size formula. */
@@ -30,27 +50,233 @@ theme below via @theme, so both plain CSS and Tailwind utility classes
 }
 
 /* Light theme - opted into via data-theme="light" on <html> (set by
-   SettingsProvider from the user's stored preference). Apple's own
-   light-mode palette: white/near-white surfaces, near-black text
-   (#1d1d1f, not pure black), the same accent hue deepened slightly for
-   AA contrast on white, and danger/success darkened for the same reason
-   (the dark theme's pastel red/green read fine on a near-black
-   background but fail contrast as text on white). */
+   SettingsProvider from the user's stored preference). */
 :root[data-theme="light"] {
   --sb-bg: #ffffff;
-  --sb-bg-elevated: #f5f5f7;
+  --sb-bg-elevated: #f7f5fb;
   --sb-bg-card: #ffffff;
-  --sb-bg-hover: #f0f0f2;
-  --sb-border: rgba(0, 0, 0, 0.08);
-  --sb-border-strong: rgba(0, 0, 0, 0.14);
-  --sb-text: #1d1d1f;
-  --sb-text-muted: #6e6e73;
-  --sb-text-faint: #8e8e93;
-  --sb-accent: #6c5ce8;
-  --sb-accent-hover: #5b4bd6;
-  --sb-accent-soft: rgba(108, 92, 232, 0.12);
-  --sb-danger: #d92d20;
+  --sb-bg-hover: #f0eef7;
+  --sb-border: rgba(46, 42, 77, 0.08);
+  --sb-border-strong: #e4e0ee;
+  --sb-text: #211e36;
+  --sb-text-muted: #6b6580;
+  --sb-text-faint: #9490a6;
+  --sb-accent: #2e2a4d; /* indigo - light-theme primary actions */
+  --sb-accent-hover: #211e36;
+  --sb-accent-soft: #ede9fb;
+  --sb-accent-contrast: #ffffff;
+  --sb-danger: #c97186;
   --sb-success: #16a34a;
+  /* Light theme's own accent is indigo, not amber, so pink was the only
+     warm color a "them" task chip had to borrow - reading as an error/
+     danger color it isn't. Using the brand's fixed amber (the logo's own
+     dot color, ConfiaLogo.tsx - #E9A73B always, not theme-dependent)
+     instead ties it back to the brand and keeps it visually distinct
+     from indigo "owed by me" without borrowing --sb-danger's meaning. */
+  --sb-them-task: #e9a73b;
+}
+
+/* Alternate palettes - user-selectable in Settings > Appearance (see
+   lib/palette.ts / SettingsPage.tsx), stored client-side only (not
+   synced server-side like theme/font-size, since there's no backend
+   column for it yet). Each palette follows the SAME dark-default,
+   light-override structure as the base Confía palette above:
+   :root[data-palette="x"] sets its dark tokens, and adding
+   [data-theme="light"] on top of that overrides to its light tokens -
+   so the existing light/dark toggle keeps working within whichever
+   palette is chosen. Leaving data-palette unset (or "confia") keeps
+   today's indigo/amber look untouched. */
+
+:root[data-palette="coral"] {
+  --sb-bg: #1e1710;
+  --sb-bg-elevated: #2a2118;
+  --sb-bg-card: #332619;
+  --sb-bg-hover: #3d2e1f;
+  --sb-border: rgba(243, 231, 216, 0.08);
+  --sb-border-strong: rgba(243, 231, 216, 0.18);
+  --sb-text: #f3e7d8;
+  --sb-text-muted: #c2af9b;
+  --sb-text-faint: #8f7e6c;
+  --sb-accent: #f0985b;
+  --sb-accent-hover: #e68347;
+  --sb-accent-soft: rgba(240, 152, 91, 0.16);
+  --sb-accent-contrast: #2b1608;
+  --sb-danger: #e2726a;
+  --sb-them-task: #e2726a;
+  --sb-success: #4ecb8b;
+}
+:root[data-palette="coral"][data-theme="light"] {
+  --sb-bg: #fffcf7;
+  --sb-bg-elevated: #fbf3e8;
+  --sb-bg-card: #ffffff;
+  --sb-bg-hover: #f5e9d8;
+  --sb-border: rgba(58, 42, 24, 0.1);
+  --sb-border-strong: #eedfc8;
+  --sb-text: #2b2118;
+  --sb-text-muted: #8a7a67;
+  --sb-text-faint: #b4a793;
+  --sb-accent: #e1652d;
+  --sb-accent-hover: #c9531f;
+  --sb-accent-soft: rgba(225, 101, 45, 0.14);
+  --sb-accent-contrast: #ffffff;
+  --sb-danger: #c6493f;
+  --sb-them-task: #c6493f;
+  --sb-success: #2e9b67;
+}
+
+:root[data-palette="teal"] {
+  --sb-bg: #0f1917;
+  --sb-bg-elevated: #182422;
+  --sb-bg-card: #1f2e2b;
+  --sb-bg-hover: #263933;
+  --sb-border: rgba(220, 234, 230, 0.08);
+  --sb-border-strong: rgba(220, 234, 230, 0.18);
+  --sb-text: #dceae6;
+  --sb-text-muted: #a9beb8;
+  --sb-text-faint: #77897f;
+  --sb-accent: #3fc79b;
+  --sb-accent-hover: #33b389;
+  --sb-accent-soft: rgba(63, 199, 155, 0.16);
+  --sb-accent-contrast: #06261b;
+  --sb-danger: #e4707b;
+  --sb-them-task: #e4707b;
+  --sb-success: #4ecb8b;
+}
+:root[data-palette="teal"][data-theme="light"] {
+  --sb-bg: #f7faf9;
+  --sb-bg-elevated: #edf6f3;
+  --sb-bg-card: #ffffff;
+  --sb-bg-hover: #e3f1ec;
+  --sb-border: rgba(15, 42, 35, 0.09);
+  --sb-border-strong: #d7eae3;
+  --sb-text: #152420;
+  --sb-text-muted: #5f7871;
+  --sb-text-faint: #93a9a2;
+  --sb-accent: #1c9270;
+  --sb-accent-hover: #157a5d;
+  --sb-accent-soft: rgba(28, 146, 112, 0.14);
+  --sb-accent-contrast: #ffffff;
+  --sb-danger: #d45b67;
+  --sb-them-task: #d45b67;
+  --sb-success: #2e9b67;
+}
+
+:root[data-palette="periwinkle"] {
+  --sb-bg: #1a1730;
+  --sb-bg-elevated: #252042;
+  --sb-bg-card: #2c264f;
+  --sb-bg-hover: #362f5f;
+  --sb-border: rgba(232, 229, 245, 0.08);
+  --sb-border-strong: rgba(232, 229, 245, 0.18);
+  --sb-text: #e8e5f5;
+  --sb-text-muted: #b0a9ce;
+  --sb-text-faint: #7a7398;
+  --sb-accent: #efac52;
+  --sb-accent-hover: #de9a3e;
+  --sb-accent-soft: rgba(239, 172, 82, 0.15);
+  --sb-accent-contrast: #2a1b08;
+  --sb-danger: #d97b92;
+  --sb-them-task: #d97b92;
+  --sb-success: #4ecb8b;
+}
+:root[data-palette="periwinkle"][data-theme="light"] {
+  --sb-bg: #fdfcff;
+  --sb-bg-elevated: #f4f1fc;
+  --sb-bg-card: #ffffff;
+  --sb-bg-hover: #ece7fa;
+  --sb-border: rgba(46, 42, 90, 0.08);
+  --sb-border-strong: #e3def5;
+  --sb-text: #241f3d;
+  --sb-text-muted: #726c93;
+  --sb-text-faint: #a29cc0;
+  --sb-accent: #6459c9;
+  --sb-accent-hover: #5347b5;
+  --sb-accent-soft: rgba(100, 89, 201, 0.13);
+  --sb-accent-contrast: #ffffff;
+  --sb-danger: #d45b7a;
+  --sb-them-task: #d45b7a;
+  --sb-success: #2e9b67;
+}
+
+/* Apple's own documented HIG system colors (Foundations > Color),
+   verbatim where Apple publishes an exact hex/opacity value - not an
+   approximation. True black background in dark mode matches Apple's own
+   OLED guidance. */
+:root[data-palette="apple-blue"] {
+  --sb-bg: #000000;
+  --sb-bg-elevated: #1c1c1e;
+  --sb-bg-card: #2c2c2e;
+  --sb-bg-hover: #3a3a3c;
+  --sb-border: #38383a;
+  --sb-border-strong: #48484a;
+  --sb-text: #ffffff;
+  --sb-text-muted: rgba(235, 235, 245, 0.6);
+  --sb-text-faint: rgba(235, 235, 245, 0.3);
+  --sb-accent: #0a84ff;
+  --sb-accent-hover: #409cff;
+  --sb-accent-soft: rgba(10, 132, 255, 0.16);
+  --sb-accent-contrast: #ffffff;
+  --sb-danger: #ff453a;
+  --sb-them-task: #ff453a;
+  --sb-success: #30d158;
+}
+:root[data-palette="apple-blue"][data-theme="light"] {
+  --sb-bg: #ffffff;
+  --sb-bg-elevated: #f2f2f7;
+  --sb-bg-card: #ffffff;
+  --sb-bg-hover: #e5e5ea;
+  --sb-border: #e5e5ea;
+  --sb-border-strong: #c6c6c8;
+  --sb-text: #000000;
+  --sb-text-muted: rgba(60, 60, 67, 0.6);
+  --sb-text-faint: rgba(60, 60, 67, 0.3);
+  --sb-accent: #007aff;
+  --sb-accent-hover: #0062cc;
+  --sb-accent-soft: rgba(0, 122, 255, 0.12);
+  --sb-accent-contrast: #ffffff;
+  --sb-danger: #ff3b30;
+  --sb-them-task: #ff3b30;
+  --sb-success: #34c759;
+}
+
+/* Mirrors Apple Notes/Reminders specifically: color mostly absent from
+   the chrome, showing up only as a small semantic accent (systemYellow
+   here, matching Notes' own mark) rather than tinting every surface. */
+:root[data-palette="apple-notes"] {
+  --sb-bg: #1c1c1e;
+  --sb-bg-elevated: #2c2c2e;
+  --sb-bg-card: #242426;
+  --sb-bg-hover: #3a3a3c;
+  --sb-border: #38383a;
+  --sb-border-strong: #48484a;
+  --sb-text: #f2f2f7;
+  --sb-text-muted: rgba(235, 235, 245, 0.6);
+  --sb-text-faint: rgba(235, 235, 245, 0.3);
+  --sb-accent: #ffd60a;
+  --sb-accent-hover: #f0c808;
+  --sb-accent-soft: rgba(255, 214, 10, 0.16);
+  --sb-accent-contrast: #2e2600;
+  --sb-danger: #ff453a;
+  --sb-them-task: #ff453a;
+  --sb-success: #30d158;
+}
+:root[data-palette="apple-notes"][data-theme="light"] {
+  --sb-bg: #ffffff;
+  --sb-bg-elevated: #f9f9f9;
+  --sb-bg-card: #ffffff;
+  --sb-bg-hover: #f0f0f0;
+  --sb-border: #ebebeb;
+  --sb-border-strong: #d9d9dc;
+  --sb-text: #1c1c1e;
+  --sb-text-muted: #6e6e73;
+  --sb-text-faint: #aeaeb2;
+  --sb-accent: #ffd60a;
+  --sb-accent-hover: #e6c009;
+  --sb-accent-soft: rgba(255, 214, 10, 0.15);
+  --sb-accent-contrast: #3d3200;
+  --sb-danger: #ff3b30;
+  --sb-them-task: #ff3b30;
+  --sb-success: #30d158;
 }
 
 @theme {
@@ -66,13 +292,17 @@ theme below via @theme, so both plain CSS and Tailwind utility classes
   --color-accent: var(--sb-accent);
   --color-accent-hover: var(--sb-accent-hover);
   --color-accent-soft: var(--sb-accent-soft);
+  --color-accent-contrast: var(--sb-accent-contrast);
   --color-danger: var(--sb-danger);
+  --color-them-task: var(--sb-them-task);
   --color-success: var(--sb-success);
-  /* Apple's system font (SF Pro) first on Apple devices/browsers - falls
-     back to Inter (a close match in spirit: geometric, humanist) on
-     everything else, so this looks native on iOS/macOS rather than an
-     approximation of it. */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  /* Pure system-UI stack, no web font load: SF Pro on Apple devices,
+     Segoe UI on Windows, Roboto on Android/Chrome OS, and the
+     platform-native fallbacks after that. Every device already has one
+     of these installed, so text paints on first frame with zero extra
+     network request and always matches the metrics/hinting the OS
+     itself tunes for that screen. */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 /* Font-size preference (Settings page) - a multiplier on top of the
@@ -106,8 +336,40 @@ html {
   }
 }
 
+/* Chrome/Safari paint their OWN background/text color onto an autofilled
+   input (the pale-yellow/lavender highlight you see on a saved login) -
+   it's an inset box-shadow trick that overrides any background-color the
+   site sets, not a real background, so `bg-bg-card` alone can never win
+   against it. This neutralizes that by filling the same huge inset
+   shadow with our own theme color instead, and forcing the text color -
+   the standard fix, since there's no other way to reach this browser
+   chrome from CSS. Uses the raw --sb-* variables (not the @theme-mapped
+   --color-* ones) since this needs to resolve under both themes exactly
+   like every other rule already does via :root[data-theme]. The absurd
+   transition delay keeps the fill from flashing back to the browser's
+   own color if the field is edited after being autofilled.  */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--sb-text);
+  -webkit-box-shadow: 0 0 0 1000px var(--sb-bg-card) inset;
+  box-shadow: 0 0 0 1000px var(--sb-bg-card) inset;
+  transition: background-color 600000s ease-in-out 0s;
+}
+
 html, body, #root {
   height: 100%;
+}
+
+/* Standard fix for the "first tap doesn't register" feel some mobile
+   browsers/WebViews have on interactive elements - without this, a tap
+   can be held briefly while the browser decides it isn't the start of a
+   double-tap-to-zoom or pinch gesture, which reads as the button being
+   unresponsive on the first try. touch-action: manipulation tells it
+   this element only cares about taps/pan, skipping that wait. */
+button, [role="button"], a {
+  touch-action: manipulation;
 }
 
 body {
@@ -117,6 +379,7 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   letter-spacing: -0.011em;
+  line-height: 1.45;
 }
 
 ::-webkit-scrollbar {
@@ -191,4 +454,68 @@ body {
   50% {
     opacity: 0.35;
   }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tour-card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Onboarding tour spotlight (Tour.tsx) - the huge 9999px spread is what
+   dims the rest of the screen (this one box's shadow, not a separate
+   overlay element - see Tour.tsx's own comment for why), and the small
+   second shadow is a pulsing accent ring around the actual cutout, so
+   the highlighted icon keeps drawing the eye even after the card's own
+   one-shot entrance animation has finished. Tour.tsx sets BOTH this
+   pulse and the shared one-shot `fade-in` as one comma-separated inline
+   `animation` value (not this class) - inline style always wins over a
+   class for the same property, so declaring the pulse here too would
+   just get silently dropped the moment the element also needs fade-in.
+   This class exists solely so prefers-reduced-motion below has a
+   selector to override the inline value with `!important`. */
+@keyframes tour-spotlight-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55), 0 0 0 3px var(--sb-accent);
+  }
+  50% {
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55), 0 0 0 7px var(--sb-accent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-spotlight {
+    animation: none !important;
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55), 0 0 0 3px var(--sb-accent);
+  }
+}
+
+/* Startup splash (LoadingScreen.tsx) - a radial glow behind the mark,
+   themed to match the brand's splash mockup exactly (light = soft
+   lavender-white; dusk = deep indigo with an amber glow behind the
+   logo). Scoped by data-theme like every other theme override in this
+   file, not hardcoded to one look. */
+:root:not([data-theme="light"]) .confia-splash-bg {
+  background: radial-gradient(circle at 50% 34%, #322c55 0%, #211e36 55%, #171526 100%);
+}
+:root:not([data-theme="light"]) .confia-splash-glow {
+  filter: drop-shadow(0 0 34px rgba(233, 167, 59, 0.35));
+}
+:root[data-theme="light"] .confia-splash-bg {
+  background: radial-gradient(circle at 50% 38%, #f3eeff 0%, #ffffff 62%);
 }

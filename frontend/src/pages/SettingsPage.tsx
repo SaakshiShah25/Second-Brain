@@ -1,8 +1,14 @@
-import { Check, LogOut, Moon, Sun } from 'lucide-react'
-import { useSettings, useUpdateSettings } from '../api/settings'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Check, Compass, LogOut, Lock, Moon, Sun, Trash2 } from 'lucide-react'
+import { useDeleteAccount, useSettings, useUpdateSettings } from '../api/settings'
 import type { FontSize, Theme } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import AppLockSettings from '../components/AppLockSettings'
 import Card from '../components/Card'
+import ConfirmDialog from '../components/ConfirmDialog'
+import { useTour } from '../components/TourGate'
+import { applyPalette, getStoredPalette, PALETTE_OPTIONS, setStoredPalette, type Palette } from '../lib/palette'
 
 const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Sun }[] = [
   { value: 'light', label: 'Light', icon: Sun },
@@ -19,6 +25,17 @@ export default function SettingsPage() {
   const { data: settings } = useSettings()
   const updateSettings = useUpdateSettings()
   const { user, signOut } = useAuth()
+  const { startTour } = useTour()
+  const deleteAccount = useDeleteAccount()
+  const navigate = useNavigate()
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [palette, setPalette] = useState<Palette>(() => getStoredPalette())
+
+  function choosePalette(value: Palette) {
+    setPalette(value)
+    setStoredPalette(value)
+    applyPalette(value)
+  }
 
   return (
     <div className="mx-auto max-w-xl">
@@ -27,6 +44,50 @@ export default function SettingsPage() {
       <Card className="mb-4">
         <h2 className="mb-3 text-sm font-semibold tracking-tight text-text-muted">Profile</h2>
         <p className="text-[15px] text-text">{user?.email}</p>
+      </Card>
+
+      <Card className="mb-4">
+        <div className="mb-2 flex items-center gap-2">
+          <Lock size={15} strokeWidth={1.6} className="text-accent" />
+          <h2 className="text-sm font-semibold tracking-tight text-text-muted">Privacy</h2>
+        </div>
+        <p className="text-xs leading-relaxed text-text-faint">
+          Your notes are encrypted at rest in our database — anyone with direct database access sees only
+          unreadable ciphertext, not your notes. To power search, the daily brief, and AI extraction, the app
+          itself decrypts your notes and shares text with our AI providers (Groq, Cohere) for that processing
+          only. We never sell or share your data.
+        </p>
+      </Card>
+
+      <AppLockSettings />
+
+      <Card className="mb-4">
+        <h2 className="mb-3 text-sm font-semibold tracking-tight text-text-muted">Color palette</h2>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {PALETTE_OPTIONS.map(({ value, label, description, bg, accent }) => {
+            const active = palette === value
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => choosePalette(value)}
+                title={description}
+                className={`flex flex-col items-start gap-2 rounded-lg border p-3 text-left transition-colors ${
+                  active ? 'border-accent bg-accent-soft' : 'border-border-strong hover:border-accent/50'
+                }`}
+              >
+                <span className="flex w-full items-center justify-between">
+                  <span
+                    className="h-6 w-6 flex-shrink-0 rounded-full border border-border-strong"
+                    style={{ background: `conic-gradient(${accent} 0 50%, ${bg} 50% 100%)` }}
+                  />
+                  {active && <Check size={14} strokeWidth={2} className="text-accent" />}
+                </span>
+                <span className={`text-xs font-medium ${active ? 'text-accent' : 'text-text'}`}>{label}</span>
+              </button>
+            )
+          })}
+        </div>
       </Card>
 
       <Card className="mb-4">
@@ -46,10 +107,10 @@ export default function SettingsPage() {
                 }`}
               >
                 <span className="flex items-center gap-2">
-                  <Icon size={16} strokeWidth={2} />
+                  <Icon size={16} strokeWidth={1.6} />
                   {label}
                 </span>
-                {active && <Check size={16} strokeWidth={2} />}
+                {active && <Check size={16} strokeWidth={1.6} />}
               </button>
             )
           })}
@@ -73,7 +134,7 @@ export default function SettingsPage() {
                 }`}
               >
                 <span className={`${sample} font-medium`}>{label}</span>
-                {active && <Check size={16} strokeWidth={2} />}
+                {active && <Check size={16} strokeWidth={1.6} />}
               </button>
             )
           })}
@@ -107,16 +168,66 @@ export default function SettingsPage() {
         </button>
       </Card>
 
-      <Card>
+      <Card className="mb-4">
+        <button
+          type="button"
+          onClick={() => startTour()}
+          className="flex w-full items-center gap-2 rounded-lg py-1 text-left text-[15px] text-text transition-colors hover:text-accent"
+        >
+          <Compass size={16} strokeWidth={1.6} />
+          Take the tour again
+        </button>
+      </Card>
+
+      <Card className="mb-4">
         <button
           type="button"
           onClick={() => signOut()}
           className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium text-danger transition-colors hover:bg-danger/10"
         >
-          <LogOut size={16} strokeWidth={2} />
+          <LogOut size={16} strokeWidth={1.6} />
           Sign out
         </button>
       </Card>
+
+      <Card>
+        <h2 className="mb-3 text-sm font-semibold tracking-tight text-text-muted">Danger zone</h2>
+        <button
+          type="button"
+          onClick={() => setConfirmingDelete(true)}
+          disabled={deleteAccount.isPending}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-danger/40 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Trash2 size={16} strokeWidth={1.6} />
+          {deleteAccount.isPending ? 'Deleting…' : 'Delete account'}
+        </button>
+        <p className="mt-2 text-xs text-text-faint">
+          Permanently deletes your account and every note, contact, and task tied to it. This can't be undone.
+        </p>
+        {deleteAccount.isError && (
+          <p className="mt-2 text-xs text-danger">Something went wrong - please try again.</p>
+        )}
+      </Card>
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Delete your account?"
+          message="This permanently deletes your account and everything in it - every note, contact, and task. There's no way to undo this or recover the data afterward."
+          confirmLabel="Delete permanently"
+          busy={deleteAccount.isPending}
+          busyLabel="Deleting…"
+          onConfirm={() => {
+            deleteAccount.mutate(undefined, {
+              onSuccess: async () => {
+                await signOut()
+                navigate('/login', { replace: true })
+              },
+              onError: () => setConfirmingDelete(false),
+            })
+          }}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
     </div>
   )
 }

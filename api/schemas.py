@@ -16,11 +16,24 @@ never needs to re-look-up or re-guess what was shown to the user.
 
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+# Generous caps on every field that ends up inside an LLM prompt - not
+# about legitimate use (even a long rambling voice transcript is nowhere
+# near these), but a cheap, free mitigation against two real things: a
+# giant payload run up against Groq's shared per-account rate/cost
+# budget, and "burying" a prompt-injection attempt inside enough padding
+# that it's more likely to slip past both moderation.py and the model's
+# own attention. NOTE_MAX_LEN covers actual note/question content;
+# FIELD_MAX_LEN covers short structured fields (a name, a role) that
+# should never legitimately be long anyway.
+NOTE_MAX_LEN = 20_000
+QUERY_MAX_LEN = 2_000
+FIELD_MAX_LEN = 200
 
 
 class CaptureRequest(BaseModel):
-    raw_text: str
+    raw_text: str = Field(..., max_length=NOTE_MAX_LEN)
     # Opt-in device location (see ChatInput.tsx's location toggle) - None
     # unless the user tapped "Add my location" for this specific note.
     geo_lat: Optional[float] = None
@@ -34,17 +47,18 @@ class CandidateEnvelope(BaseModel):
 
 class CaptureConfirmRequest(BaseModel):
     extracted: dict[str, Any]
-    raw_text: str
+    raw_text: str = Field(..., max_length=NOTE_MAX_LEN)
     interaction_date: str
     date_warning: Optional[str] = None
     candidates: list[CandidateEnvelope]
     choice: Optional[int] = None  # index into candidates, or None for "new person"
+    initiative_id: Optional[int] = None  # round-tripped from the initial /capture call, like geo_lat/geo_lng
     geo_lat: Optional[float] = None
     geo_lng: Optional[float] = None
 
 
 class AskRequest(BaseModel):
-    query: str
+    query: str = Field(..., max_length=QUERY_MAX_LEN)
     # Recent chat turns as [{"role": "user"|"assistant", "content": str}, ...] -
     # same shape the frontend already needs to render the conversation, and
     # the same shape retrieval.format_recent_context() expects (it does the
@@ -54,7 +68,7 @@ class AskRequest(BaseModel):
 
 
 class AskConfirmRequest(BaseModel):
-    query: str
+    query: str = Field(..., max_length=QUERY_MAX_LEN)
     parsed: dict[str, Any]
     candidates: list[CandidateEnvelope]
     choice: Optional[int] = None  # index into candidates, or None for "none of these"
@@ -64,7 +78,7 @@ class ChatRequest(BaseModel):
     """One unified chat input - api/routers/chat.py classifies it as
     capture or ask and delegates to the matching existing flow (see that
     module's docstring). Superset of CaptureRequest/AskRequest's fields."""
-    text: str
+    text: str = Field(..., max_length=NOTE_MAX_LEN)
     history: list[dict[str, Any]] = []
     geo_lat: Optional[float] = None
     geo_lng: Optional[float] = None
@@ -80,13 +94,14 @@ class ChatConfirmRequest(BaseModel):
     choice: Optional[int] = None
     # capture fields
     extracted: Optional[dict[str, Any]] = None
-    raw_text: Optional[str] = None
+    raw_text: Optional[str] = Field(None, max_length=NOTE_MAX_LEN)
     interaction_date: Optional[str] = None
     date_warning: Optional[str] = None
+    initiative_id: Optional[int] = None
     geo_lat: Optional[float] = None
     geo_lng: Optional[float] = None
     # ask fields
-    query: Optional[str] = None
+    query: Optional[str] = Field(None, max_length=QUERY_MAX_LEN)
     parsed: Optional[dict[str, Any]] = None
 
 
@@ -115,9 +130,9 @@ class InteractionUpdate(BaseModel):
     appearance: Optional[str] = None
     summary: Optional[str] = None
     raw_text: Optional[str] = None
-    meeting_type: Optional[str] = None
     decisions: Optional[list[str]] = None
     concerns: Optional[list[str]] = None
+    initiative_id: Optional[int] = None
 
 
 class MergeRequest(BaseModel):
@@ -128,12 +143,12 @@ class CardConfirmRequest(BaseModel):
     """Submitted after the client shows an editable form for the fields
     POST /api/capture/card returned - card OCR isn't trusted as-is,
     unlike voice, so this is a distinct step from a plain text capture."""
-    name: str
-    role: str = ""
-    company: str = ""
-    phone: str = ""
-    email: str = ""
-    context_note: str = ""
+    name: str = Field(..., max_length=FIELD_MAX_LEN)
+    role: str = Field("", max_length=FIELD_MAX_LEN)
+    company: str = Field("", max_length=FIELD_MAX_LEN)
+    phone: str = Field("", max_length=FIELD_MAX_LEN)
+    email: str = Field("", max_length=FIELD_MAX_LEN)
+    context_note: str = Field("", max_length=NOTE_MAX_LEN)
 
 
 class TaskStatusUpdate(BaseModel):
@@ -148,64 +163,17 @@ class ScheduleCalendarRequest(BaseModel):
     event_date: Optional[str] = None
 
 
-class SignatoryFields(BaseModel):
-    name: str
-    role: str = ""
-    side: str = "client"  # "client" | "provider"
-
-
-class ClientConfirmRequest(BaseModel):
-    """Submitted after the client reviews/edits the fields
-    POST /api/clients/upload extracted - contract data is higher-stakes
-    than a casual note, so (unlike voice capture) nothing is saved on the
-    initial upload, only previewed. `file_base64`/`filename`/`content_type`
-    round-trip the original document through this second call since there's
-    no server-side session to hold onto the upload between the two
-    requests (same reasoning as CaptureConfirmRequest's `candidates`
-    round-trip in api/routers/capture.py)."""
-    company: str
-    client_legal_name: str = ""
-    provider_legal_name: str = ""
-    effective_date: Optional[str] = None
-    term_months: Optional[int] = None
-    end_date: Optional[str] = None
-    auto_renews: bool = False
-    renewal_notice_days: Optional[int] = None
-    fee_amount: Optional[float] = None
-    fee_currency: str = ""
-    fee_frequency: str = ""
-    payment_terms: str = ""
-    termination_terms: str = ""
-    other_terms: str = ""
-    signatories: list[SignatoryFields] = []
-    file_base64: Optional[str] = None
-    filename: Optional[str] = None
-    content_type: Optional[str] = None
-
-
-class ClientUpdate(BaseModel):
-    company: Optional[str] = None
-    client_legal_name: Optional[str] = None
-    provider_legal_name: Optional[str] = None
-    effective_date: Optional[str] = None
-    term_months: Optional[int] = None
-    end_date: Optional[str] = None
-    auto_renews: Optional[bool] = None
-    renewal_notice_days: Optional[int] = None
-    fee_amount: Optional[float] = None
-    fee_currency: Optional[str] = None
-    fee_frequency: Optional[str] = None
-    payment_terms: Optional[str] = None
-    termination_terms: Optional[str] = None
-    other_terms: Optional[str] = None
-    status: Optional[str] = None
-
-
-class ExtendClientRequest(BaseModel):
-    months: int
-
-
 class UserPreferenceUpdate(BaseModel):
     theme: Optional[str] = None                        # 'dark' | 'light'
     font_size: Optional[str] = None                     # 'small' | 'default' | 'large'
     daily_brief_email_enabled: Optional[bool] = None
+
+
+class InitiativeCreate(BaseModel):
+    name: str
+    color: Optional[str] = None
+
+
+class InitiativeUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None

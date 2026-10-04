@@ -120,7 +120,7 @@ def resolve_person(name: str, description: str = "", role: str = "", company: st
 
 # ---------- Secondary-person resolution (never asks - see person_match.find_confident_match) ----------
 
-def resolve_and_link_other_people(user_id: str, interaction_id: int, other_people: list, interaction_date: str):
+def resolve_and_link_other_people(user_id: str, interaction_id: int, other_people: list, interaction_date: str) -> list:
     """
     For each person mentioned besides the primary one (extraction.py's
     `other_people`, shaped [{"name":..., "relation":...}]), resolve or
@@ -142,10 +142,16 @@ def resolve_and_link_other_people(user_id: str, interaction_id: int, other_peopl
     other_people format changed"). `person`/`interaction` matching and
     creation is scoped to `user_id` throughout, same as every other db.py
     call - a secondary mention never resolves against another user's people.
+
+    Returns [{"name": ..., "person_id": ...}, ...] for every person linked
+    - used by api/routers/capture.py to attribute a follow-up task to
+    whichever person it's actually about, when that's someone other than
+    the interaction's primary person (see _resolve_task_person there).
     """
     if not other_people:
-        return
+        return []
 
+    linked = []
     people = db.get_all_people(user_id)
     for entry in other_people:
         if isinstance(entry, dict):
@@ -154,7 +160,16 @@ def resolve_and_link_other_people(user_id: str, interaction_id: int, other_peopl
             present = entry.get("present", False)
         else:
             name, relation, present = str(entry), "", False
-        if not name:
+        if not name or name.strip().lower() == "unknown":
+            # An unnamed secondary mention (e.g. "the CTO", "his manager")
+            # isn't worth a standalone Person record: it adds no lookup
+            # value (you can't search for "Unknown"), and worse, every
+            # OTHER unnamed secondary mention across every other note
+            # would text-match this one at 100% via find_confident_match
+            # and silently merge unrelated people. The relation/context is
+            # still preserved on this interaction's own
+            # extracted_facts.other_people either way - just not promoted
+            # to a permanent, independently-searchable Person.
             continue
 
         match = find_confident_match(name, people)
@@ -169,6 +184,9 @@ def resolve_and_link_other_people(user_id: str, interaction_id: int, other_peopl
             people.append(db.get_person(user_id, person_id))
 
         db.link_interaction_person(user_id, interaction_id, person_id, relation)
+        linked.append({"name": name, "person_id": person_id})
+
+    return linked
 
 
 # ---------- Main capture flow ----------
@@ -253,7 +271,7 @@ def capture_note(raw_text: str, interaction_date: str = None):
 
 
 if __name__ == "__main__":
-    print("=== Second Brain: Capture a note ===")
+    print("=== MyConfía: Capture a note ===")
     print("(Make sure you've run schema.sql in Supabase and set SUPABASE_URL / "
           "SUPABASE_KEY / GROQ_API_KEY - see README.md)\n")
     print("Type or paste your note (a full conversation/observation). "

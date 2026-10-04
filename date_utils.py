@@ -37,6 +37,22 @@ _WEEKDAYS = {
 _RELATIVE_WEEKDAY_RE = re.compile(r"^(next|last|this)\s+(\w+)$")
 _IN_DAYS_RE = re.compile(r"^in\s+(\d+)\s+days?$")
 _IN_WEEKS_RE = re.compile(r"^in\s+(\d+)\s+weeks?$")
+_RELATIVE_MONTH_RE = re.compile(r"^(next|last|this)\s+month$")
+
+
+def _add_months(d: date, months: int) -> date:
+    """Adds/subtracts whole calendar months, landing on the 1st of the
+    resulting month - real month arithmetic (handles year rollover and
+    varying month lengths), not a 30-day timedelta approximation which
+    would drift. Always the 1st: "next month" said on any day of this
+    month unambiguously means the month itself, not a specific day
+    within it, so the 1st is the one reasonable anchor - same "pick a
+    single specific day" convention extraction.py already uses for any
+    vague timeframe."""
+    month_index = d.month - 1 + months
+    year = d.year + month_index // 12
+    month = month_index % 12 + 1
+    return date(year, month, 1)
 
 
 def resolve_relative_phrase(phrase, reference_date: date = None) -> Optional[str]:
@@ -84,6 +100,12 @@ def resolve_relative_phrase(phrase, reference_date: date = None) -> Optional[str
         return (reference_date - timedelta(days=1)).isoformat()
     if p == "next week":
         return (reference_date + timedelta(weeks=1)).isoformat()
+
+    m = _RELATIVE_MONTH_RE.match(p)
+    if m:
+        relation = m.group(1)
+        delta = {"next": 1, "last": -1, "this": 0}[relation]
+        return _add_months(reference_date, delta).isoformat()
 
     m = _RELATIVE_WEEKDAY_RE.match(p)
     if m:

@@ -410,7 +410,7 @@ def render():
     init_state()
 
     with st.sidebar:
-        st.title("🧠 Second Brain")
+        st.title("🧠 MyConfía")
 
         mode_label = st.radio("Mode", ["📝 Log a note", "❓ Ask a question", "📇 Scan a card"], index=0)
         if mode_label.startswith("📝"):
@@ -454,7 +454,7 @@ def render():
         except Exception:
             pass
 
-    st.title("Second Brain")
+    st.title("MyConfía")
 
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):

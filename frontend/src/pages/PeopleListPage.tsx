@@ -7,7 +7,6 @@ import { useCompanies, useCompanyBriefing, usePeople } from '../api/people'
 import Avatar from '../components/Avatar'
 import Button from '../components/Button'
 import Card from '../components/Card'
-import SpeakButton from '../components/SpeakButton'
 import { Input, Label } from '../components/fields'
 
 function CompanyBriefingSection() {
@@ -25,7 +24,7 @@ function CompanyBriefingSection() {
     <Card className="mb-4">
       <Label>
         <span className="flex items-center gap-1.5">
-          <Building2 size={13} strokeWidth={2} /> Company briefing
+          <Building2 size={13} strokeWidth={1.6} /> Company briefing
         </span>
       </Label>
       <p className="mb-2 text-xs text-text-muted">
@@ -57,11 +56,10 @@ function CompanyBriefingSection() {
         </Button>
       </div>
       {briefing.data && (
-        <div className="mt-3 flex items-start justify-between gap-2 rounded-lg bg-accent-soft p-3">
-          <div className="prose-chat min-w-0 flex-1 text-sm">
+        <div className="mt-3 rounded-lg bg-accent-soft p-3">
+          <div className="prose-chat min-w-0 text-sm">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{briefing.data.briefing}</ReactMarkdown>
           </div>
-          <SpeakButton text={briefing.data.briefing} />
         </div>
       )}
     </Card>
@@ -84,7 +82,7 @@ export default function PeopleListPage() {
   return (
     <div>
       <h1 className="mb-4 flex items-center gap-2 text-2xl font-bold tracking-tight">
-        <Users size={22} strokeWidth={2} className="text-accent" /> People
+        <Users size={22} strokeWidth={1.6} className="text-accent" /> People
       </h1>
 
       <CompanyBriefingSection />

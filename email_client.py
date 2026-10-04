@@ -1,72 +1,74 @@
 """
-email_client.py — Sends the daily morning-brief email via plain SMTP.
-Defaults to Gmail (smtp.gmail.com with an account App Password), but
-works with any SMTP provider by changing the env vars - a thin
-stdlib-only wrapper (smtplib/email), same shape as llm_client.py's
-get_client()-with-a-helpful-error pattern, rather than pulling in a
-dedicated email-API SDK for one feature.
+email_client.py — Sends the daily morning-brief email via Resend's HTTP
+API (https://resend.com), not SMTP.
 
-Setup (Gmail):
-    1. Turn on 2-Step Verification on the Google account that will send
-       these emails: https://myaccount.google.com/security
-    2. Create an App Password: https://myaccount.google.com/apppasswords
-       (choose "Mail" as the app) - a 16-character password, NOT the
-       regular Gmail account password.
-    3. Set env vars:
-        export SMTP_HOST="smtp.gmail.com"
-        export SMTP_PORT="587"
-        export SMTP_USER="you@gmail.com"
-        export SMTP_PASSWORD="<the 16-character app password>"
-        export SMTP_FROM="you@gmail.com"          # optional, defaults to SMTP_USER
+Why not SMTP: Render's free tier blocks outbound connections on the SMTP
+ports (25/465/587) that smtplib needs - a common anti-abuse restriction
+on free hosting tiers, not something specific to this app. This was
+silently breaking the daily brief for every user in production. Resend
+(like every other transactional-email provider - SendGrid, Postmark,
+Mailgun, Brevo) sends over plain HTTPS instead, which Render's free tier
+does allow, so switching providers rather than switching hosts is the
+actual fix. Resend specifically has a generous free tier (3,000 emails/
+month, 100/day) and the simplest API of the bunch for a single POST like
+this - swap providers again later if that ever needs to change, nothing
+above this file (api/routers/brief.py, morning_brief.py) needs to know
+which one is in use.
+
+Setup:
+    1. Create a free account at https://resend.com
+    2. Verify a sending domain (Resend > Domains > Add Domain, then add
+       the DNS records it gives you at your domain registrar) - this is
+       NOT optional for this feature to actually reach real users: without
+       a verified domain, Resend's sandbox sender (onboarding@resend.dev)
+       can only deliver to the email address YOUR Resend account is
+       registered under, not to your actual users. Takes a few minutes to
+       verify once the DNS records are added.
+    3. Create an API key: Resend > API Keys > Create API Key
+    4. Set env vars:
+        export RESEND_API_KEY="re_..."
+        export RESEND_FROM_EMAIL="brief@yourdomain.com"   # must be on the verified domain above
 """
 
 import html
 import os
 import re
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from typing import Optional
+
+import requests
+
+_RESEND_API_URL = "https://api.resend.com/emails"
 
 
 class NotConfiguredError(Exception):
-    """Raised when the SMTP env vars aren't all set - lets callers fail
-    with a clear, actionable error instead of a raw connection failure."""
+    """Raised when the Resend env vars aren't set - lets callers fail
+    with a clear, actionable error instead of a raw request failure."""
 
 
 def _get_config():
-    host = os.environ.get("SMTP_HOST")
-    port = os.environ.get("SMTP_PORT")
-    user = os.environ.get("SMTP_USER")
-    password = os.environ.get("SMTP_PASSWORD")
-    if not all([host, port, user, password]):
+    api_key = os.environ.get("RESEND_API_KEY")
+    from_addr = os.environ.get("RESEND_FROM_EMAIL")
+    if not api_key or not from_addr:
         raise NotConfiguredError(
-            "SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD aren't all set - see email_client.py's docstring."
+            "RESEND_API_KEY/RESEND_FROM_EMAIL aren't both set - see email_client.py's docstring."
         )
-    from_addr = os.environ.get("SMTP_FROM", user)
-    return host, int(port), user, password, from_addr
+    return api_key, from_addr
 
 
 def send_email(to_address: str, subject: str, body_text: str, body_html: Optional[str] = None) -> None:
-    host, port, user, password, from_addr = _get_config()
-
-    message = MIMEMultipart("alternative")
-    message["Subject"] = subject
-    message["From"] = from_addr
-    message["To"] = to_address
-    # The plain-text part must come first and the HTML part last - mail
-    # clients render the LAST alternative part they understand, so this
-    # order makes HTML-capable clients (nearly everyone) show the
-    # formatted version while plain-text-only clients still get something
-    # readable instead of nothing.
-    message.attach(MIMEText(body_text, "plain"))
+    api_key, from_addr = _get_config()
+    payload = {"from": from_addr, "to": [to_address], "subject": subject, "text": body_text}
     if body_html:
-        message.attach(MIMEText(body_html, "html"))
+        payload["html"] = body_html
 
-    with smtplib.SMTP(host, port) as server:
-        server.starttls()
-        server.login(user, password)
-        server.sendmail(from_addr, [to_address], message.as_string())
+    response = requests.post(
+        _RESEND_API_URL,
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json=payload,
+        timeout=15,
+    )
+    if response.status_code >= 400:
+        raise RuntimeError(f"Resend API returned {response.status_code}: {response.text}")
 
 
 def _inline_markdown_to_html(text: str) -> str:

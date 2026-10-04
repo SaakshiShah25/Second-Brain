@@ -94,7 +94,10 @@ export function useUpdateInteraction() {
   return useMutation({
     mutationFn: ({ interactionId, fields }: { interactionId: number; fields: Record<string, unknown> }) =>
       api.patch(`/api/people/interactions/${interactionId}`, fields),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['people'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['people'] })
+      queryClient.invalidateQueries({ queryKey: ['notes'] })
+    },
   })
 }
 
@@ -102,6 +105,9 @@ export function useDeleteInteraction() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (interactionId: number) => api.delete(`/api/people/interactions/${interactionId}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['people'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['people'] })
+      queryClient.invalidateQueries({ queryKey: ['notes'] })
+    },
   })
 }

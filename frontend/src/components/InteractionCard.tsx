@@ -1,24 +1,14 @@
 import { useState, type FormEvent } from 'react'
-import { CheckCircle2, MapPin, Tag, TriangleAlert } from 'lucide-react'
+import { CheckCircle2, MapPin, TriangleAlert } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { useInitiatives } from '../api/initiatives'
 import { useDeleteInteraction, useUpdateInteraction } from '../api/people'
 import type { Interaction } from '../api/types'
+import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import Disclosure from './Disclosure'
 import { Input, Label, Textarea } from './fields'
-
-const MEETING_TYPES = [
-  '',
-  'discovery',
-  'demo',
-  'negotiation',
-  'check-in',
-  'networking',
-  'contract',
-  'support',
-  'internal',
-  'other',
-]
 
 const selectClass =
   'w-full rounded-lg border border-border-strong bg-bg-card px-3 py-2 text-sm text-text focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent'
@@ -31,6 +21,20 @@ export default function InteractionCard({ interaction }: { interaction: Interact
   const deleteInteraction = useDeleteInteraction()
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // Only fetched lazily when actually needed (the Notes page's edit
+  // form) - react-query dedupes this against NotesPage's own
+  // useInitiatives() call, so it's not a duplicate network request.
+  const { data: initiatives } = useInitiatives()
+
+  // `interaction.person`/`interaction.initiative` are only ever present
+  // when this card is rendered from the Notes page (GET /api/notes'
+  // joined select) - PersonDetailPage's own interaction list doesn't
+  // include them, so this header simply doesn't render there.
+  const showNoteContext = interaction.person !== undefined
+  // Only meaningful on the Notes page (showNoteContext) - PersonDetailPage's
+  // own interaction cards aren't grouped by initiative, so they keep the
+  // plain uncolored border.
+  const initiativeStyle = showNoteContext ? getInitiativeStyle(interaction.initiative) : null
 
   const [form, setForm] = useState({
     date: interaction.date ?? '',
@@ -38,9 +42,9 @@ export default function InteractionCard({ interaction }: { interaction: Interact
     appearance: interaction.appearance ?? '',
     summary: interaction.summary ?? '',
     raw_text: interaction.raw_text ?? '',
-    meeting_type: interaction.meeting_type ?? '',
     decisions: (interaction.decisions ?? []).join('\n'),
     concerns: (interaction.concerns ?? []).join('\n'),
+    initiative_id: interaction.initiative_id,
   })
 
   function handleSave(e: FormEvent) {
@@ -60,22 +64,70 @@ export default function InteractionCard({ interaction }: { interaction: Interact
   }
 
   return (
-    <Disclosure summary={`${interaction.date ?? 'unknown date'} — ${interaction.summary || '(no summary)'}`}>
+    <Disclosure
+      summary={
+        // The category icon rides along in the COLLAPSED row too, not
+        // just inside the expanded badge below - the border color alone
+        // means nothing until you already know "green = Fitness" from
+        // the filter chips, but an icon (a dumbbell, a briefcase) reads
+        // on its own without that lookup, even collapsed.
+        <span className="flex items-center gap-1.5 min-w-0">
+          {initiativeStyle && (
+            <initiativeStyle.Icon
+              size={13}
+              strokeWidth={2}
+              className="flex-shrink-0"
+              style={{ color: initiativeStyle.color }}
+            />
+          )}
+          <span className="truncate">
+            {interaction.date ?? 'unknown date'} — {interaction.summary || '(no summary)'}
+          </span>
+        </span>
+      }
+      accentColor={initiativeStyle?.color}
+    >
+      {showNoteContext && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+          {interaction.person ? (
+            <Link to={`/people/${interaction.person.id}`} className="font-medium text-accent hover:underline">
+              {interaction.person.name}
+            </Link>
+          ) : (
+            // "Personal" - not "No contact", which read like a gap/error
+            // rather than a deliberate kind of note. Same term DigestPage
+            // already falls back to for a task with no specific person
+            // attached, so this isn't a new piece of vocabulary - a note
+            // with no primary person is, by the same logic, one with
+            // nothing to attribute but the note-taker themselves.
+            <span className="rounded-full border border-border-strong px-2 py-0.5 text-text-muted">
+              Personal
+            </span>
+          )}
+          {interaction.initiative && initiativeStyle ? (
+            <span
+              className="flex items-center gap-1 rounded-full px-2 py-0.5 font-medium"
+              style={initiativeBadgeStyle(initiativeStyle.color)}
+            >
+              <initiativeStyle.Icon size={12} strokeWidth={1.8} />
+              {interaction.initiative.name}
+            </span>
+          ) : (
+            <span className="rounded-full border border-border-strong px-2 py-0.5 text-text-faint">
+              Uncategorized
+            </span>
+          )}
+        </div>
+      )}
       {!editing ? (
         <>
-          {interaction.meeting_type && (
-            <p className="mb-1 flex items-center gap-1 text-xs text-text-muted">
-              <Tag size={12} strokeWidth={2} className="flex-shrink-0" />
-              {interaction.meeting_type}
-            </p>
-          )}
           {interaction.location && <p className="text-xs text-text-muted">Location: {interaction.location}</p>}
           {interaction.appearance && (
             <p className="text-xs text-text-muted">Appearance that day: {interaction.appearance}</p>
           )}
           {interaction.maps_url && (
             <p className="flex items-center gap-1 text-xs text-text-muted">
-              <MapPin size={12} strokeWidth={2} className="flex-shrink-0" />
+              <MapPin size={12} strokeWidth={1.6} className="flex-shrink-0" />
               {interaction.geo_address ?? `${interaction.geo_lat?.toFixed(5)}, ${interaction.geo_lng?.toFixed(5)}`}
               {' · '}
               <a href={interaction.maps_url} target="_blank" rel="noreferrer" className="text-accent hover:underline">
@@ -86,7 +138,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
           {interaction.decisions && interaction.decisions.length > 0 && (
             <div className="mt-2">
               <p className="flex items-center gap-1 text-xs font-medium">
-                <CheckCircle2 size={12} strokeWidth={2} /> Decisions:
+                <CheckCircle2 size={12} strokeWidth={1.6} /> Decisions:
               </p>
               {interaction.decisions.map((d, i) => (
                 <p key={i} className="text-xs text-text-muted">
@@ -98,7 +150,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
           {interaction.concerns && interaction.concerns.length > 0 && (
             <div className="mt-2">
               <p className="flex items-center gap-1 text-xs font-medium">
-                <TriangleAlert size={12} strokeWidth={2} /> Concerns:
+                <TriangleAlert size={12} strokeWidth={1.6} /> Concerns:
               </p>
               {interaction.concerns.map((c, i) => (
                 <p key={i} className="text-xs text-text-muted">
@@ -125,8 +177,13 @@ export default function InteractionCard({ interaction }: { interaction: Interact
           )}
           <div className="mt-3 flex gap-2">
             <Button onClick={() => setEditing(true)}>Edit</Button>
+            {/* "Delete" not "Delete interaction" - this card renders
+                every kind of note (an actual interaction, a standalone
+                personal task/reminder with no person involved at all,
+                etc. - see showNoteContext above), so a label naming one
+                specific kind is wrong for all the others. */}
             <Button variant="danger" onClick={() => setConfirmDelete(true)}>
-              Delete interaction
+              Delete
             </Button>
           </div>
         </>
@@ -136,20 +193,23 @@ export default function InteractionCard({ interaction }: { interaction: Interact
             <Label>Date</Label>
             <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
           </div>
-          <div>
-            <Label>Meeting type</Label>
-            <select
-              className={selectClass}
-              value={form.meeting_type}
-              onChange={(e) => setForm({ ...form, meeting_type: e.target.value })}
-            >
-              {MEETING_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t || '(none)'}
-                </option>
-              ))}
-            </select>
-          </div>
+          {showNoteContext && (
+            <div>
+              <Label>Initiative</Label>
+              <select
+                className={selectClass}
+                value={form.initiative_id ?? ''}
+                onChange={(e) => setForm({ ...form, initiative_id: e.target.value ? Number(e.target.value) : null })}
+              >
+                <option value="">Uncategorized</option>
+                {initiatives?.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <Label>Location</Label>
             <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
@@ -188,11 +248,12 @@ export default function InteractionCard({ interaction }: { interaction: Interact
       {confirmDelete && (
         <ConfirmDialog
           title="Confirm delete"
-          message="Delete this interaction and its follow-up tasks? This cannot be undone."
+          message="Delete this note and its follow-up tasks? This cannot be undone."
           confirmLabel="Delete"
+          busy={deleteInteraction.isPending}
+          busyLabel="Deleting…"
           onConfirm={() => {
-            setConfirmDelete(false)
-            deleteInteraction.mutate(interaction.id)
+            deleteInteraction.mutate(interaction.id, { onSettled: () => setConfirmDelete(false) })
           }}
           onCancel={() => setConfirmDelete(false)}
         />

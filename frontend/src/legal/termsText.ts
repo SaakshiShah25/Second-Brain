@@ -1,22 +1,22 @@
 // Standard Terms of Service + Privacy template, written specifically for
-// what Second Brain actually does (a personal notes/CRM app that sends
+// what MyConfía actually does (a personal notes/CRM app that sends
 // captured text to Groq, Cohere, and Supabase - named honestly below
 // rather than left as generic boilerplate). This is a reasonable starting
 // point, not a substitute for a lawyer's review before any real public
 // or commercial launch.
 
-export const TERMS_LAST_UPDATED = 'August 26, 2026'
+export const TERMS_LAST_UPDATED = 'September 2, 2026'
 
 export const TERMS_TEXT = `
 _Last updated: ${TERMS_LAST_UPDATED}_
 
 ## 1. Acceptance of Terms
 
-By creating an account or using Second Brain ("the App"), you agree to these Terms of Service and the Privacy section below. If you don't agree, please don't use the App.
+By creating an account or using MyConfía ("the App"), you agree to these Terms of Service and the Privacy section below. If you don't agree, please don't use the App.
 
 ## 2. What the App Does
 
-Second Brain lets you log notes about your conversations and contacts - by typing, speaking, or scanning a business card - and later ask questions about what you've recorded. To do this, the App sends the text you enter (and transcripts of any voice recordings) to third-party AI services for processing, and stores your notes, contacts, and account data with a third-party database provider. These are named specifically in the Privacy section below.
+MyConfía lets you log notes about your conversations and contacts - by typing, speaking, or scanning a business card - and later ask questions about what you've recorded. To do this, the App sends the text you enter (and transcripts of any voice recordings) to third-party AI services for processing, and stores your notes, contacts, and account data with a third-party database provider. These are named specifically in the Privacy section below.
 
 ## 3. Your Account
 
@@ -42,7 +42,9 @@ Each operates under its own terms and privacy policy, which we encourage you to 
 
 We collect the account information you provide at signup (email), the content you choose to log (notes, transcribed voice recordings, scanned business card details), and, only if you explicitly opt in per note, your device's approximate location. We use this solely to operate the App's features for you - not for advertising, and not sold to third parties.
 
-You can request deletion of your account and associated data at any time.
+**Please don't log anything you wouldn't want shared with our AI providers.** As described in Section 5, the content you enter is sent to Groq and Cohere to extract information, answer your questions, and power search - this is necessary for the App to work, and applies to everything you log, not just what you mark as sensitive. Avoid entering things like government ID numbers, passwords, financial account details, or other highly sensitive information you wouldn't want processed by a third-party AI service.
+
+You can request deletion of your account and associated data at any time, from Settings inside the App or, if you can't log in, from [/account-deletion](/account-deletion) - no login required.
 
 ## 7. Acceptable Use
 

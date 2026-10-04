@@ -5,7 +5,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants: Record<NonNullable<ButtonProps['variant']>, string> = {
-  primary: 'bg-accent text-white hover:bg-accent-hover border-transparent',
+  primary: 'bg-accent text-accent-contrast hover:bg-accent-hover border-transparent',
   secondary: 'bg-bg-card text-text border-border-strong hover:border-accent hover:text-accent',
   danger: 'bg-bg-card text-danger border-border-strong hover:border-danger',
 }
@@ -13,7 +13,7 @@ const variants: Record<NonNullable<ButtonProps['variant']>, string> = {
 export default function Button({ variant = 'secondary', className = '', ...props }: ButtonProps) {
   return (
     <button
-      className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
+      className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
       {...props}
     />
   )
