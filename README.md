@@ -1,45 +1,143 @@
-# MyConfía — Prototype (Capture + Extraction + Storage)
+# MyConfía
 
-Passive... no — **interactive-confirmation** person resolution (see below).
-Storage now runs on Supabase (Postgres + pgvector) instead of local SQLite.
-Retrieval comes in a later step.
+A personal relationship notebook you talk to. Log a note in plain words or by voice
+("Met Priya from Acme today - she's moving to Pune in March"), and MyConfía files it under
+the right person, pulls out follow-up tasks and important dates, and lets you ask questions
+about everything you've recorded ("When did I last talk to Priya?", "Who did I meet in July?").
 
-## Migrating to a PWA (in progress)
+It is an installable web app (PWA) with an Android wrapper (Trusted Web Activity) for the Play Store.
 
-The app is being rebuilt as an installable PWA: **FastAPI backend**
-(`api/`) + **React/Vite/Tailwind frontend** (`frontend/`), replacing
-Streamlit - which can't be a real installable/offline PWA (it's a
-server-driven rerun-per-interaction model, no client-side app shell) and
-caps how polished a custom UI can get. See the roadmap in the plan file
-for the full picture.
+- **Backend:** FastAPI (`api/`) on Render
+- **Frontend:** React + TypeScript + Vite + Tailwind (`frontend/`) on Vercel
+- **Data:** Supabase (Postgres + pgvector + Auth), sensitive text encrypted at rest
+- **AI:** Groq-hosted open models (extraction, answers, moderation, speech-to-text) and Cohere embeddings
 
-> **The Streamlit app (`app.py`/`views/`) is no longer maintained.** As of
-> the auth migration (below), `db.py`'s functions require an explicit
-> `user_id` on every call - the Streamlit app doesn't have a login flow to
-> supply one, so it will error out. It's left in the repo for reference
-> but isn't being kept working; the FastAPI+React app is the real app now.
+> For a deeper technical walk-through see [PRODUCT_OVERVIEW.md](PRODUCT_OVERVIEW.md). The history of
+> design decisions, and the retired Streamlit prototype, are in [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md).
 
-**To run the new stack** (two servers):
-```bash
-# terminal 1 - backend
-uvicorn api.main:app --reload --port 8000
-# Swagger UI at http://localhost:8000/docs
+---
 
-# terminal 2 - frontend
-cd frontend
-npm install        # first time only
-npm run dev         # Vite on http://localhost:5173
+## Features
+
+### Capture
+- **Type or speak a note.** The app works out who it is about, the date, location, topics, sentiment and a one-line summary.
+- **Voice notes** with live captions where the browser supports it, transcribed by Whisper. Silence and background noise are
+  detected (on the device and on the server), so an empty recording never turns into a made-up note - you get a clear "didn't catch anything" notice instead.
+- **Business-card scan.** Photograph a card; OCR reads it and you confirm the contact before it is saved.
+- **Optional location** attached to a note (a map link, or a street address if a Maps key is configured).
+- **Smart person matching.** If a name could be more than one person ("Aditi"), you're asked to pick, or to create a new contact - nothing is merged silently.
+- **Mentions are linked.** Other people named in a note ("Rahul introduced me to Meera") are linked to their own profiles.
+- **Follow-ups become tasks.** "Remind me to call Dad on Friday" creates a task with a due date, resolved in code rather than guessed by the model.
+- **Initiatives.** Organise notes into your own categories (Personal, Job, Fitness by default; add, rename, recolour).
+- **Sensible rejections.** Content that is too short to be a note, unsafe, or off-topic is declined with a friendly message and example prompts rather than a dead end.
+
+### Ask
+- **Natural-language questions** answered from your own notes: "What did Aditi say about the database?", "Last time I met Rahul?", "Who works at Acme?"
+- **Time windows.** "Last week", "this month", "in July", "last 30 days", or a year - alone, or combined with a person.
+- **Counting questions.** "How many people did I meet this month?", "How many times have I met Priya?" - computed deterministically, not estimated by the model.
+- **Semantic search** for fuzzy descriptions ("that skeptical guy from the conference").
+- **Traceable answers.** Every answer lists the source notes it came from.
+- **Report an answer.** A Report button on every AI answer (reason + optional details) - reports are stored privately and encrypted.
+- **AI-generated notice** on every answer, briefing and brief, reminding you the AI can be wrong.
+- **Tap-to-fill example prompts** in the empty chat and in the tour, so it's clear what to type.
+
+### People
+- **People list and profiles** with role, company, description, contact details, personal notes and a full interaction timeline.
+- **Important dates.** Birthdays and anniversaries mentioned in notes are saved separately on the person's profile (add or edit them by hand too), and upcoming ones surface on Today.
+- **Relationship cadence.** A profile shows how many days you've noted them, roughly how often, and when you last did.
+- **Pre-meeting briefing** - an AI summary of everything you know about a person.
+- **Companies.** For each company: who you know there, how many conversations with each, your most recent notes, plus an AI company briefing.
+- **Merge and delete** people; quiet-relationship detection ("haven't spoken in a while").
+
+### Today, Notes and Search
+- **Today (digest).** Open tasks, overdue items, people to follow up with, and upcoming birthdays/anniversaries, with an AI-written morning brief.
+- **Morning email** (optional, on by default) with the same brief.
+- **Notes.** Every note in one list, filter by initiative, edit or delete.
+- **Search everything.** One search box (Ctrl/Cmd + K, or the magnifier) across people, notes and tasks. It runs on your device over your already-decrypted data, so nothing extra is sent anywhere.
+- **Google Calendar.** Optionally push a task with a due date to your calendar.
+
+### Privacy, safety and account
+- **Encrypted at rest.** Note text, summaries, personal notes, task text, important dates and reports are encrypted before they reach the database.
+- **Row-level security** - every row belongs to a user; the database enforces it.
+- **Content moderation** on every input route before anything is processed or stored.
+- **App lock.** A PIN (set per device), plus optional fingerprint / face unlock on devices that support it. The PIN always remains as a fallback.
+- **Terms gate, interactive tour, Help & FAQ** (Settings), public Privacy Policy and Account Deletion pages.
+- **Delete account** from Settings removes all of your data.
+- **Rate limits and monthly quotas** per user (free tier), failing safe if quota tables are missing.
+- **Personalisation:** colour palettes, light/dark theme, text size.
+
+### Platforms
+- Installable PWA, responsive from phone to desktop.
+- Android app via Trusted Web Activity (a thin shell around the web app).
+
+---
+
+## How it works (short version)
+
+**Grounded generation.** Anything that can be computed is computed in Python/SQL - dates, counts, ranges,
+which records match. The language model only phrases the result. It never does the date maths: it names a phrase
+like "last week", and `date_utils.resolve_date_range` turns it into exact days.
+
+**Question pipeline.** `retrieval.parse_query` extracts the person, scope, date range, count type and a semantic phrase.
+`api/routers/ask.py` then routes: counting engine -> named person (scope + date filtering) -> date-window listing -> semantic search fallback.
+The answer comes back with its source notes.
+
+**Models** (all through Groq except embeddings; see `llm_client.py`)
+
+| Job | Model | Why |
+|---|---|---|
+| Intent routing and query parsing | `openai/gpt-oss-20b` | Small, cheap and fast; has its own rate-limit budget so routing never starves the main model |
+| Content moderation | `openai/gpt-oss-safeguard-20b` | A small safety-tuned model |
+| Extraction, answers, briefings, morning brief, card scan | `openai/gpt-oss-120b` | Needs the quality; used once per real request |
+| Speech to text | `whisper-large-v3-turbo` | Fast transcription |
+| Embeddings | Cohere `embed-english-v3.0` | Hosted, 1024-dim vectors for semantic search |
+
+The two high-volume classification steps (routing and moderation) deliberately use the smallest models.
+
+### Project structure
+
 ```
-The backend needs the same environment variables as before
-(`GROQ_API_KEY`/`SUPABASE_URL`/`SUPABASE_KEY` - see Setup below), read
-from the repo-root `.env` via `python-dotenv`. The frontend needs its own
-`frontend/.env.development` - see **Auth setup** below for what goes in it.
+api/                 FastAPI app
+  main.py            app, CORS, health, /api/transcribe
+  routers/           chat, ask, capture, people, notes, tasks, initiatives,
+                     brief, calendar, settings, reports
+  schemas.py         request validation (length caps, report reasons, ...)
+retrieval.py         query parsing, scope/date selection, counting, source building
+extraction.py        note -> structured people / tasks / dates
+important_dates.py   birthday & anniversary validation and next-occurrence maths
+date_utils.py        relative-date and date-range resolution
+db.py                all database access + encryption of sensitive fields
+crypto_utils.py      Fernet field encryption
+moderation.py, intent.py, voice.py, card_scan.py, morning_brief.py, ...
+schema.sql           the full database schema + migrations (numbered sections)
+frontend/            React app (pages/, components/, lib/, api/)
+docs/DESIGN_NOTES.md archived development log
+```
 
-Current status: Digest (with per-task Google Calendar sync), Chat
-(text/voice/business-card capture with opt-in location, ask, with the
-same person-disambiguation flow as Streamlit), People (list + detail +
-edit + merge + briefing), auth (multi-user login/signup), and deployment
-(Vercel + Render) all work end-to-end against the real API.
+---
+
+## Quick start (local)
+
+```bash
+# one-time: Python deps
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+
+# terminal 1 - backend (Swagger UI at http://localhost:8000/docs)
+uvicorn api.main:app --reload --port 8000
+
+# terminal 2 - frontend (http://localhost:5173)
+cd frontend && npm install && npm run dev
+```
+
+The backend reads `GROQ_API_KEY`, `COHERE_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY` and `ENCRYPTION_KEY` from a repo-root
+`.env`; the frontend needs `frontend/.env.development` (see Auth setup below). The database schema is in
+`schema.sql` - run its numbered sections in the Supabase SQL editor (re-running is safe; statements are idempotent).
+New installs run the whole file; existing installs run the sections added since their last migration.
+
+---
+
+## Setup details
 
 ### Auth setup (Supabase Auth, multi-user)
 
@@ -160,114 +258,11 @@ root already handles.
    additional Authorized redirect URI on the existing OAuth client
    (Google allows more than one; localhost can stay for local dev).
 
-## UI (Streamlit - being replaced, see above)
 
-```bash
-streamlit run app.py
-```
+---
 
-Opens a multi-page app in your browser (`app.py` is a thin
-`st.navigation` router; each page lives in `views/`):
+## Accounts and keys
 
-- **🌅 Digest** (`views/digest_view.py`) — the default landing page, and
-  the only place tasks are managed (this used to be a separate Tasks
-  page - folded in since it was showing overlapping data with a
-  different framing). Every follow-up task in one place with an
-  Overdue/Due soon/Open/Done/All filter, mark-done everywhere, plus
-  relationships that have gone quiet (no interaction in N days,
-  adjustable). The point is seeing what needs attention without having
-  to think to ask. "Get briefing" for a specific person lives on the
-  People page, not here - this page is for scanning across everyone.
-- **💬 Chat** (`views/chat_view.py`) — log a note, ask a question, or scan
-  a business card (sidebar mode toggle). Typing, voice, and business-card
-  photo all funnel into the same `capture.py`/`retrieval.py` logic underneath
-  - see "Voice input" and "Business card capture" below.
-- **🧑‍🤝‍🧑 People** (`views/people_view.py`) — browse a person's full
-  interaction timeline, fix a mistake (wrong extraction, typo) in either
-  their profile or a specific logged interaction, merge two Person rows
-  that turned out to be the same human, and pull up a "Get briefing" for
-  them directly (see "Pre-meeting briefings" below).
-
-Everything below this section (the `python capture.py` / `python
-retrieval.py` CLI scripts) still works too and is useful for quick
-debugging, but the UI is the intended way to use this day-to-day.
-
-### Pre-meeting briefings
-
-`retrieval.generate_briefing(person_id)` turns everything recorded about
-a person (their profile, every interaction — including ones where they
-were only a secondary mention, see below — and open follow-ups) into a
-short, natural summary meant to jog your memory before reconnecting: who
-they are, what was last discussed and how it went, anything worth
-remembering about them personally, and what's still open. It's manually
-triggered (no calendar integration) from the top of a person's profile on
-the People page — deliberately not on the Digest page, which is for
-scanning across everyone rather than going deep on one person. Same
-grounding rules as everything else: only from stored records, and it
-says so plainly if you've never actually talked to this person directly
-(only heard about them via someone else).
-
-### Business card capture
-
-The "📇 Scan a card" mode uses your browser's camera (`st.camera_input`)
-to photograph a business card, then:
-1. **OCRs it locally** with Tesseract (`card_scan.py`, via `pytesseract`)
-   — Groq doesn't currently expose a vision-capable model on this
-   project's account (checked live against the account's actual model
-   list before building this), so this reads the image without sending
-   it to any LLM.
-2. **Structures the OCR'd text** (name/role/company/phone/email) with a
-   small dedicated prompt through the same shared Groq text client
-   (`llm_client.py`) used everywhere else — this step also cleans up
-   typical OCR noise (e.g. reassembling a mangled email address).
-3. Shows the result in an **editable confirmation form** before saving —
-   unlike voice (trusted as-is), a misread structured field like an email
-   address is worse silently wrong than a misheard word in a note, so
-   this gets a review step voice didn't need.
-4. On save, goes through the exact same person-resolution path as a
-   typed note (`_process_extracted()` in `chat_view.py`) — if the scanned
-   name matches an existing person, you get the same confirm-buttons
-   disambiguation, not a silent guess.
-
-Requires the Tesseract OCR binary on the machine running this (the
-`pytesseract` pip package is only a wrapper around it):
-```bash
-brew install tesseract          # macOS
-apt install tesseract-ocr        # Linux
-```
-OCR accuracy depends on photo clarity/lighting/angle, same caveat as any
-OCR tool — a blurry or heavily-angled photo will read worse.
-
-### Voice input
-
-The mic recorder on the Chat page (`st.audio_input`) records a clip in
-your browser; on submit it's sent to Groq's hosted Whisper model
-(`voice.py`, using the same `GROQ_API_KEY` as everything else — no
-separate setup) and the transcript is fed straight into
-`handle_capture()`/`handle_retrieval()`, same as typed text. If
-transcription fails or comes back empty, a warning shows in the chat
-instead of silently doing nothing.
-
-Design notes:
-- **Why chat, and why an explicit mode toggle instead of guessing intent:**
-  both logging a note and asking a question are naturally just typing a
-  sentence, so one chat surface fits better than separate forms. But
-  whether a given message is a note-to-save or a question-to-answer is a
-  one-click toggle rather than an LLM guessing — simpler, cheaper, and
-  removes a whole class of misclassification bugs. Easy to swap for
-  auto-detection later if you want a single unified input.
-- **Person disambiguation happens inline as buttons**, not a blocking
-  terminal prompt — when a note or query is ambiguous about who's being
-  referred to, the assistant's chat bubble shows the candidates as
-  clickable buttons and waits for your choice before continuing.
-- Sidebar shows live Supabase/Groq connection status and a list of people
-  logged so far.
-- **Destructive actions on the People page** (delete a person, delete an
-  interaction, merge two people) go through an `st.dialog` confirmation
-  first — merging and deleting are irreversible, so a stray click
-  shouldn't be enough to trigger them.
-
-## Setup
 
 ```bash
 python3 -m venv venv
@@ -276,7 +271,7 @@ source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 1. Groq (free LLM for extraction)
+### Groq (free LLM for extraction)
 
 Get a free key: https://console.groq.com/keys
 
@@ -284,7 +279,7 @@ Get a free key: https://console.groq.com/keys
 export GROQ_API_KEY="your_key_here"
 ```
 
-### 1b. Cohere (free hosted embeddings, used for semantic search)
+### Cohere (free hosted embeddings, used for semantic search)
 
 Get a free key (no credit card required): https://cohere.com
 
@@ -296,7 +291,7 @@ Optional - if unset, capture still works, just without semantic
 ("that skeptical guy") search. See `embeddings.py`'s module docstring for
 why this is a hosted API call rather than a local model.
 
-### 2. Supabase (free Postgres + pgvector, replaces the old SQLite file)
+### Supabase (free Postgres + pgvector, replaces the old SQLite file)
 
 1. Create a free project at https://supabase.com
 2. Open **Project -> SQL Editor -> New query**, paste in the contents of
@@ -374,315 +369,37 @@ Should print `Connected to Supabase successfully.` If you get a
 your env vars; if you get a table-not-found error, re-check that
 `schema.sql` ran successfully.
 
-## Capture a note
+
+---
+
+## Security
+
+| Area | How it works |
+|---|---|
+| **Moderation** | Every input route is checked before anything is processed or stored. It **fails closed**: if no classifier can be reached the message is refused with a "try again" notice, never waved through. Layers: a free local screen for blatant prompt-injection phrases, then `gpt-oss-safeguard-20b`, then `gpt-oss-20b` with the same written policy (the safeguard model is limited to 3 requests/min on Groq's free tier, so a rate-limited model is skipped until its retry-after passes). Only the five categories in the policy can block - venting, swearing, grief, abuse disclosures, mental health, arrests and similar sensitive notes are explicitly allowed. |
+| **Vector search** | `match_interactions()` requires a user id, filters to that user's rows in the `WHERE` clause (using `interaction_user_id_idx`) *before* ranking and `LIMIT`, and is executable only by the backend's service role (`schema.sql` sections 27 and 29). |
+| **Row-level security** | Every table has RLS with `auth.uid() = user_id` policies (`schema.sql` sections 10, 25, 26). The backend uses the service-role key, which bypasses RLS, so RLS is the safety net for anything that reaches the database through the public anon key - it is what stops one signed-in user reading another's rows through Supabase's REST API. |
+| **Prompts** | No secrets, keys, plan limits or business rules appear in any prompt. User text and stored notes are always fenced in `<note>` / `<records>` / `<data>` tags with an instruction to treat them as data, never commands. |
+| **Output validation** | The extraction result is validated by Pydantic (`extraction_schema.py`): types coerced or dropped, string lengths capped, unknown keys discarded, and per-note fan-out capped (10 other people, 10 tasks, 5 important dates, ...). The same validation runs on the `extracted` payload a client sends back on a confirm call, and that call re-runs moderation on the note text. |
+| **Input limits** | Request bodies are length-capped (`api/schemas.py`); uploaded audio is capped at 10 MB; per-IP rate limits on every route, tighter on the AI routes; monthly per-user quotas. |
+| **App lock** | PIN stored only on the device (never sent to the server) as a salted PBKDF2-SHA256 hash (210,000 rounds); wrong guesses lock the screen for 30 s, doubling to 15 min. Optional biometric unlock via WebAuthn is a local convenience on top of the PIN. |
+| **Voice** | Audio is held in memory for one transcription call and sent to Groq's Whisper API. This app never writes it to disk or the database; only the resulting text is kept, and only if you save it as a note. Groq does not retain inference data by default, but may log inputs/outputs for up to 30 days for reliability and abuse monitoring unless Zero Data Retention is switched on in the Groq console (Data Controls). |
+| **Encryption** | Field-level, application-side Fernet (AES-128-CBC + HMAC) with one server-held `ENCRYPTION_KEY`. Encrypted: note text, summaries, location/address, task text, a person's description, personal notes, important dates, calendar tokens, AI reports. **Not** encrypted: names, role, company, phone, email, dates, task due dates, and the note embeddings (needed for similarity search). It protects against a database leak, not against the server itself - it is not end-to-end encryption. |
+
+### Sign-up and sign-in protection
+
+Authentication runs directly against Supabase Auth, so bot and brute-force protection is configured there:
+
+1. **CAPTCHA (recommended before launch).** Create a Cloudflare Turnstile widget, set its *secret* in Supabase -> Authentication -> Attack Protection -> CAPTCHA, and set `VITE_TURNSTILE_SITE_KEY` (the *site* key) in Vercel. The sign-in page then shows the check, and Supabase rejects any request without a valid token - including scripted ones that never load the page. With the variable unset, nothing changes.
+2. **Rate limits.** Supabase rate-limits sign-ups, sign-ins and emails per IP (see Authentication -> Rate Limits).
+3. **Repeated failures.** The sign-in page waits 30 s after five wrong passwords, doubling each time up to 15 min (device-side, `lib/authThrottle.ts`). This is a speed bump for people; the enforcement against scripts is items 1-2.
+4. Passwords must be at least 8 characters on sign-up. Consider turning on leaked-password protection in Supabase (Pro plan).
+
+---
+
+## Tests and checks
 
 ```bash
-python capture.py
+cd frontend && npx tsc -b        # type-check the frontend
+python -c "import api.main"      # backend imports cleanly
 ```
-
-Paste/type a free-form note about a conversation, then press Enter on an
-empty line to submit. Example input:
-
-```
-Met Rohan from Acme Logistics today for a demo. He's a Procurement Manager
-there. He seemed skeptical about our pricing vs their current vendor, but
-impressed with the product demo itself. Wears glasses, very analytical,
-comes across as sincere. Was wearing a blue shirt and blazer. Said he'd
-check with his team and get back next week. Need to send him a pricing
-comparison doc by Friday.
-```
-
-What happens under the hood:
-1. `extraction.py` sends the note to Groq (free Llama model, with today's
-   actual date injected so it can resolve "today"/"by Friday"/etc. into
-   absolute dates) and gets back structured JSON.
-2. `capture.py` checks the mentioned person's name against existing
-   `Person` rows in Supabase. If there's any plausible match (including an
-   exact alias/nickname match — nicknames aren't unique), it **asks you to
-   confirm** before merging rather than guessing. Only when there's zero
-   plausible candidate does it create a new person automatically.
-3. An embedding of the raw note is computed via Cohere's hosted embed API
-   (free tier, no credit card - see `embeddings.py`).
-4. Everything is written to Supabase: the Person row is created/updated,
-   an Interaction row is stored (raw text + structured fields + the
-   embedding in a real `vector` column), and any follow-ups become Task
-   rows with resolved due dates.
-
-## Quick sanity check on extraction alone
-
-```bash
-python extraction.py
-```
-
-Runs a hardcoded sample note through the extractor and prints the JSON —
-useful for testing your Groq key and iterating on the extraction prompt
-without touching the database.
-
-## Person resolution is interactive, not automatic
-
-Nicknames aren't unique — "Sid" could be short for a "Sidharth" you met
-months ago, or a completely different new person also called Sid. So
-whenever an extracted name has *any* plausible match against existing
-people, `capture.py` stops and asks you to confirm:
-
-```
-The note mentions 'Sid' (friendly, works in marketing).
-Is this the same person as one of these existing entries?
-  1. Sidharth (aka Sid) — tall, works in finance — Analyst, XYZ Corp [match: 100%]
-  0. None of these — 'Sid' is a new person
-Enter number:
-```
-
-Only when there are **zero** plausible candidates does it create a new
-person automatically — there's nothing to confirm in that case.
-
-## Data model notes
-
-- **`Person.description`**: general, stable traits only — physical build,
-  personality/demeanor. New observations are *appended* here over time,
-  never overwritten, so it builds into a running picture of the person.
-- **`Person.role` / `Person.company`**: job title and organization. These
-  are *overwritten* (not appended) on each update, since these are current
-  facts that change (promotions, job switches), not accumulating traits.
-- **`Interaction.appearance`**: what they wore/looked like at that
-  *specific* meeting — per-interaction, not per-person.
-- **`Interaction.embedding`**: a real `vector(1024)` pgvector column, with
-  an `ivfflat` cosine-similarity index — genuine approximate-nearest-
-  neighbor vector search inside Postgres, not a Python-side loop over
-  JSON blobs.
-- **Sentiments are per-topic**: a note can say someone was skeptical about
-  pricing but impressed by the demo, and both are captured as separate
-  `{topic, sentiment}` entries in `Interaction.sentiment` (jsonb).
-
-## Notes / things you'll likely want to tune
-
-- **CANDIDATE_THRESHOLD** in `capture.py` (default `0.5`) — how similar a
-  name needs to be before it's even shown as a candidate to confirm.
-- **MODEL_NAME** in `extraction.py` — set to a current free Groq model.
-  Check https://console.groq.com/docs/models for the latest list if the
-  hardcoded one gets deprecated.
-- Embeddings are computed via Cohere's hosted `embed-english-v3.0` model
-  (1024-dimensional vectors, matching `schema.sql`'s `vector(1024)`
-  column). If you swap embedding models/providers later, update that
-  dimension too (and re-embed existing rows - a different model's
-  vectors aren't comparable to another's).
-- If `COHERE_API_KEY` isn't set, capture still works — it just stores
-  `embedding = NULL`, and you'll only get structured person-based
-  retrieval (no semantic "that skeptical guy" search) until you add it.
-- **Supabase free tier limits** (as of writing): 500MB database, 2 free
-  projects, project pauses after a week of inactivity (just reopen it in
-  the dashboard to wake it up). Fine for a prototype; check
-  https://supabase.com/pricing if you outgrow it.
-
-## Ask a question (retrieval)
-
-```bash
-python retrieval.py
-```
-
-Type a question, press Enter. Two things can happen depending on what you ask:
-
-**A. You name a specific person** — e.g. "What did I talk to Rohan about
-last time?", "When did I first meet Priya?", "Summarize everything with
-Sid". `retrieval.py` resolves the name against existing `Person` rows
-(same fuzzy matching as capture, but **read-only** — it never creates a
-new person here). If the name could plausibly mean more than one existing
-person, you're asked to pick:
-
-```
-'Sid' could refer to more than one person you've logged:
-  1. Sidharth — tall, works in finance — Analyst, XYZ Corp [match: 100%]
-  2. Sid — friendly, works in marketing — Marketing Lead, Beta Inc [match: 100%]
-  0. None of these
-Enter number:
-```
-
-Once resolved, it pulls that person's interactions directly by
-`person_id` and narrows to what the question implies: `latest` meeting,
-`first` meeting, one near a `specific_date`, or `all` of them (for
-relationship-level summaries).
-
-**B. You give a vague reference, no name** — e.g. "Who was that guy
-skeptical about pricing?", "What did we discuss about the Q3 roadmap?".
-No person is resolvable, so it falls back to semantic search: your query
-is embedded and matched against stored interaction embeddings via
-`db.search_interactions_by_embedding()` — a real pgvector cosine-
-similarity search running inside Postgres.
-
-Either way, whatever gets retrieved is handed to Groq with an instruction
-to answer **only** from those records (not to invent anything), and to
-say so plainly if the records don't actually contain an answer.
-
-### How query understanding works
-
-Before either path runs, `retrieval.py` sends your raw question to the
-LLM (`parse_query()` in `retrieval.py`) to extract: any person name
-mentioned, the intended scope (`latest`/`first`/`specific_date`/`all`),
-a resolved absolute date if one was implied, and a clean semantic
-restatement of the question (used for the vague-query fallback). Like
-extraction, this is anchored to today's actual date so "last time",
-"first met", "in May" etc. resolve correctly.
-
-## Handling pronouns and back-references ("he", "that day")
-
-Since this is a chat interface, later turns naturally use pronouns and
-vague references instead of repeating a name: "What was discussed with
-Rohan in the last meeting?" followed by "What did **he** wear **that
-day**?" This is handled without any separate state-tracking machinery:
-
-- Each turn, the last few exchanges (`retrieval.format_recent_context()`)
-  are passed alongside the current question into `parse_query()`.
-- The query parser is instructed to resolve pronouns/back-references
-  against that recent text **only when it's reasonably unambiguous** -
-  it works because the assistant's own prior answers already state the
-  relevant person's name and any relevant dates explicitly (the synthesis
-  prompt is instructed to reference dates), so "he" and "that day" have
-  something concrete to resolve against.
-- If a question already names a person or date explicitly, that always
-  takes priority over anything inferred from context.
-- If the reference is genuinely ambiguous (e.g. two different people were
-  just discussed and "him" could mean either), the parser is told to
-  leave it unresolved rather than guess - it'll fall through to the
-  normal "no person found" / semantic-search behavior rather than
-  silently picking the wrong person.
-
-This context window is a few recent turns, not the entire conversation
-history - long-range references ("that person I asked about 20 messages
-ago") aren't resolved this way. If that turns out to matter in practice,
-the more robust fix is explicit state (tracking the last-resolved person/
-interaction in session and reusing it directly) rather than a longer text
-window - worth revisiting if you notice it failing on real usage.
-
-## Handling malformed dates from the LLM
-
-Occasionally the extraction/query-parsing LLM returns a partial date
-instead of a complete one — e.g. `"2026-09"` for a note that only says
-"sometime in September," with no specific day. Postgres's `date` columns
-reject that outright (`invalid input syntax for type date`), and without
-handling it that would crash the whole save.
-
-Two layers guard against this:
-1. The extraction and query-parsing prompts (`extraction.py`,
-   `retrieval.py`) are explicitly instructed to always resolve to a
-   complete `YYYY-MM-DD` date or `null` — never a partial one.
-2. **Defensively, regardless of what the LLM actually returns**,
-   `date_utils.to_valid_date()` validates every date string before it
-   reaches `db.py`. An invalid value becomes `None` instead of failing
-   the insert — the interaction/task still gets saved, just without that
-   particular date, and a warning is surfaced (printed in the CLI,
-   shown inline in the chat in the Streamlit UI).
-
-## Schema note: `other_people` format changed
-
-`extracted_facts.other_people` used to be a flat list of names (e.g.
-`["Rhea"]`). It's now a list of `{"name": ..., "relation": ...}` objects,
-capturing how that person relates to the primary person/you (e.g.
-`{"name": "Rhea", "relation": "Priya's sister"}`) — a bare name told you
-someone else was mentioned but not how they connected to anything.
-
-**Rows captured before this change still have the old flat-string
-format.** `retrieval.py`'s formatting handles both shapes so old data
-won't break, but it also won't retroactively gain relationship context —
-only newly captured notes will. If you want existing rows upgraded, that
-would mean re-running extraction on their stored `raw_text` and updating
-`extracted_facts`; not done automatically here.
-
-Similarly, follow-up task descriptions are now prompted to be
-self-contained and specific (e.g. "Send Vikas a revised delivery
-timeline for the project" instead of "send revised timeline") - existing
-vague tasks already in your `task` table won't be rewritten, only newly
-extracted ones will be phrased this way.
-
-## `other_people` mentions are now linked to real Person records
-
-A note that mentions someone besides its primary person (e.g. "...his
-colleague Neha joined too, she's new to sales") used to just store that
-as text inside `extracted_facts.other_people` - Neha had no Person row,
-so asking "what do I know about Neha?" later found nothing, even though
-she'd been named.
-
-Now, `capture.py`'s `resolve_and_link_other_people()` runs right after
-each interaction is stored: for every `other_people` entry, it either
-links to an existing Person (on a confident, near-exact name/alias match
-via `person_match.find_confident_match()`) or creates a new lightweight
-one, then records the link - who, in which interaction, and how they
-relate to that interaction's primary person - in the new
-`interaction_person` table.
-
-**This never interactively asks**, unlike resolving the note's primary
-person. These are secondary, in-passing mentions rather than the note's
-actual subject, so a wrong guess is lower-stakes - and now that the
-People page has a merge feature, a wrongly-created duplicate is a
-one-click fix rather than a real problem. If it turns out this creates
-more noisy duplicates than expected in practice, tightening the
-confidence threshold (`person_match.find_confident_match`'s default
-`0.9`) or switching to an interactive confirmation (like the primary
-person) would be the fix - not something built now.
-
-Where this shows up:
-- **Retrieval**: asking about someone links in interactions where they
-  were only a secondary mention too (`retrieval.get_all_interactions_for_person()`),
-  clearly phrased as "mentioned in a note about X", not a direct
-  conversation with them.
-- **People page**: a "Mentioned in" section lists every interaction they
-  were linked to as a secondary person, read-only for now (fixing that
-  interaction's content still happens from the primary person's page).
-
-**Only applies going forward** - same caveat as the `other_people` format
-change above: existing interactions' `other_people` mentions aren't
-retroactively linked, only newly captured notes get this.
-
-## first_met_date reflects the note, not the day you logged it
-
-`Person.first_met_date` is now set from the interaction's actual
-(extracted, validated) date — the same date resolution used for the
-`Interaction.date` column — rather than always being `date.today()`. So
-logging a note today that says "met him last week" correctly backdates
-`first_met_date`, instead of recording today as when you first met them.
-
-On a **merge** into an existing person, `first_met_date` is never
-touched — there's no update path for it at all, by design, since that
-person's actual first meeting necessarily happened in an earlier,
-already-stored interaction.
-
-**Rows created before this fix will have `first_met_date` set to
-whatever day you happened to run the capture**, which may not match the
-note's actual content for any note describing a past meeting. Not
-retroactively corrected here — same caveat as the `other_people`/task
-description changes above.
-
-## What's built vs. still open
-
-Built: capture (typed, voice, or business card photo) with interactive
-person resolution, per-topic sentiment, follow-up tasks with resolved due
-dates, semantic + structured retrieval with pronoun/back-reference
-resolution, a Digest page (all tasks with an Overdue/Due soon/Open/Done/
-All filter + stale relationships), manually-triggered pre-meeting
-briefings, a People page for browsing/editing/merging, and secondary
-("other_people") mentions linked to real, independently-queryable Person
-records.
-
-Still open, worth revisiting if it turns out to matter in practice:
-- **Group interactions**: each Interaction row has a single `person_id` -
-  a note describing a meeting with two people at once still has to be
-  filed under one primary person; the other participant is now a linked
-  secondary mention (`interaction_person`, see above), not a first-class
-  interaction record shared equally by both.
-- **Secondary mentions are read-only**: the People page's "Mentioned in"
-  section shows them, but there's no way to unlink a wrong one or edit
-  that interaction from there - you'd go to the primary person's page.
-- **Digest is in-app only, not a real push**: it surfaces the moment you
-  open the app, but nothing reaches you if you don't - no email/Slack
-  digest or background scheduler. Revisit if the in-app version doesn't
-  get opened often enough to matter.
-- **Briefings are manual, not calendar-driven**: no Google Calendar
-  integration - you have to think to open a person's profile on the
-  People page and click "Get briefing" rather than it surfacing
-  automatically before an actual upcoming meeting.
-- **Duplicate detection**: merging two Person rows is manual (People
-  page); nothing flags likely duplicates for you.
-- **The app is still fundamentally people-centric**: every capture has to
-  resolve to a Person - there's no way yet to log a standalone note, idea,
-  or personal to-do that isn't about a conversation with someone, or to
-  track a recurring non-person "project"/topic thread the way a Person
-  accumulates interactions.

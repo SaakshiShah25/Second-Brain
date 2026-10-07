@@ -25,7 +25,9 @@ import {
   useUpdateTaskStatus,
 } from '../api/tasks'
 import type { TaskFilter } from '../api/types'
+import AiNotice from '../components/AiNotice'
 import Card from '../components/Card'
+import UpcomingDatesCard from '../components/UpcomingDatesCard'
 import Button from '../components/Button'
 import PageIntro from '../components/PageIntro'
 
@@ -60,9 +62,14 @@ function MorningBriefCard() {
       {isLoading ? (
         <p className="text-sm text-text-muted">Putting today together…</p>
       ) : (
-        <div className="prose-chat text-sm leading-relaxed text-text">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{data?.brief ?? ''}</ReactMarkdown>
-        </div>
+        <>
+          <div className="prose-chat text-sm leading-relaxed text-text">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{data?.brief ?? ''}</ReactMarkdown>
+          </div>
+          <div className="mt-2 border-t border-border pt-2">
+            <AiNotice />
+          </div>
+        </>
       )}
     </Card>
   )
@@ -150,6 +157,7 @@ export default function DigestPage() {
       <PageIntro>Your open tasks and today's calendar, all in one place, plus a daily brief.</PageIntro>
 
       <MorningBriefCard />
+      <UpcomingDatesCard />
 
       {calendarResult === 'connected' && (
         <Card className="mb-4 flex items-center justify-between gap-3 border-green-600/40">

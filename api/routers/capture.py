@@ -28,9 +28,12 @@ import db
 import embeddings
 import entitlements
 import extraction
+import extraction_schema
 import google_maps
+import important_dates
 import moderation
 import person_match
+import text_utils
 import voice
 from timing import step
 from api.auth import get_current_user_id
@@ -61,6 +64,10 @@ def _reject_if_unsafe(text: str) -> None:
     double up on (the chat.py-mediated path) avoids re-checking."""
     result = moderation.check(text)
     if not result["safe"]:
+        if result.get("unavailable"):
+            # Fail closed: the safety check itself couldn't run, so this is
+            # not "safe" - but it isn't the user's fault either, hence 503.
+            raise HTTPException(503, moderation.UNAVAILABLE_MESSAGE)
         raise HTTPException(400, "This content can't be logged - it looks unsafe or attempts to manipulate the assistant.")
 
 
@@ -214,6 +221,21 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
         decisions=extracted.get("decisions") or [],
         concerns=extracted.get("concerns") or [],
     )
+
+    # Birthdays/anniversaries mentioned about the primary person go onto
+    # their profile as recurring dates (see important_dates.py). Best
+    # effort by design: a note should always save, so a problem here (e.g.
+    # the person.important_dates column not migrated yet) is logged and
+    # skipped rather than failing the capture.
+    primary = extracted.get("primary_person") or {}
+    if person_id and primary.get("important_dates"):
+        try:
+            reference = date.fromisoformat(interaction_date)
+            found = important_dates.clean_many(primary["important_dates"], reference)
+            if found:
+                db.add_important_dates(user_id, person_id, found)
+        except Exception as e:
+            print(f"[warn] Couldn't save important dates for person={person_id}: {e}")
 
     # Person-less notes have no primary_person, but a note can still
     # mention OTHER people in passing (e.g. "reminder to call Priya about
@@ -409,6 +431,13 @@ async def _capture_text_core(user_id: str, raw_text: str, geo_lat: Optional[floa
     embeddings/db-writes are consistently sub-second - not worth
     distinguishing to the user. The plain (non-streaming) capture_text route
     below never passes on_stage, so this is a no-op for every other caller."""
+    # A single stray character ("A", a misplaced tap-and-send) has
+    # nothing real to extract - rejecting it here, before the entitlement
+    # check or the extraction call, means it doesn't cost part of this
+    # month's free-tier cap or a wasted Groq call for something that was
+    # never going to produce a meaningful note either way.
+    if not text_utils.has_meaningful_content(raw_text):
+        raise HTTPException(422, "That's too short to log as a note - try adding a bit more detail.")
     with step("enforce_entitlement"):
         await run_in_threadpool(_enforce, user_id, "interactions_logged")
     with step("get_initiatives"):
@@ -457,7 +486,16 @@ def capture_confirm(body: CaptureConfirmRequest, user_id: str = Depends(get_curr
     so `body.extracted["primary_person"]` is guaranteed non-null here
     (the person-less/standalone-note branch always saves directly and
     never reaches this endpoint)."""
-    primary = body.extracted.get("primary_person") or {}
+    # The client round-trips `extracted` and `raw_text` from the first call,
+    # so neither can be trusted just because it came back through here: a
+    # modified request could carry 500 tasks, or text that never went through
+    # moderation. Re-validate both before anything is stored.
+    try:
+        extracted = extraction_schema.sanitize(body.extracted)
+    except ValueError:
+        raise HTTPException(400, "That request wasn't valid. Please try logging the note again.")
+    _reject_if_unsafe(body.raw_text)
+    primary = extracted.get("primary_person") or {}
     name = primary.get("name") or "Unknown"
     description = primary.get("description") or ""
     role = primary.get("role") or ""
@@ -497,7 +535,7 @@ def capture_confirm(body: CaptureConfirmRequest, user_id: str = Depends(get_curr
         resolved_name, created_new = chosen["name"], False
 
     return _finish_capture_storage(
-        user_id, person_id, resolved_name, created_new, body.raw_text, body.extracted,
+        user_id, person_id, resolved_name, created_new, body.raw_text, extracted,
         body.interaction_date, body.date_warning, initiative_id=body.initiative_id,
         geo_lat=body.geo_lat, geo_lng=body.geo_lng,
     )
@@ -513,13 +551,20 @@ async def capture_voice(
     user_id: str = Depends(get_current_user_id),
 ):
     _enforce(user_id, "voice_transcriptions")
-    audio_bytes = await file.read()
+    audio_bytes = await voice.read_audio_upload(file)
     try:
         text = voice.transcribe_audio(audio_bytes)
     except Exception as e:
         raise HTTPException(500, f"Transcription failed: {e}")
-    if not text or not text.strip():
-        raise HTTPException(422, "Didn't catch anything in that recording - try again.")
+    # Not just an emptiness check - see api/main.py's /api/transcribe for
+    # why (Whisper can hallucinate a minimal filler, e.g. a lone ".", on
+    # silent/near-silent audio instead of returning truly empty text).
+    if not text_utils.has_meaningful_content(text):
+        raise HTTPException(
+            422,
+            "I didn't catch anything in that recording. Tap the mic and try again - "
+            "speaking a little closer to the microphone helps.",
+        )
     # This endpoint has no chat.py in front of it at all (the frontend's
     # own mic flow goes through the separate /api/transcribe -> /api/chat
     # path instead - see ChatPage.tsx) - moderation has never run on

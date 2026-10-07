@@ -50,9 +50,12 @@ from api.schemas import (
 router = APIRouter()
 
 _OUT_OF_SCOPE_MESSAGE = (
-    "That's not something I can help with here - I'm built specifically for logging and "
-    "recalling your own notes, contacts, and follow-ups. Try telling me about a conversation "
-    "you had, or ask about someone you've talked to before."
+    "That's not something I can help with here - I'm built specifically for logging and recalling "
+    "your own notes, contacts, and follow-ups. Here are a few things you can try:\n\n"
+    "- **Log a note:** \"Met Priya today, she wants a revised quote by Friday\"\n"
+    "- **Ask about someone:** \"What did Priya say about pricing?\"\n"
+    "- **Ask about a time period:** \"Who did I meet last month?\"\n"
+    "- **Set a reminder:** \"Remind me to call Arjun tomorrow\""
 )
 _UNSAFE_MESSAGE = "I can't help with that request."
 
@@ -64,6 +67,8 @@ async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_c
     with step("moderation"):
         moderation_result = await run_in_threadpool(moderation.check, body.text)
     if not moderation_result["safe"]:
+        if moderation_result.get("unavailable"):
+            raise HTTPException(503, moderation.UNAVAILABLE_MESSAGE)
         return {"intent": "blocked", "status": "answered", "reason": "unsafe", "answer": _UNSAFE_MESSAGE}
 
     with step("intent_classify"):
@@ -117,6 +122,8 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
         await queue.put(("stage", "moderating"))
         moderation_result = await run_in_threadpool(moderation.check, body.text)
         if not moderation_result["safe"]:
+            if moderation_result.get("unavailable"):
+                raise HTTPException(503, moderation.UNAVAILABLE_MESSAGE)
             await queue.put(("result", {"intent": "blocked", "status": "answered", "reason": "unsafe", "answer": _UNSAFE_MESSAGE}))
             return
 

@@ -13,11 +13,14 @@ import {
   usePerson,
   useUpdatePerson,
 } from '../api/people'
+import AiNotice from '../components/AiNotice'
 import Avatar from '../components/Avatar'
 import Card from '../components/Card'
 import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Disclosure from '../components/Disclosure'
+import ImportantDates from '../components/ImportantDates'
+import { cadenceSummary } from '../lib/cadence'
 import InteractionCard from '../components/InteractionCard'
 import { Input, Label, Textarea } from '../components/fields'
 
@@ -73,6 +76,7 @@ export default function PersonDetailPage() {
   if (error || !data) return <p className="text-sm text-danger">Couldn't load this person.</p>
 
   const { person, interactions, mentioned_in } = data
+  const cadence = cadenceSummary(interactions.map((i) => i.date))
   const otherPeople = (allPeople ?? []).filter((p) => p.id !== id)
   const roleCompany = [person.role, person.company].filter(Boolean).join(', ')
 
@@ -138,7 +142,9 @@ export default function PersonDetailPage() {
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-bold tracking-tight">{person.name}</h1>
             {roleCompany && <p className="text-sm text-text-muted">{roleCompany}</p>}
+            {cadence && <p className="mt-0.5 text-xs text-text-faint">{cadence}</p>}
             {person.description && <p className="mt-2 whitespace-pre-wrap text-sm text-text">{person.description}</p>}
+            <ImportantDates person={person} />
             <div className="mt-2">
               <p className="mb-1 text-xs font-medium text-text-muted">Personal notes</p>
               {person.personal_notes.length > 0 && (
@@ -296,6 +302,9 @@ export default function PersonDetailPage() {
         <Card className="mb-6 bg-accent-soft">
           <div className="prose-chat min-w-0 text-sm">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{briefing.data.briefing}</ReactMarkdown>
+          </div>
+          <div className="mt-2 border-t border-border pt-2">
+            <AiNotice />
           </div>
         </Card>
       )}

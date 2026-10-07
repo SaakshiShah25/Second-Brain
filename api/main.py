@@ -14,18 +14,19 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import Depends, FastAPI, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 import db
+import text_utils
 import voice
 from llm_client import get_client as get_llm_client
 from api.auth import get_current_user_id
 from api.rate_limit import limiter
-from api.routers import ask, brief, calendar, capture, chat, initiatives, notes, people, settings, tasks
+from api.routers import ask, brief, calendar, capture, chat, initiatives, notes, people, reports, settings, tasks
 
 app = FastAPI(title="MyConfía API")
 
@@ -79,6 +80,7 @@ app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(brief.router, prefix="/api/brief", tags=["brief"])
 app.include_router(initiatives.router, prefix="/api/initiatives", tags=["initiatives"])
 app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
+app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 
 
 @app.get("/api/health")
@@ -99,7 +101,8 @@ def health():
 
 
 @app.post("/api/transcribe")
-async def transcribe(file: UploadFile, user_id: str = Depends(get_current_user_id)):
+@limiter.limit("20/minute")
+async def transcribe(request: Request, file: UploadFile, user_id: str = Depends(get_current_user_id)):
     """
     Mode-agnostic voice transcription - unlike POST /api/capture/voice
     (which always runs the full capture pipeline), this just returns the
@@ -108,11 +111,20 @@ async def transcribe(file: UploadFile, user_id: str = Depends(get_current_user_i
     views/chat_view.py's handle_voice_input() routes to handle_capture()
     or handle_retrieval() based on the same `mode` toggle.
     """
-    audio_bytes = await file.read()
+    audio_bytes = await voice.read_audio_upload(file)
     try:
         text = voice.transcribe_audio(audio_bytes)
     except Exception as e:
         raise HTTPException(500, f"Transcription failed: {e}")
-    if not text or not text.strip():
-        raise HTTPException(422, "Didn't catch anything in that recording - try again.")
+    # Not just an emptiness check - Whisper doesn't always return a truly
+    # empty string for silent/near-silent audio, it sometimes hallucinates
+    # a minimal filler (a lone "." is a known case) that `not text.strip()`
+    # would let straight through and show in the input box as if it were
+    # a real transcript.
+    if not text_utils.has_meaningful_content(text):
+        raise HTTPException(
+            422,
+            "I didn't catch anything in that recording. Tap the mic and try again - "
+            "speaking a little closer to the microphone helps.",
+        )
     return {"transcript": text}

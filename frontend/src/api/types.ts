@@ -25,6 +25,31 @@ export interface Person {
   created_at: string
   phone: string
   email: string
+  // Absent until schema.sql section 28 has been run
+  important_dates?: ImportantDate[]
+}
+
+// A recurring occasion on a person's profile - a birthday or anniversary
+// that comes round every year (see important_dates.py on the backend).
+// `year` is only ever a birth/start year the note actually stated.
+export interface ImportantDate {
+  label: string
+  month: number
+  day: number
+  year: number | null
+}
+
+// One entry of GET /api/people/upcoming-dates - already resolved to the
+// next occurrence, with the distance to it worked out server-side.
+export interface UpcomingDate {
+  person_id: number
+  person_name: string
+  label: string
+  month: number
+  day: number
+  date: string
+  days_until: number
+  turning: number | null
 }
 
 export interface StalePerson extends Person {
@@ -35,6 +60,23 @@ export interface StalePerson extends Person {
 export interface CompanyGroup {
   company: string
   people: { id: number; name: string; role: string }[]
+}
+
+// GET /api/people/companies/{company}/overview - who you know at a company
+// and how much you've talked to them. All exact counts/dates, no AI.
+export interface CompanyOverview {
+  company: string
+  people: {
+    id: number
+    name: string
+    role: string
+    interaction_count: number
+    last_interaction_date: string | null
+  }[]
+  interaction_count: number
+  first_interaction_date: string | null
+  last_interaction_date: string | null
+  recent_interactions: { id: number; date: string | null; summary: string; person: { id: number; name: string } }[]
 }
 
 export type TaskOwner = 'me' | 'them'
@@ -225,9 +267,25 @@ export interface CardFields {
   email: string
 }
 
+// A note an answer was drawn from - a trimmed one-line summary only, never
+// the full note text (see retrieval.build_sources).
+export interface AnswerSource {
+  id: number
+  date: string | null
+  summary: string
+  person: { id: number; name: string } | null
+  // true when this note is about someone else and only MENTIONED the
+  // person the question was about
+  secondary: boolean
+}
+
 export interface AskAnsweredResult {
   status: 'answered'
   answer: string
+  sources?: AnswerSource[]
+  // How many notes the answer actually used - can exceed sources.length,
+  // since only the newest few are listed
+  sources_total?: number
 }
 
 export interface AskConfirmRequiredResult {
@@ -242,6 +300,16 @@ export type AskResult = AskAnsweredResult | AskConfirmRequiredResult
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  // Marks a message as AI-generated content: 'answer' = a reply to a
+  // question, 'capture' = the summary of a note it just saved. Only these
+  // carry the "AI-generated" notice and the Report control. 'notice' is
+  // the opposite: a message about something that didn't work (nothing
+  // heard, mic blocked, a request that didn't go through) - shown in its
+  // own alert style so it can't be mistaken for an answer, and never sent
+  // back to the model as conversation history.
+  kind?: 'answer' | 'capture' | 'notice'
+  sources?: AnswerSource[]
+  sourcesTotal?: number
 }
 
 // ---------- Unified chat (single thread, no mode tabs) ----------

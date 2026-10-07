@@ -36,6 +36,23 @@ _STANDALONE_I = re.compile(r"\bi\b")
 _SENTENCE_START = re.compile(r"(^\s*|[.!?]\s+)([a-z])")
 
 
+_MEANINGFUL_CONTENT = re.compile(r"[a-zA-Z0-9]{2,}")  # a real word/number, not just a stray character
+
+
+def has_meaningful_content(text: str) -> bool:
+    """True if `text` contains at least one real word or number (2+
+    letters/digits in a row) - False for empty input, a single stray
+    character (e.g. someone taps one key and hits send), or pure
+    punctuation/whitespace. The latter matters specifically for Whisper:
+    on silent or near-silent audio it doesn't always return a truly empty
+    string - it sometimes hallucinates a minimal filler like a lone "."
+    instead, which an `if not text.strip()` check lets straight through.
+    Used to reject a capture before it ever reaches moderation/
+    extraction, both because there's nothing real to log as a note, and
+    because it's one fewer wasted LLM call on content with nothing in it."""
+    return bool(text) and bool(_MEANINGFUL_CONTENT.search(text))
+
+
 def fix_transcript_casing(text: str) -> str:
     """Whisper's transcripts sometimes come back with the standalone
     pronoun "I" lowercased, and sentence-initial words in lowercase too -

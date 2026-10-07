@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { MapPin, X } from 'lucide-react'
 import { useCaptureCard, useCaptureCardConfirm } from '../api/capture'
 import { useChat, useChatConfirm } from '../api/chat'
 import { useCreateInitiative } from '../api/initiatives'
 import { useUpdateInteraction } from '../api/people'
 import { useTranscribe } from '../api/voice'
-import type { CaptureResult, CaptureSavedResult, ChatResult } from '../api/types'
+import type { AskAnsweredResult, CaptureResult, CaptureSavedResult, ChatMessage, ChatResult } from '../api/types'
 import Button from '../components/Button'
 import Card from '../components/Card'
 import ConfiaLogo from '../components/ConfiaLogo'
@@ -15,8 +15,14 @@ import ChatBubble from '../components/chat/ChatBubble'
 import TypingIndicator from '../components/chat/TypingIndicator'
 import ChatInput, { type ChatInputHandle } from '../components/chat/ChatInput'
 import DisambiguationCard from '../components/chat/DisambiguationCard'
+import ExamplePrompts from '../components/chat/ExamplePrompts'
 import { useChatSession } from '../chat/ChatSessionContext'
+import { friendlyMessage } from '../lib/friendlyMessage'
 import { useLiveTranscript } from '../lib/useLiveTranscript'
+import { startVoiceMeter } from '../lib/voiceActivity'
+
+const NO_SPEECH_NOTICE =
+  "I didn't catch anything in that recording. Tap the mic and try again - speaking a little closer to the microphone helps."
 
 function formatSavedMessage(result: CaptureSavedResult): string {
   // Only makes sense when the note is actually about a person - a
@@ -100,14 +106,44 @@ export default function ChatPage() {
   // useLiveTranscript.ts) - a browser-native best-effort layer on top of
   // the actual recording; Whisper's transcript (below) still replaces
   // this with a more accurate final version the moment recording stops.
-  const liveTranscript = useLiveTranscript(setInputText)
+  const liveTextRef = useRef('')
+  const handleLiveText = useCallback((text: string) => {
+    liveTextRef.current = text
+    setInputText(text)
+  }, [])
+  const liveTranscript = useLiveTranscript(handleLiveText)
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages, pendingConfirm, pendingCard, pendingInitiativeSuggestion, isBusy])
 
-  function appendMessage(role: 'user' | 'assistant', content: string) {
-    setMessages((prev) => [...prev, { role, content }])
+  function appendMessage(role: 'user' | 'assistant', content: string, extra: Partial<ChatMessage> = {}) {
+    setMessages((prev) => [...prev, { role, content, ...extra }])
+  }
+
+  // Something didn't work (nothing heard, mic blocked, a request that
+  // didn't go through) - rendered as its own alert, not as a chat reply,
+  // so it reads as a problem to act on rather than something MyConfía said.
+  function appendNotice(content: string) {
+    appendMessage('assistant', content, { kind: 'notice' })
+  }
+
+  // An AI answer carries the notes it was drawn from (so it can be
+  // checked against them) and is marked so the bubble shows the
+  // "AI-generated" notice and Report control.
+  function appendAnswer(result: AskAnsweredResult) {
+    appendMessage('assistant', result.answer, {
+      kind: 'answer',
+      sources: result.sources,
+      sourcesTotal: result.sources_total,
+    })
+  }
+
+  // The most recent thing the user sent before message `index` - what a
+  // report on that reply needs as its "question".
+  function questionBefore(index: number): string {
+    for (let j = index - 1; j >= 0; j--) if (messages[j].role === 'user') return messages[j].content
+    return ''
   }
 
   function toggleLocation() {
@@ -116,7 +152,7 @@ export default function ChatPage() {
       return
     }
     if (!navigator.geolocation) {
-      appendMessage('assistant', "This browser doesn't support location.")
+      appendNotice("This browser doesn't support location.")
       return
     }
     setLocationLoading(true)
@@ -126,7 +162,7 @@ export default function ChatPage() {
         setLocationLoading(false)
       },
       () => {
-        appendMessage('assistant', "Couldn't get your location - check your browser's location permission for this site.")
+        appendNotice("Couldn't get your location - check your browser's location permission for this site.")
         setLocationLoading(false)
       },
       { enableHighAccuracy: true, timeout: 10000 },
@@ -139,7 +175,7 @@ export default function ChatPage() {
   // suggestion if extraction.py proposed one. Kept as one function so
   // that offer doesn't need reimplementing at each of the three call sites.
   function handleSavedCapture(result: CaptureSavedResult) {
-    appendMessage('assistant', formatSavedMessage(result))
+    appendMessage('assistant', formatSavedMessage(result), { kind: 'capture' })
     if (result.suggested_initiative) {
       setNamingCustomInitiative(false)
       setCustomInitiativeName('')
@@ -157,7 +193,7 @@ export default function ChatPage() {
       if (result.status === 'saved') handleSavedCapture(result)
       else setPendingConfirm(result)
     } else {
-      if (result.status === 'answered') appendMessage('assistant', result.answer)
+      if (result.status === 'answered') appendAnswer(result)
       else setPendingConfirm(result)
     }
   }
@@ -185,18 +221,19 @@ export default function ChatPage() {
             { interactionId, fields: { initiative_id: initiative.id } },
             {
               onSuccess: () => appendMessage('assistant', `Added **${initiative.name}** and tagged this note with it.`),
-              onError: () => appendMessage('assistant', `Created **${name}**, but couldn't tag this note with it - you can do that from the Notes page.`),
+              onError: () => appendNotice(`Created **${name}**, but couldn't tag this note with it - you can do that from the Notes page.`),
             },
           )
         },
-        onError: () => appendMessage('assistant', `Couldn't create that initiative - please try again from the Notes tab.`),
+        onError: () => appendNotice(`Couldn't create that initiative - please try again from the Notes tab.`),
       },
     )
   }
 
   async function submitText(text: string) {
     if (!text.trim() || isBusy) return
-    const historyForRequest = messages
+    // role/content only - sources and flags are display state, not conversation
+    const historyForRequest = messages.filter((m) => m.kind !== 'notice').map(({ role, content }) => ({ role, content }))
     appendMessage('user', text)
     setIsBusy(true)
     const controller = new AbortController()
@@ -213,7 +250,7 @@ export default function ChatPage() {
       if (err instanceof DOMException && err.name === 'AbortError') {
         appendMessage('assistant', '_Stopped._')
       } else {
-        appendMessage('assistant', `Something went wrong: ${err}`)
+        appendNotice(friendlyMessage(err))
       }
     } finally {
       setIsBusy(false)
@@ -254,9 +291,9 @@ export default function ChatPage() {
       )
       setPendingConfirm(null)
       if (result.intent === 'capture' && result.status === 'saved') handleSavedCapture(result)
-      if (result.intent === 'ask' && result.status === 'answered') appendMessage('assistant', result.answer)
+      if (result.intent === 'ask' && result.status === 'answered') appendAnswer(result)
     } catch (err) {
-      appendMessage('assistant', `Something went wrong: ${err}`)
+      appendNotice(friendlyMessage(err))
     } finally {
       setIsBusy(false)
     }
@@ -268,7 +305,7 @@ export default function ChatPage() {
       const card = await captureCard.mutateAsync(file)
       setPendingCard({ ...card, context_note: '' })
     } catch (err) {
-      appendMessage('assistant', `Couldn't read that card: ${err}`)
+      appendNotice(friendlyMessage(err, "Couldn't read that card. Try a clearer photo with the whole card in view."))
     } finally {
       setIsBusy(false)
     }
@@ -291,7 +328,7 @@ export default function ChatPage() {
         if (confirmResult.status === 'confirm_required') setPendingConfirm(confirmResult)
       }
     } catch (err) {
-      appendMessage('assistant', `Something went wrong: ${err}`)
+      appendNotice(friendlyMessage(err))
     } finally {
       setIsBusy(false)
     }
@@ -301,27 +338,50 @@ export default function ChatPage() {
     let stream: MediaStream
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    } catch {
-      // Mic permission denied, no microphone available, or the browser/
-      // OS blocked it outright (e.g. Android's system permission dialog
-      // was dismissed) - previously this rejected silently with no
-      // feedback at all, since getUserMedia() was awaited with nothing
-      // to catch it. A clear message here matters doubly on the Android
-      // TWA wrapper, where a denied permission is easy to run into on
-      // first use.
-      appendMessage(
-        'assistant',
-        "Couldn't access your microphone - check that this app has microphone permission, then try again.",
+    } catch (err) {
+      // Once a user explicitly denies a mic permission prompt, the
+      // browser/OS deliberately never shows that native prompt again on
+      // its own (standard anti-annoyance behavior - no app can force it
+      // back open) - getUserMedia() just rejects immediately and
+      // silently every time after that, which is exactly what made this
+      // look "stuck" on repeat attempts. The fix isn't re-triggering the
+      // popup (not possible) - it's telling the user exactly where to
+      // go reset it themselves, which the old flat message never did.
+      // NotAllowedError specifically means "denied" (by the user or an
+      // OS-level policy) - a different, more useful message than the
+      // generic one covers everything else (no mic hardware at all,
+      // some other getUserMedia failure).
+      const denied = err instanceof DOMException && err.name === 'NotAllowedError'
+      appendNotice(
+        denied
+          ? "Microphone access is blocked for MyConfía. Tap the lock/info icon next to the address bar (or, on Android, " +
+            "Settings → Apps → MyConfía → Permissions), turn microphone access on, then try recording again."
+          : "Couldn't access your microphone - check that a microphone is available and this app has permission to use it, then try again.",
       )
       return
     }
     const recorder = new MediaRecorder(stream)
+    // Measures the mic's level while recording so an empty recording can be
+    // caught here, before it's uploaded - Whisper turns silence into
+    // made-up filler ("Thank you.", "I'm going to go."), so it can't be
+    // trusted to say nobody spoke. null (no Web Audio) means "can't tell":
+    // fall through to the normal path rather than block recording.
+    const meter = startVoiceMeter(stream)
+    liveTextRef.current = ''
     chunksRef.current = []
     setInputText('')
     recorder.ondataavailable = (e) => chunksRef.current.push(e.data)
     recorder.onstop = async () => {
       liveTranscript.stop()
       stream.getTracks().forEach((t) => t.stop())
+      const heardSomething = meter ? meter.stop() : true
+      // The browser's own live captions picking up words also counts as
+      // speech, whatever the level meter said.
+      if (!heardSomething && !liveTextRef.current.trim()) {
+        setInputText('')
+        appendNotice(NO_SPEECH_NOTICE)
+        return
+      }
       const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
       setIsBusy(true)
       try {
@@ -333,7 +393,7 @@ export default function ChatPage() {
         setInputText(transcript)
         chatInputRef.current?.focus()
       } catch (err) {
-        appendMessage('assistant', `Voice transcription failed: ${err}`)
+        appendNotice(friendlyMessage(err, "Couldn't turn that recording into text. Please try again."))
       } finally {
         setIsBusy(false)
       }
@@ -364,11 +424,17 @@ export default function ChatPage() {
             <p className="max-w-xs text-sm text-text-muted">
               Tell me about a conversation, or ask about someone you've met.
             </p>
+            <ExamplePrompts
+              onPick={(text) => {
+                setInputText(text)
+                chatInputRef.current?.focus()
+              }}
+            />
           </div>
         )}
 
         {messages.map((m, i) => (
-          <ChatBubble key={i} message={m} />
+          <ChatBubble key={i} message={m} question={m.kind ? questionBefore(i) : ''} />
         ))}
 
         {pendingConfirm && pendingConfirm.intent === 'capture' && (

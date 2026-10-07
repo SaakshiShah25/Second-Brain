@@ -1,9 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
-import type { CompanyGroup, Person, PersonDetailResponse } from './types'
+import type { CompanyGroup, CompanyOverview, Person, PersonDetailResponse, UpcomingDate } from './types'
 
 export function usePeople() {
   return useQuery({ queryKey: ['people'], queryFn: () => api.get<Person[]>('/api/people') })
+}
+
+export function useUpcomingDates(days = 30) {
+  return useQuery({
+    queryKey: ['people', 'upcoming-dates', days],
+    queryFn: () => api.get<UpcomingDate[]>(`/api/people/upcoming-dates?days=${days}`),
+  })
 }
 
 export function useCompanies() {
@@ -13,6 +20,14 @@ export function useCompanies() {
 // Button-triggered, same reasoning as useBriefing below - a company's
 // briefing is expensive (one LLM call synthesizing every contact there)
 // so it should only fire when asked for, not on every page load.
+export function useCompanyOverview(company: string) {
+  return useQuery({
+    queryKey: ['people', 'company-overview', company],
+    queryFn: () => api.get<CompanyOverview>(`/api/people/companies/${encodeURIComponent(company)}/overview`),
+    enabled: company !== '',
+  })
+}
+
 export function useCompanyBriefing() {
   return useMutation({
     mutationFn: (company: string) =>

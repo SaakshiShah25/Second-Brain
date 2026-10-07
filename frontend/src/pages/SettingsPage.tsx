@@ -7,6 +7,7 @@ import { useAuth } from '../auth/AuthContext'
 import AppLockSettings from '../components/AppLockSettings'
 import Card from '../components/Card'
 import ConfirmDialog from '../components/ConfirmDialog'
+import HelpFaq from '../components/HelpFaq'
 import PageIntro from '../components/PageIntro'
 import { useTour } from '../components/TourGate'
 import { applyPalette, getStoredPalette, PALETTE_OPTIONS, setStoredPalette, type Palette } from '../lib/palette'
@@ -169,6 +170,8 @@ export default function SettingsPage() {
           </span>
         </button>
       </Card>
+
+      <HelpFaq />
 
       <Card className="mb-4">
         <button

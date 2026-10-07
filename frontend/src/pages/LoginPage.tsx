@@ -1,10 +1,12 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../auth/AuthContext'
 import Button from '../components/Button'
+import Captcha, { TURNSTILE_SITE_KEY } from '../components/Captcha'
 import ConfiaLogo from '../components/ConfiaLogo'
 import { Input, Label } from '../components/fields'
+import { formatWait, recordSignInFailure, resetSignInFailures, signInWaitMs } from '../lib/authThrottle'
 
 type Mode = 'signin' | 'signup' | 'forgot'
 
@@ -18,6 +20,18 @@ export default function LoginPage() {
   const [signupDone, setSignupDone] = useState(false)
   const [resetSent, setResetSent] = useState(false)
   const [googleSubmitting, setGoogleSubmitting] = useState(false)
+  // Bot check (only when VITE_TURNSTILE_SITE_KEY is set - see Captcha.tsx).
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [captchaReset, setCaptchaReset] = useState(0)
+  const captchaRequired = Boolean(TURNSTILE_SITE_KEY)
+  // Wait after repeated wrong passwords (see lib/authThrottle.ts), counted
+  // down once a second so the button re-enables by itself.
+  const [waitMs, setWaitMs] = useState(() => signInWaitMs())
+  useEffect(() => {
+    if (waitMs <= 0) return
+    const id = window.setInterval(() => setWaitMs(signInWaitMs()), 1000)
+    return () => window.clearInterval(id)
+  }, [waitMs])
 
   if (!sessionLoading && session) {
     return <Navigate to="/" replace />
@@ -47,11 +61,17 @@ export default function LoginPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
+    if (mode === 'signin' && signInWaitMs() > 0) {
+      setWaitMs(signInWaitMs())
+      return
+    }
     setSubmitting(true)
+    const options = captchaToken ? { captchaToken } : {}
     try {
       if (mode === 'signin') {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        const { error } = await supabase.auth.signInWithPassword({ email, password, options })
         if (error) throw error
+        resetSignInFailures()
       } else if (mode === 'signup') {
         // Without this, Supabase falls back to whatever "Site URL" is
         // configured in its dashboard - which can drift out of date (a
@@ -68,7 +88,7 @@ export default function LoginPage() {
         const { error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: `${window.location.origin}/login` },
+          options: { emailRedirectTo: `${window.location.origin}/login`, ...options },
         })
         if (error) throw error
         setSignupDone(true)
@@ -77,14 +97,22 @@ export default function LoginPage() {
         // must be added to Authentication > URL Configuration > Redirect URLs.
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: `${window.location.origin}/reset-password`,
+          ...options,
         })
         if (error) throw error
         setResetSent(true)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.')
+      const message = err instanceof Error ? err.message : ''
+      if (mode === 'signin') {
+        const wait = recordSignInFailure()
+        setWaitMs(wait)
+      }
+      setError(friendlyAuthError(message))
     } finally {
       setSubmitting(false)
+      // A bot-check token only works once.
+      if (captchaRequired) setCaptchaReset((n) => n + 1)
     }
   }
 
@@ -149,7 +177,7 @@ export default function LoginPage() {
                 <Input
                   type="password"
                   required
-                  minLength={6}
+                  minLength={mode === 'signup' ? 8 : 6}
                   autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -165,8 +193,20 @@ export default function LoginPage() {
                 Forgot password?
               </button>
             )}
-            {error && <p className="text-sm text-danger">{error}</p>}
-            <Button type="submit" variant="primary" disabled={submitting} className="mt-1">
+            {captchaRequired && <Captcha onToken={setCaptchaToken} resetKey={captchaReset} />}
+            {mode === 'signin' && waitMs > 0 ? (
+              <p className="text-sm text-danger" role="alert">
+                Too many unsuccessful attempts. Please wait {formatWait(waitMs)} before trying again.
+              </p>
+            ) : (
+              error && <p className="text-sm text-danger">{error}</p>
+            )}
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={submitting || (captchaRequired && !captchaToken) || (mode === 'signin' && waitMs > 0)}
+              className="mt-1"
+            >
               {submitting
                 ? 'Please wait…'
                 : mode === 'signin'
@@ -209,6 +249,20 @@ export default function LoginPage() {
       </div>
     </div>
   )
+}
+
+// Supabase's messages are written for developers ("Invalid login
+// credentials" is fine; "email rate limit exceeded" or a captcha failure is
+// not). Map the ones a person can act on.
+function friendlyAuthError(message: string): string {
+  const m = message.toLowerCase()
+  if (m.includes('rate limit') || m.includes('too many')) {
+    return 'Too many attempts from this connection. Please wait a few minutes and try again.'
+  }
+  if (m.includes('captcha')) {
+    return "We couldn't verify that you're a person. Please try again."
+  }
+  return message || 'Something went wrong. Please try again.'
 }
 
 function GoogleIcon({ size = 16 }: { size?: number }) {

@@ -1,6 +1,16 @@
-import { useState } from 'react'
-import { ShieldCheck } from 'lucide-react'
-import { disableAppLock, isAppLockEnabled, setAppLockPin, verifyPin } from '../lib/appLock'
+import { useEffect, useState } from 'react'
+import { Fingerprint, ShieldCheck } from 'lucide-react'
+import {
+  disableAppLock,
+  disableBiometric,
+  enableBiometric,
+  isAppLockEnabled,
+  isBiometricEnabled,
+  isBiometricSupported,
+  pinLockoutRemainingMs,
+  setAppLockPin,
+  verifyPin,
+} from '../lib/appLock'
 import Button from './Button'
 import Card from './Card'
 import { Input, Label } from './fields'
@@ -19,6 +29,33 @@ export default function AppLockSettings() {
   const [confirmPin, setConfirmPin] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [bioSupported, setBioSupported] = useState(false)
+  const [bioEnabled, setBioEnabled] = useState(isBiometricEnabled())
+  const [bioMessage, setBioMessage] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    isBiometricSupported().then((ok) => {
+      if (!cancelled) setBioSupported(ok)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function handleToggleBiometric() {
+    setBioMessage('')
+    if (bioEnabled) {
+      disableBiometric()
+      setBioEnabled(false)
+      return
+    }
+    setBusy(true)
+    const ok = await enableBiometric()
+    setBusy(false)
+    setBioEnabled(ok)
+    if (!ok) setBioMessage("Couldn't turn on biometric unlock. Your PIN still works.")
+  }
 
   function reset() {
     setMode('idle')
@@ -48,12 +85,14 @@ export default function AppLockSettings() {
     const ok = await verifyPin(pin)
     setBusy(false)
     if (!ok) {
-      setError('Incorrect PIN.')
+      const wait = pinLockoutRemainingMs()
+      setError(wait > 0 ? `Too many wrong PINs. Try again in ${Math.ceil(wait / 1000)}s.` : 'Incorrect PIN.')
       setPin('')
       return
     }
     disableAppLock()
     setEnabled(false)
+    setBioEnabled(false)
     reset()
   }
 
@@ -69,10 +108,26 @@ export default function AppLockSettings() {
       </p>
 
       {mode === 'idle' && (
-        <Button onClick={() => setMode(enabled ? 'turning_off' : 'setting_up')}>
-          {enabled ? 'Turn off app lock' : 'Set up app lock'}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => setMode(enabled ? 'turning_off' : 'setting_up')}>
+            {enabled ? 'Turn off app lock' : 'Set up app lock'}
+          </Button>
+          {enabled && bioSupported && (
+            <Button onClick={handleToggleBiometric} disabled={busy}>
+              <Fingerprint size={15} strokeWidth={1.6} />
+              {bioEnabled ? 'Turn off biometric unlock' : 'Use fingerprint / face to unlock'}
+            </Button>
+          )}
+        </div>
       )}
+      {mode === 'idle' && enabled && bioSupported && (
+        <p className="mt-2 text-xs leading-relaxed text-text-faint">
+          {bioEnabled
+            ? 'Fingerprint / face unlock is on. Your PIN still works as a fallback.'
+            : 'Your device supports fingerprint / face unlock. The PIN stays as a fallback either way.'}
+        </p>
+      )}
+      {bioMessage && <p className="mt-2 text-xs text-danger">{bioMessage}</p>}
 
       {mode === 'setting_up' && (
         <div className="flex flex-col gap-2">

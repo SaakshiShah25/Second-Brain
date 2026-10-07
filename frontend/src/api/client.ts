@@ -29,7 +29,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     let detail = res.statusText
     try {
       const body = await res.json()
-      detail = body.detail ?? detail
+      detail = typeof body.detail === 'string' ? body.detail : detail
     } catch {
       // response body wasn't JSON - fall back to statusText
     }
@@ -71,7 +71,7 @@ export async function postStream<T>(
     let detail = res.statusText
     try {
       const errBody = await res.json()
-      detail = errBody.detail ?? detail
+      detail = typeof errBody.detail === 'string' ? errBody.detail : detail
     } catch {
       // response body wasn't JSON - fall back to statusText
     }

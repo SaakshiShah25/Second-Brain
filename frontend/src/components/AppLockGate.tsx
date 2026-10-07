@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { LogOut, ShieldCheck } from 'lucide-react'
-import { isAppLockEnabled, verifyPin } from '../lib/appLock'
+import { Fingerprint, LogOut, ShieldCheck } from 'lucide-react'
+import {
+  isAppLockEnabled,
+  isBiometricEnabled,
+  pinLockoutRemainingMs,
+  verifyBiometric,
+  verifyPin,
+} from '../lib/appLock'
 import { useAuth } from '../auth/AuthContext'
 import Button from './Button'
 import ConfiaLogo from './ConfiaLogo'
@@ -26,6 +32,12 @@ import ConfiaLogo from './ConfiaLogo'
 // still locks it back up promptly.
 const GRACE_MS = 75_000
 
+function formatWait(ms: number): string {
+  const seconds = Math.ceil(ms / 1000)
+  if (seconds < 60) return `${seconds}s`
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
+}
+
 export default function AppLockGate({ children }: { children: ReactNode }) {
   const { signOut } = useAuth()
   const enabled = isAppLockEnabled()
@@ -38,7 +50,44 @@ export default function AppLockGate({ children }: { children: ReactNode }) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState(false)
   const [checking, setChecking] = useState(false)
+  // Wrong-PIN lockout (see appLock.ts): re-read each second so the message
+  // counts down and the form re-enables by itself.
+  const [lockoutMs, setLockoutMs] = useState(() => pinLockoutRemainingMs())
   const hiddenAtRef = useRef<number | null>(null)
+  // One automatic biometric prompt per lock event - after that (cancelled
+  // or failed) the user uses the button or the PIN, so we never loop
+  // prompts at them.
+  const autoTriedRef = useRef(false)
+  const biometric = enabled && isBiometricEnabled()
+
+  async function tryBiometric() {
+    setChecking(true)
+    const ok = await verifyBiometric()
+    setChecking(false)
+    if (ok) {
+      setLocked(false)
+      setPin('')
+      setError(false)
+    }
+  }
+
+  useEffect(() => {
+    if (lockoutMs <= 0) return
+    const id = window.setInterval(() => setLockoutMs(pinLockoutRemainingMs()), 1000)
+    return () => window.clearInterval(id)
+  }, [lockoutMs])
+
+  useEffect(() => {
+    if (!locked) {
+      autoTriedRef.current = false
+      return
+    }
+    if (biometric && !autoTriedRef.current) {
+      autoTriedRef.current = true
+      void tryBiometric()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locked, biometric])
 
   useEffect(() => {
     if (!enabled) return
@@ -63,9 +112,14 @@ export default function AppLockGate({ children }: { children: ReactNode }) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (pinLockoutRemainingMs() > 0) {
+      setLockoutMs(pinLockoutRemainingMs())
+      return
+    }
     setChecking(true)
     const ok = await verifyPin(pin)
     setChecking(false)
+    setLockoutMs(pinLockoutRemainingMs())
     if (ok) {
       setLocked(false)
       setPin('')
@@ -84,7 +138,7 @@ export default function AppLockGate({ children }: { children: ReactNode }) {
       <h1 className="mb-1 text-lg font-semibold tracking-tight text-text">MyConfía is locked</h1>
       <p className="mb-6 flex items-center gap-1 text-sm text-text-muted">
         <ShieldCheck size={14} strokeWidth={1.6} />
-        Enter your PIN to continue
+        {biometric ? 'Use your fingerprint / face, or enter your PIN' : 'Enter your PIN to continue'}
       </p>
       <form onSubmit={handleSubmit} className="flex w-full max-w-xs flex-col items-center gap-3">
         <input
@@ -101,11 +155,33 @@ export default function AppLockGate({ children }: { children: ReactNode }) {
           className="w-full rounded-lg border border-border-strong bg-bg-card px-4 py-3 text-center text-2xl tracking-[0.5em] text-text focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
           placeholder="••••"
         />
-        {error && <p className="text-xs text-danger">Incorrect PIN - try again.</p>}
-        <Button type="submit" variant="primary" className="w-full justify-center" disabled={pin.length < 4 || checking}>
+        {lockoutMs > 0 ? (
+          <p className="text-center text-xs text-danger" role="alert">
+            Too many wrong PINs. Try again in {formatWait(lockoutMs)}.
+          </p>
+        ) : (
+          error && <p className="text-xs text-danger">Incorrect PIN - try again.</p>
+        )}
+        <Button
+          type="submit"
+          variant="primary"
+          className="w-full justify-center"
+          disabled={pin.length < 4 || checking || lockoutMs > 0}
+        >
           {checking ? 'Checking…' : 'Unlock'}
         </Button>
       </form>
+      {biometric && (
+        <button
+          type="button"
+          onClick={() => void tryBiometric()}
+          disabled={checking}
+          className="mt-4 flex items-center gap-1.5 text-sm font-medium text-accent hover:underline disabled:opacity-50"
+        >
+          <Fingerprint size={16} strokeWidth={1.6} />
+          Unlock with fingerprint / face
+        </button>
+      )}
       <button
         type="button"
         onClick={() => signOut()}

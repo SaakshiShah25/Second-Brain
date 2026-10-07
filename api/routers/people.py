@@ -10,6 +10,7 @@ from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException
 
 import db
+import important_dates
 import retrieval
 from api.auth import get_current_user_id
 from api.schemas import AddPersonalNoteRequest, InteractionUpdate, MergeRequest, PersonUpdate
@@ -38,6 +39,15 @@ def stale_people(threshold_days: int = 30, user_id: str = Depends(get_current_us
     return stale
 
 
+@router.get("/upcoming-dates")
+def upcoming_dates(days: int = 30, user_id: str = Depends(get_current_user_id)):
+    """Birthdays/anniversaries (person.important_dates) falling within the
+    next `days` days, soonest first - what the Today page's "Coming up"
+    card shows."""
+    days = max(1, min(days, 365))
+    return important_dates.upcoming(db.get_all_people(user_id), within_days=days)
+
+
 @router.get("/companies")
 def list_companies(user_id: str = Depends(get_current_user_id)):
     """Groups people by their `company` field (case-sensitive grouping key
@@ -57,6 +67,58 @@ def list_companies(user_id: str = Depends(get_current_user_id)):
         }
         for name, members in sorted(grouped.items())
     ]
+
+
+@router.get("/companies/{company}/overview")
+def company_overview(company: str, user_id: str = Depends(get_current_user_id)):
+    """Who you know at one company and how much you've actually talked to
+    them - the deterministic half of a company view (the AI briefing is the
+    other half, and stays a separate on-demand call). Plain counts and
+    dates straight from the data, no LLM: every number here is exact."""
+    people = db.get_people_by_company(user_id, company)
+    if not people:
+        raise HTTPException(404, "You don't have any contacts at that company.")
+    by_id = {p["id"]: p for p in people}
+    interactions = [i for i in db.get_all_interactions(user_id) if i.get("person_id") in by_id]
+    interactions.sort(key=lambda i: (i.get("date") or "", i.get("created_at") or ""), reverse=True)
+
+    per_person: dict = {pid: {"count": 0, "last": None} for pid in by_id}
+    for i in interactions:
+        stats = per_person[i["person_id"]]
+        stats["count"] += 1
+        if i.get("date") and (stats["last"] is None or i["date"] > stats["last"]):
+            stats["last"] = i["date"]
+
+    dates = [i["date"] for i in interactions if i.get("date")]
+    return {
+        "company": people[0].get("company") or company,
+        "people": sorted(
+            (
+                {
+                    "id": p["id"],
+                    "name": p["name"],
+                    "role": p.get("role") or "",
+                    "interaction_count": per_person[p["id"]]["count"],
+                    "last_interaction_date": per_person[p["id"]]["last"],
+                }
+                for p in people
+            ),
+            key=lambda p: (p["last_interaction_date"] or "", p["name"].lower()),
+            reverse=True,
+        ),
+        "interaction_count": len(interactions),
+        "first_interaction_date": min(dates) if dates else None,
+        "last_interaction_date": max(dates) if dates else None,
+        "recent_interactions": [
+            {
+                "id": i["id"],
+                "date": i.get("date"),
+                "summary": retrieval._trim(i.get("summary") or i.get("raw_text") or "", 160),
+                "person": {"id": i["person_id"], "name": by_id[i["person_id"]]["name"]},
+            }
+            for i in interactions[:10]
+        ],
+    }
 
 
 @router.get("/companies/{company}/briefing")

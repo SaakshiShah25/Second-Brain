@@ -591,3 +591,147 @@ as $$
     do update set count = usage_counter.count + 1
     returning count;
 $$;
+
+-- 25. RLS on user_preference/subscription/usage_counter - found missing
+--     during a security review. Every other user-owned table already has
+--     this (person/interaction/task/etc., section 8; google_credentials/
+--     oauth_state, section 14) - these three were added in later phases
+--     (settings, Phase 12 daily brief opt-out, billing) and each missed
+--     it. Today's actual exposure is limited (the app's own backend
+--     always queries these with its service-role key, which bypasses RLS
+--     entirely, and the frontend never talks to Supabase directly) - but
+--     RLS is exactly the defense-in-depth layer meant to catch a FUTURE
+--     mistake (a direct client-side Supabase call, a new endpoint that
+--     forgets to scope by user_id, a bug), and subscription/usage_counter
+--     specifically gate billing/entitlements, so leaving them as the only
+--     unprotected tables was worth closing rather than leaving as a
+--     silent exception to the rule every other table follows.
+alter table user_preference enable row level security;
+alter table subscription enable row level security;
+alter table usage_counter enable row level security;
+
+drop policy if exists "Users manage their own preferences" on user_preference;
+create policy "Users manage their own preferences" on user_preference
+    for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "Users manage their own subscription" on subscription;
+create policy "Users manage their own subscription" on subscription
+    for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "Users manage their own usage" on usage_counter;
+create policy "Users manage their own usage" on usage_counter
+    for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+
+-- 26. In-app reporting of AI-generated content. Google Play's AI-Generated
+--     Content policy requires an in-app way for users to flag offensive or
+--     inaccurate AI output; each report stores the question, the AI's
+--     answer, and the user's reason so it can actually be reviewed. The
+--     question/answer/details are encrypted at rest by db.py exactly like
+--     note content (they quote the user's private notes), the ids of the
+--     source notes aren't (ids only, no content). Reviewed by the
+--     maintainer through db.list_reports(), never through the API.
+create table if not exists ai_report (
+    id bigint generated always as identity primary key,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    kind text not null default 'answer',     -- 'answer' | 'capture'
+    reason text not null,                      -- 'incorrect' | 'offensive' | 'irrelevant' | 'other'
+    details text,                              -- optional free text from the user (encrypted)
+    question text,                             -- what the user asked/logged (encrypted)
+    answer text,                               -- what the AI replied (encrypted)
+    source_interaction_ids jsonb not null default '[]'::jsonb,
+    status text not null default 'open',       -- 'open' | 'reviewed'
+    created_at timestamptz not null default now()
+);
+
+create index if not exists ai_report_status_created_idx on ai_report (status, created_at desc);
+
+alter table ai_report enable row level security;
+
+-- A user can file and see their own reports; nobody can edit or delete
+-- them from the client side (the maintainer's review flow uses the
+-- service role, which bypasses RLS).
+drop policy if exists "Users file their own reports" on ai_report;
+create policy "Users file their own reports" on ai_report
+    for insert with check (auth.uid() = user_id);
+
+drop policy if exists "Users read their own reports" on ai_report;
+create policy "Users read their own reports" on ai_report
+    for select using (auth.uid() = user_id);
+
+
+-- 27. Drop the approximate (ivfflat) vector index - it makes
+--     match_interactions() return FEWER results than exist, sometimes none.
+--     Found while testing a real account: all 8 of its notes had embeddings,
+--     an exact cosine calculation ranked the right notes at the top, yet
+--     match_interactions() returned an empty list. Two causes, both inherent
+--     to ivfflat: (1) `lists = 100` on a table with a handful of rows leaves
+--     almost every list empty, and a query only scans one list by default;
+--     (2) the index finds nearest neighbors across EVERY user's notes first
+--     and the user_id filter is applied afterwards, so for any one user most
+--     of the candidates get thrown away - worse as more people sign up.
+--     Without it, Postgres uses interaction_user_id_idx to narrow to one
+--     user's rows and sorts them by exact distance: always correct, and
+--     plenty fast for the hundreds-to-thousands of notes one person writes.
+--     Revisit (e.g. a partitioned or HNSW index with iterative scans) only if
+--     a single user ever has hundreds of thousands of notes.
+drop index if exists interaction_embedding_idx;
+
+
+-- 28. Important dates (birthdays, anniversaries) on a person's profile - a
+--     list of {"label","month","day","year"} entries (see important_dates.py).
+--     Stored as encrypted JSON text like personal_notes: a birthday is
+--     personal data, and db.py's _ENCRYPTED_JSON_FIELDS handles it the same
+--     way. Capture is best-effort about this column - a note still saves
+--     before this migration is run, it just won't record the dates.
+alter table person add column if not exists important_dates text default '[]';
+
+
+-- 29. Make the vector search impossible to run without a user filter.
+--     match_interactions() used `filter_user_id is null or user_id = ...`,
+--     i.e. passing NULL meant "search EVERYONE's notes" - and the function
+--     was callable by any signed-in user through Supabase's public REST API
+--     (RLS would still have filtered a signed-in caller, but the service-role
+--     key the backend uses bypasses RLS, so one missing user id in backend
+--     code would have searched every account). Now:
+--       * filter_user_id is required and always applied: NULL matches no rows;
+--       * the user filter runs in the WHERE clause (served by
+--         interaction_user_id_idx) BEFORE the nearest-neighbour ordering and
+--         LIMIT, so only that user's vectors are ever scored;
+--       * only the backend (service_role) can execute it at all.
+drop function if exists match_interactions(vector, int, bigint, uuid);
+
+create or replace function match_interactions (
+    query_embedding vector(1024),
+    filter_user_id uuid,
+    match_count int default 5,
+    filter_person_id bigint default null
+)
+returns table (
+    id bigint,
+    person_id bigint,
+    raw_text text,
+    date date,
+    summary text,
+    similarity float
+)
+language sql stable
+security invoker
+as $$
+    select
+        interaction.id,
+        interaction.person_id,
+        interaction.raw_text,
+        interaction.date,
+        interaction.summary,
+        1 - (interaction.embedding <=> query_embedding) as similarity
+    from interaction
+    where interaction.user_id = filter_user_id
+      and interaction.embedding is not null
+      and (filter_person_id is null or interaction.person_id = filter_person_id)
+    order by interaction.embedding <=> query_embedding
+    limit least(match_count, 50);
+$$;
+
+revoke execute on function match_interactions(vector, uuid, int, bigint) from public, anon, authenticated;
+grant execute on function match_interactions(vector, uuid, int, bigint) to service_role;

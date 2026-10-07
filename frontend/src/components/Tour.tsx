@@ -10,6 +10,7 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react'
+import { ASK_EXAMPLES, LOG_EXAMPLES } from '../lib/examples'
 import Button from './Button'
 
 // A real spotlight tour, not a card floating in a fixed corner - it
@@ -37,6 +38,10 @@ interface Step {
   title: string
   description: string
   path: string
+  // A concrete sample of what to type on this step - the quickest way to
+  // understand what "log a note" or "ask a question" actually means. Plain
+  // text, not seeded data: nothing is added to the user's real account.
+  example?: string
 }
 
 const STEPS: Step[] = [
@@ -45,12 +50,14 @@ const STEPS: Step[] = [
     title: 'Log anything',
     description: 'Type or speak a note about anyone or anything — the AI figures out who it’s about and what to remember.',
     path: '/',
+    example: LOG_EXAMPLES[0],
   },
   {
     icon: MessageCircleQuestion,
     title: 'Ask anything',
-    description: 'The same chat window doubles as search — ask "what did Priya say about pricing?" or "who do I need to follow up with?" and it answers from your own notes.',
+    description: 'The same chat window doubles as search — ask about a person, a topic, or a time period, and it answers from your own notes and shows which ones.',
     path: '/',
+    example: ASK_EXAMPLES[1],
   },
   {
     icon: NotebookText,
@@ -160,7 +167,16 @@ export default function Tour({ onDone }: TourProps) {
         </span>
         <h3 className="text-base font-semibold">{current.title}</h3>
       </div>
-      <p className="mb-4 text-sm leading-relaxed text-text-muted">{current.description}</p>
+      <p className="mb-3 text-sm leading-relaxed text-text-muted">{current.description}</p>
+      {current.example && (
+        <p className="mb-4 rounded-lg bg-accent-soft px-3 py-2 text-sm text-text">
+          <span className="mb-0.5 block text-[11px] font-medium uppercase tracking-wide text-text-faint">
+            Try typing
+          </span>
+          “{current.example}”
+        </p>
+      )}
+      {!current.example && <div className="mb-1" />}
 
       <div className="mb-3 flex justify-center gap-1.5">
         {STEPS.map((_, i) => (

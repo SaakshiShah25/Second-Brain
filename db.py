@@ -78,9 +78,13 @@ _ENCRYPTED_TEXT_FIELDS = {
     "interaction": ["raw_text", "summary", "location", "appearance", "geo_address"],
     "task": ["description"],
     "google_credentials": ["access_token", "refresh_token"],
+    # A report quotes the user's own question and the AI's answer - which
+    # are derived from private notes - so it gets the same at-rest
+    # encryption as the notes themselves (see create_report below).
+    "ai_report": ["question", "answer", "details"],
 }
 _ENCRYPTED_JSON_FIELDS = {
-    "person": ["personal_notes"],
+    "person": ["personal_notes", "important_dates"],
     "interaction": ["sentiment", "topics", "extracted_facts", "decisions", "concerns"],
 }
 
@@ -166,6 +170,19 @@ def create_person(user_id: str, name, description="", role="", company="", phone
         "personal_notes": personal_notes or [],
     })).execute()
     return resp.data[0]["id"]
+
+
+def add_important_dates(user_id: str, person_id: int, new_dates: list) -> list:
+    """Merges already-validated entries (see important_dates.clean_many)
+    into this person's stored important_dates, skipping duplicates, and
+    returns the resulting list. Additive on purpose, like personal notes:
+    a later note mentioning the same birthday shouldn't create a copy, and
+    one that mentions a new occasion shouldn't wipe the old ones."""
+    import important_dates
+    person = get_person(user_id, person_id)
+    merged = important_dates.merge((person or {}).get("important_dates") or [], new_dates)
+    update_person(user_id, person_id, important_dates=merged)
+    return merged
 
 
 def update_person_description(user_id: str, person_id, new_description):
@@ -341,13 +358,22 @@ def search_interactions_by_embedding(user_id: str, query_embedding, top_k=5, per
     """
     Real vector similarity search, via the `match_interactions` Postgres
     function defined in schema.sql. That function uses pgvector's cosine
-    distance operator (<=>) against the ivfflat ANN index on the embedding
-    column - this is an actual vector-DB query executed inside Postgres,
+    distance operator (<=>) against the embedding column (exact scan of one
+    user's rows - the approximate index was dropped, schema.sql section 27) - this is an actual vector-DB query executed inside Postgres,
     not a Python loop computing similarity over rows pulled into memory.
 
     Returns a list of dicts: [{id, person_id, raw_text, date, summary, similarity}, ...]
     ordered by similarity descending (closest matches first).
+
+    Always scoped to `user_id`: the SQL function filters to that user's
+    rows FIRST and only then ranks them, and (schema.sql section 29) it no
+    longer has a "no user = everyone" mode. The check below is the Python
+    half of the same rule - a missing user id here must stop the call, never
+    widen it to every account's notes (this client uses the service-role
+    key, which bypasses row-level security).
     """
+    if not user_id:
+        raise ValueError("search_interactions_by_embedding requires a user_id")
     resp = get_client().rpc("match_interactions", {
         "query_embedding": query_embedding,
         "match_count": top_k,
@@ -559,6 +585,13 @@ def merge_persons(user_id: str, source_id: int, target_id: int):
     dates = [d for d in [target.get("first_met_date"), source.get("first_met_date")] if d]
     merged_first_met = min(dates) if dates else None
 
+    extra = {}
+    if source.get("important_dates"):  # only then can the column exist/matter
+        import important_dates
+        extra["important_dates"] = important_dates.merge(
+            target.get("important_dates") or [], source["important_dates"]
+        )
+
     update_person(
         user_id,
         target_id,
@@ -568,6 +601,7 @@ def merge_persons(user_id: str, source_id: int, target_id: int):
         role=merged_role,
         company=merged_company,
         first_met_date=merged_first_met,
+        **extra,
     )
     delete_person(user_id, source_id)
     return target_id
@@ -810,6 +844,35 @@ def increment_usage(user_id: str, resource: str, period: str) -> int:
         "increment_usage_counter", {"p_user_id": user_id, "p_resource": resource, "p_period": period}
     ).execute()
     return resp.data
+
+
+# ---------- AI answer reports (see api/routers/reports.py, schema.sql section 26) ----------
+
+def create_report(user_id: str, kind: str, reason: str, question: str, answer: str,
+                  details: str = "", source_interaction_ids: list = None) -> int:
+    resp = get_client().table("ai_report").insert(_encrypt_fields("ai_report", {
+        "user_id": user_id,
+        "kind": kind,                    # 'answer' (a question's reply) | 'capture' (a saved-note summary)
+        "reason": reason,
+        "question": question,
+        "answer": answer,
+        "details": details,
+        "source_interaction_ids": source_interaction_ids or [],   # ids only - not content, not encrypted
+    })).execute()
+    return resp.data[0]["id"]
+
+
+def list_reports(limit: int = 50, status: str = "open") -> list:
+    """For the app's maintainer to review what users have flagged - every
+    user's reports, newest first, decrypted. Service-role only (db.py's
+    client), there is deliberately no API endpoint for this:
+        python -c "import db; from dotenv import load_dotenv; load_dotenv(); \
+                   [print(r) for r in db.list_reports()]"
+    """
+    q = get_client().table("ai_report").select("*").order("created_at", desc=True).limit(limit)
+    if status:
+        q = q.eq("status", status)
+    return _decrypt_rows("ai_report", q.execute().data)
 
 
 if __name__ == "__main__":

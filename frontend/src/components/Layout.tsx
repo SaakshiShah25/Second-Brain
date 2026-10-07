@@ -1,5 +1,6 @@
-import { Link, NavLink, Outlet } from 'react-router-dom'
-import { LogOut, MessageSquare, NotebookText, Settings, Sunrise, Users, type LucideIcon } from 'lucide-react'
+import { useEffect } from 'react'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { LogOut, MessageSquare, NotebookText, Search, Settings, Sunrise, Users, type LucideIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import ConfiaLogo from './ConfiaLogo'
 
@@ -13,6 +14,23 @@ const navItems: { to: string; label: string; icon: LucideIcon; end: boolean }[] 
 
 export default function Layout() {
   const { user, signOut } = useAuth()
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  // The Chat tab already has a question box, and the search page is the
+  // search - everywhere else gets a search button.
+  const showSearchButton = pathname !== '/' && pathname !== '/search'
+
+  // Cmd/Ctrl+K from anywhere jumps to search - the usual shortcut for it.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        navigate('/search')
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [navigate])
 
   return (
     // h-dvh, not h-screen (100vh) - 100vh is calculated against the
@@ -39,6 +57,14 @@ export default function Layout() {
             <ConfiaLogo size={18} />
           </span>
           <span className="text-base font-semibold tracking-[-0.02em]">MyConfía</span>
+        </Link>
+        <Link
+          to="/search"
+          className="mb-3 flex items-center gap-2 rounded-lg border border-border-strong px-3 py-2 text-sm text-text-muted transition-colors hover:border-accent hover:text-text"
+        >
+          <Search size={16} strokeWidth={1.6} />
+          <span className="flex-1">Search</span>
+          <kbd className="rounded border border-border-strong px-1.5 text-[10px] text-text-faint">Ctrl K</kbd>
         </Link>
         <nav className="flex flex-1 flex-col gap-1">
           {navItems.map((item) => (
@@ -80,7 +106,17 @@ export default function Layout() {
       </aside>
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <main className="flex-1 overflow-y-auto">
+        <main className="relative flex-1 overflow-y-auto">
+          {showSearchButton && (
+            <Link
+              to="/search"
+              aria-label="Search"
+              title="Search (Ctrl K)"
+              className="absolute right-4 top-4 z-[5] flex h-9 w-9 items-center justify-center rounded-full border border-border-strong bg-bg-card text-text-muted transition-colors hover:border-accent hover:text-accent md:right-8 md:top-8"
+            >
+              <Search size={16} strokeWidth={1.6} />
+            </Link>
+          )}
           {/* flex + h-full so a page like ChatPage that itself uses
               "h-full flex-col" (to pin its input bar to the bottom)
               actually has a real height to fill, instead of collapsing

@@ -105,6 +105,15 @@ class ChatConfirmRequest(BaseModel):
     parsed: Optional[dict[str, Any]] = None
 
 
+class ImportantDateIn(BaseModel):
+    """One birthday/anniversary on a person's profile - see
+    important_dates.py for how these are validated and used."""
+    label: str = Field(..., min_length=1, max_length=60)
+    month: int = Field(..., ge=1, le=12)
+    day: int = Field(..., ge=1, le=31)
+    year: Optional[int] = Field(None, ge=1900, le=2100)
+
+
 class PersonUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
@@ -117,6 +126,9 @@ class PersonUpdate(BaseModel):
     email: Optional[str] = None
     tags: Optional[list[str]] = None
     first_met_date: Optional[str] = None
+    # The whole list, replacing what's stored - the profile's edit UI
+    # always sends the full set it's showing.
+    important_dates: Optional[list[ImportantDateIn]] = Field(None, max_length=20)
 
 
 class AddPersonalNoteRequest(BaseModel):
@@ -177,3 +189,17 @@ class InitiativeCreate(BaseModel):
 class InitiativeUpdate(BaseModel):
     name: Optional[str] = None
     color: Optional[str] = None
+
+
+REPORT_REASONS = ("incorrect", "offensive", "irrelevant", "other")
+
+
+class ReportCreate(BaseModel):
+    """A user flagging an AI-generated reply. `question` is whatever the
+    user sent right before it, `answer` is the reply being reported."""
+    kind: str = Field("answer", pattern="^(answer|capture)$")
+    reason: str = Field(..., pattern="^(incorrect|offensive|irrelevant|other)$")
+    question: str = Field("", max_length=QUERY_MAX_LEN)
+    answer: str = Field(..., max_length=NOTE_MAX_LEN)
+    details: str = Field("", max_length=1_000)
+    source_interaction_ids: list[int] = Field(default_factory=list, max_length=50)
