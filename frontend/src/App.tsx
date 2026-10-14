@@ -7,6 +7,9 @@ import DigestPage from './pages/DigestPage'
 import ChatPage from './pages/ChatPage'
 import PeopleListPage from './pages/PeopleListPage'
 import PersonDetailPage from './pages/PersonDetailPage'
+import CompanyPage from './pages/CompanyPage'
+import KeepInTouchPage from './pages/KeepInTouchPage'
+import HelpPage from './pages/HelpPage'
 import NotesPage from './pages/NotesPage'
 import SearchPage from './pages/SearchPage'
 import SettingsPage from './pages/SettingsPage'
@@ -51,7 +54,10 @@ export default function App() {
           <Route path="/search" element={<SearchPage />} />
           <Route path="/digest" element={<DigestPage />} />
           <Route path="/people" element={<PeopleListPage />} />
+          <Route path="/people/keep-in-touch" element={<KeepInTouchPage />} />
+          <Route path="/people/company/:company" element={<CompanyPage />} />
           <Route path="/people/:personId" element={<PersonDetailPage />} />
+          <Route path="/help" element={<HelpPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>

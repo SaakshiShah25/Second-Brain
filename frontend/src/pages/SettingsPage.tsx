@@ -1,13 +1,12 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Check, Compass, LogOut, Lock, Moon, Sun, Trash2 } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Check, Compass, HelpCircle, LogOut, Lock, Moon, Sun, Trash2 } from 'lucide-react'
 import { useDeleteAccount, useSettings, useUpdateSettings } from '../api/settings'
 import type { FontSize, Theme } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import AppLockSettings from '../components/AppLockSettings'
 import Card from '../components/Card'
 import ConfirmDialog from '../components/ConfirmDialog'
-import HelpFaq from '../components/HelpFaq'
 import PageIntro from '../components/PageIntro'
 import { useTour } from '../components/TourGate'
 import { applyPalette, getStoredPalette, PALETTE_OPTIONS, setStoredPalette, type Palette } from '../lib/palette'
@@ -171,8 +170,6 @@ export default function SettingsPage() {
         </button>
       </Card>
 
-      <HelpFaq />
-
       <Card className="mb-4">
         <button
           type="button"
@@ -182,6 +179,13 @@ export default function SettingsPage() {
           <Compass size={16} strokeWidth={1.6} />
           Take the tour again
         </button>
+        <Link
+          to="/help"
+          className="flex w-full items-center gap-2 rounded-lg py-1 pt-3 text-left text-[15px] text-text transition-colors hover:text-accent"
+        >
+          <HelpCircle size={16} strokeWidth={1.6} />
+          Help &amp; FAQ
+        </Link>
       </Card>
 
       <Card className="mb-4">

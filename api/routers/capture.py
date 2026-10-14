@@ -71,6 +71,14 @@ def _reject_if_unsafe(text: str) -> None:
         raise HTTPException(400, "This content can't be logged - it looks unsafe or attempts to manipulate the assistant.")
 
 
+def _reject_if_too_short(text: str) -> None:
+    """422 for input that is no note at all ("ok", "test", "hi") - the same
+    rule the chat uses (text_utils.short_input_kind), applied here too so the
+    direct capture routes can't save a junk note either."""
+    if text_utils.short_input_kind(text) is not None:
+        raise HTTPException(422, "That's too short to log as a note - try adding a bit more detail.")
+
+
 def _enforce(user_id: str, resource: str):
     """Raises a 402 with an upgrade-shaped message if this free-tier
     account has hit its monthly cap for `resource` - called right before
@@ -436,8 +444,7 @@ async def _capture_text_core(user_id: str, raw_text: str, geo_lat: Optional[floa
     # check or the extraction call, means it doesn't cost part of this
     # month's free-tier cap or a wasted Groq call for something that was
     # never going to produce a meaningful note either way.
-    if not text_utils.has_meaningful_content(raw_text):
-        raise HTTPException(422, "That's too short to log as a note - try adding a bit more detail.")
+    _reject_if_too_short(raw_text)
     with step("enforce_entitlement"):
         await run_in_threadpool(_enforce, user_id, "interactions_logged")
     with step("get_initiatives"):
@@ -565,6 +572,7 @@ async def capture_voice(
             "I didn't catch anything in that recording. Tap the mic and try again - "
             "speaking a little closer to the microphone helps.",
         )
+    _reject_if_too_short(text)  # a recording of just "hello" is no note
     # This endpoint has no chat.py in front of it at all (the frontend's
     # own mic flow goes through the separate /api/transcribe -> /api/chat
     # path instead - see ChatPage.tsx) - moderation has never run on

@@ -1,4 +1,4 @@
-import { ApiError } from '../api/client'
+import { ApiError, ConnectionLostError, RequestTimeoutError } from '../api/client'
 
 const GENERIC = "That didn't go through. Please try again in a moment."
 
@@ -10,7 +10,22 @@ const GENERIC = "That didn't go through. Please try again in a moment."
  * catch anything in that recording - try again.", a plan-limit notice)
  * are passed through as-is. `fallback` lets a caller give a more specific
  * generic line for its own action. */
+export const OFFLINE_MESSAGE = "You're offline. Reconnect and try again - what you typed is still in the box."
+
+/** Wording for "the app may have saved it but never heard back". It names the
+ * check (Notes) because a blind resend would create a second copy. */
+const MAYBE_SAVED =
+  'Check your Notes before sending it again - if it already appears there, it went through and you can leave it. If not, tap Retry.'
+
 export function friendlyMessage(err: unknown, fallback: string = GENERIC): string {
+  if (err instanceof RequestTimeoutError) {
+    return err.maybeProcessed
+      ? `That's taking longer than expected, so I stopped waiting - your connection may be slow. ${MAYBE_SAVED}`
+      : "That's taking longer than expected - your connection may be slow. Please try again."
+  }
+  if (err instanceof ConnectionLostError) {
+    return `Your connection dropped while that was being sent. ${MAYBE_SAVED}`
+  }
   if (err instanceof ApiError) {
     if (err.status === 429) return "You're going a little fast - please wait a moment and try again."
     if (err.status === 401) return 'Your session has expired - please sign in again.'

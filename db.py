@@ -277,6 +277,25 @@ def get_people_with_last_interaction(user_id: str):
     return [{**p, "last_interaction_date": latest.get(p["id"])} for p in people]
 
 
+def get_interaction_stats(user_id: str) -> dict:
+    """{person_id: {"count": n, "last": "YYYY-MM-DD"|None}} for every person
+    with at least one PRIMARY interaction. Selects only the two plain columns,
+    so unlike get_all_interactions() it decrypts nothing - cheap enough to
+    run on every load of the Contacts list."""
+    rows = get_client().table("interaction").select("person_id,date").eq("user_id", user_id).execute().data or []
+    stats: dict = {}
+    for r in rows:
+        pid = r.get("person_id")
+        if pid is None:
+            continue
+        entry = stats.setdefault(pid, {"count": 0, "last": None})
+        entry["count"] += 1
+        d = r.get("date")
+        if d and (entry["last"] is None or d > entry["last"]):
+            entry["last"] = d
+    return stats
+
+
 # ---------- Interaction helpers ----------
 
 def create_interaction(user_id: str, person_id=None, raw_text="", date=None, location=None, appearance="",
@@ -757,7 +776,15 @@ def get_initiative(user_id: str, initiative_id: int):
         return None
 
 
-def create_initiative(user_id: str, name: str, color: str = None) -> dict:
+def _is_missing_icon_column(err: Exception) -> bool:
+    """True when a write failed only because initiative.icon doesn't exist
+    yet (schema.sql section 31 not run) - so the write can be retried
+    without it instead of failing the whole create/rename."""
+    text = str(err)
+    return "icon" in text and ("column" in text or "PGRST204" in text)
+
+
+def create_initiative(user_id: str, name: str, color: str = None, icon: str = None) -> dict:
     """Raises ValueError if an initiative with this name already exists
     for this user (case-insensitive) - checked here in Python rather than
     catching a Postgres unique-violation, matching this file's existing
@@ -765,13 +792,29 @@ def create_initiative(user_id: str, name: str, color: str = None) -> dict:
     existing = get_initiatives(user_id)
     if any(i["name"].strip().lower() == name.strip().lower() for i in existing):
         raise ValueError(f"An initiative named '{name}' already exists.")
-    resp = get_client().table("initiative").insert({"user_id": user_id, "name": name, "color": color}).execute()
+    row = {"user_id": user_id, "name": name, "color": color}
+    if icon:
+        row["icon"] = icon
+    try:
+        resp = get_client().table("initiative").insert(row).execute()
+    except Exception as e:
+        if "icon" not in row or not _is_missing_icon_column(e):
+            raise
+        row.pop("icon")  # column not migrated yet: still create it, just without a saved icon
+        resp = get_client().table("initiative").insert(row).execute()
     return resp.data[0]
 
 
 def update_initiative(user_id: str, initiative_id: int, **fields) -> dict:
     if fields:
-        get_client().table("initiative").update(fields).eq("id", initiative_id).eq("user_id", user_id).execute()
+        try:
+            get_client().table("initiative").update(fields).eq("id", initiative_id).eq("user_id", user_id).execute()
+        except Exception as e:
+            if "icon" not in fields or not _is_missing_icon_column(e):
+                raise
+            fields.pop("icon")  # column not migrated yet: apply the rest of the change
+            if fields:
+                get_client().table("initiative").update(fields).eq("id", initiative_id).eq("user_id", user_id).execute()
     resp = get_client().table("initiative").select("*").eq("id", initiative_id).eq("user_id", user_id).single().execute()
     return resp.data
 
@@ -873,6 +916,60 @@ def list_reports(limit: int = 50, status: str = "open") -> list:
     if status:
         q = q.eq("status", status)
     return _decrypt_rows("ai_report", q.execute().data)
+
+
+# ---------- App lock PIN (account-wide; see app_lock.py, schema.sql section 30) ----------
+
+class AppLockUnavailable(Exception):
+    """The app_lock table isn't there yet (schema.sql section 30 not run)."""
+
+
+def _is_missing_table(err: Exception) -> bool:
+    return "PGRST205" in str(err) or "app_lock" in str(err) and "does not exist" in str(err)
+
+
+def get_app_lock(user_id: str) -> Optional[dict]:
+    """The account's PIN record, or None when no lock is set. A missing table
+    reads as "no lock" (the feature simply isn't switched on until migrated)."""
+    try:
+        resp = get_client().table("app_lock").select("*").eq("user_id", user_id).execute()
+    except Exception as e:
+        if _is_missing_table(e):
+            return None
+        raise
+    return resp.data[0] if resp.data else None
+
+
+def save_app_lock(user_id: str, salt: str, pin_hash: str) -> None:
+    """Creates or replaces the account's PIN (and clears any lockout)."""
+    try:
+        get_client().table("app_lock").upsert({
+            "user_id": user_id, "salt": salt, "pin_hash": pin_hash,
+            "fails": 0, "locked_until": None,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
+    except Exception as e:
+        if _is_missing_table(e):
+            raise AppLockUnavailable() from e
+        raise
+
+
+def update_app_lock_attempts(user_id: str, fails: int, locked_until: Optional[str]) -> None:
+    get_client().table("app_lock").update(
+        {"fails": fails, "locked_until": locked_until}
+    ).eq("user_id", user_id).execute()
+
+
+def delete_app_lock(user_id: str) -> None:
+    try:
+        get_client().table("app_lock").delete().eq("user_id", user_id).execute()
+    except Exception as e:
+        if not _is_missing_table(e):
+            raise
+
+
+def mark_report_reviewed(report_id: int) -> None:
+    get_client().table("ai_report").update({"status": "reviewed"}).eq("id", report_id).execute()
 
 
 if __name__ == "__main__":

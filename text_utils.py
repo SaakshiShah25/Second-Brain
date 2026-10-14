@@ -73,3 +73,49 @@ def fix_transcript_casing(text: str) -> str:
     text = _STANDALONE_I.sub("I", text)
     text = _SENTENCE_START.sub(lambda m: m.group(1) + m.group(2).upper(), text)
     return text
+
+
+# ---------- Inputs too short to be a note or a question ----------
+#
+# "Hi", "Hello", "ok", "thanks", "test", a lone letter, an emoji: none of these
+# is something to log or something to ask about. Without a check they went
+# through two LLM calls (moderation, then intent) and then either got the
+# "not something I can help with" refusal (a greeting) or - worse - were
+# classified as a note and SAVED ("ok", "test"). This is the deterministic
+# check that catches them before any model is called. frontend/src/lib/
+# shortInput.ts is the same rule, so the app can answer instantly without a
+# round trip; keep the two in step.
+_WORD = re.compile(r"[^\W_]+", re.UNICODE)  # letters/digits, any language (names like "José")
+
+_GREETINGS = {"hi", "hii", "hey", "heyy", "hello", "hola", "yo", "sup", "namaste", "hiya", "howdy"}
+_FILLER = {
+    "ok", "okay", "k", "kk", "yes", "yep", "yeah", "no", "nope", "nah", "hmm", "hm", "uh", "um",
+    "test", "testing", "thanks", "thank", "thankyou", "thx", "ty", "bye", "goodbye", "cool", "nice",
+    "good", "great", "lol", "haha", "sure", "fine", "right", "alright", "ping",
+    # words that only ever pad a greeting or thanks ("good morning", "thank you so much", "hi there")
+    "morning", "afternoon", "evening", "night", "there", "you", "so", "much", "very", "a", "lot",
+    "all", "again", "bro", "dear", "buddy", "everyone", "team",
+} | _GREETINGS
+
+
+_THANKS = {"thanks", "thank", "thankyou", "thx", "ty"}
+_TIME_OF_DAY = {"morning", "afternoon", "evening", "night"}
+
+
+def short_input_kind(text: str):
+    """None when `text` is long enough to treat as a note or a question,
+    otherwise what kind of nothing it is: "thanks" ("thanks", "thank you so
+    much"), "greeting" ("hi", "hello there", "good morning"), or "short"
+    (too little to log or ask about: "ok", "test", "A", an emoji)."""
+    words = [w.lower() for w in _WORD.findall(text or "")]
+    if not words:
+        return "short"  # empty, punctuation, emoji
+    if all(w in _FILLER for w in words):
+        if any(w in _THANKS for w in words):
+            return "thanks"
+        if words[0] in _GREETINGS or (words[0] == "good" and len(words) > 1 and words[1] in _TIME_OF_DAY):
+            return "greeting"
+        return "short"
+    if len(words) == 1 and len(words[0]) < 3:
+        return "short"  # a lone letter or two ("A", "hm", "42")
+    return None

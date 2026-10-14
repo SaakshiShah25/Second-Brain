@@ -53,6 +53,27 @@ export function useUpdatePerson(personId: number) {
   })
 }
 
+// Updates any contact (not just the one on screen) - the Keep in touch page
+// changes frequencies and snoozes across many contacts. The list updates
+// straight away and is put back if the save fails.
+export function useUpdateContact() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, fields }: { id: number; fields: Partial<Person> }) =>
+      api.patch<Person>(`/api/people/${id}`, fields),
+    onMutate: async ({ id, fields }) => {
+      await queryClient.cancelQueries({ queryKey: ['people'], exact: true })
+      const previous = queryClient.getQueryData<Person[]>(['people'])
+      queryClient.setQueryData<Person[]>(['people'], (old) => old?.map((p) => (p.id === id ? { ...p, ...fields } : p)))
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(['people'], context.previous)
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['people'] }),
+  })
+}
+
 // Adds one dated entry to the personal-notes timeline - distinct from
 // useUpdatePerson's bulk PATCH since personal_notes is append-only, not
 // an overwritable field (see api/schemas.py's PersonUpdate docstring).

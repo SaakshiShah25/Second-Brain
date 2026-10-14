@@ -17,6 +17,7 @@ Shape of one stored entry (person.important_dates is a list of these):
     {"label": "Birthday", "month": 3, "day": 14, "year": 1990 or None}
 """
 
+import calendar
 from datetime import date
 from typing import Optional
 
@@ -144,6 +145,42 @@ def upcoming(people: list, within_days: int = 30, today: Optional[date] = None) 
             })
     results.sort(key=lambda r: (r["days_until"], r["person_name"].lower()))
     return results
+
+
+def last_occurrence(month: int, day: int, today: Optional[date] = None) -> date:
+    """The most recent date (today included) this month/day fell on."""
+    today = today or date.today()
+
+    def in_year(year: int) -> date:
+        try:
+            return date(year, month, day)
+        except ValueError:  # Feb 29 in a non-leap year
+            return date(year, 2, 28)
+
+    this_year = in_year(today.year)
+    return this_year if this_year <= today else in_year(today.year - 1)
+
+
+def prompt_line(entry: dict, today: Optional[date] = None) -> str:
+    """One exact, already-worked-out sentence about a stored date, for the
+    answer/briefing prompts - e.g. "Birthday on March 12: was yesterday
+    (2026-03-12)". The model is handed the relationship to TODAY rather than
+    left to work it out (it previously described a birthday that had passed
+    as "tomorrow"). A date that just passed is reported as passed; otherwise
+    the next one is given."""
+    today = today or date.today()
+    nxt = next_occurrence(entry["month"], entry["day"], today)
+    prev = last_occurrence(entry["month"], entry["day"], today)
+    ahead = (nxt - today).days
+    behind = (today - prev).days
+    label = f"{entry.get('label') or 'Date'} on {calendar.month_name[entry['month']]} {entry['day']}"
+    if ahead == 0:
+        return f"{label}: is today"
+    if 0 < behind <= 7:
+        when = "was yesterday" if behind == 1 else f"was {behind} days ago"
+        return f"{label}: {when} ({prev.isoformat()})"
+    when = "is tomorrow" if ahead == 1 else f"is in {ahead} days"
+    return f"{label}: next one {when} ({nxt.isoformat()})"
 
 
 def describe_when(n: int) -> str:

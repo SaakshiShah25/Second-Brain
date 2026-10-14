@@ -17,19 +17,14 @@ function every(days: number): string {
   return `about every ${Math.round(days / 30)} months`
 }
 
-export function cadenceSummary(dates: (string | null)[], today: Date = new Date()): string | null {
+export function cadenceSummary(dates: (string | null)[]): string | null {
   const days = Array.from(
     new Set(dates.map((d) => (d ? toDay(d) : null)).filter((d): d is number => d !== null)),
   ).sort((a, b) => a - b)
   if (days.length === 0) return null
-
-  const t = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) / DAY_MS
-  const last = days[days.length - 1]
-  const sinceLast = Math.max(0, Math.round(t - last))
-  const lastText = sinceLast === 0 ? 'today' : sinceLast === 1 ? 'yesterday' : `${sinceLast} days ago`
-  const noun = days.length === 1 ? 'day' : 'different days'
-
-  if (days.length === 1) return `Noted on 1 day · last ${lastText}`
-  const gap = (last - days[0]) / (days.length - 1)
-  return `Noted on ${days.length} ${noun} · ${every(gap)} · last ${lastText}`
+  if (days.length === 1) return 'Noted on 1 day'
+  // How long ago the last one was is shown separately ("Last talked ..."), so
+  // this is only how often there are notes.
+  const gap = (days[days.length - 1] - days[0]) / (days.length - 1)
+  return `Noted on ${days.length} different days · ${every(gap)}`
 }

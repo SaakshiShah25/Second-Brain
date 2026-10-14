@@ -41,10 +41,11 @@ It is an installable web app (PWA) with an Android wrapper (Trusted Web Activity
 - **AI-generated notice** on every answer, briefing and brief, reminding you the AI can be wrong.
 - **Tap-to-fill example prompts** in the empty chat and in the tour, so it's clear what to type.
 
-### People
-- **People list and profiles** with role, company, description, contact details, personal notes and a full interaction timeline.
+### Contacts
+- **Contacts list and profiles** with role, company, description, contact details, personal notes and a full interaction timeline.
 - **Important dates.** Birthdays and anniversaries mentioned in notes are saved separately on the person's profile (add or edit them by hand too), and upcoming ones surface on Today.
 - **Relationship cadence.** A profile shows how many days you've noted them, roughly how often, and when you last did.
+- **Keep in touch.** Set how often you want to catch up with each contact (weekly to yearly). Contacts → Keep in touch groups them by schedule with last-talked dates and due/overdue status, with snooze and a one-tap catch-up log; anyone due shows on Today and in the morning brief.
 - **Pre-meeting briefing** - an AI summary of everything you know about a person.
 - **Companies.** For each company: who you know there, how many conversations with each, your most recent notes, plus an AI company briefing.
 - **Merge and delete** people; quiet-relationship detection ("haven't spoken in a while").
@@ -60,7 +61,7 @@ It is an installable web app (PWA) with an Android wrapper (Trusted Web Activity
 - **Encrypted at rest.** Note text, summaries, personal notes, task text, important dates and reports are encrypted before they reach the database.
 - **Row-level security** - every row belongs to a user; the database enforces it.
 - **Content moderation** on every input route before anything is processed or stored.
-- **App lock.** A PIN (set per device), plus optional fingerprint / face unlock on devices that support it. The PIN always remains as a fallback.
+- **App lock.** One PIN for the whole account - the same on every device and browser - plus optional fingerprint / face unlock, switched on per device. The PIN always remains as a fallback.
 - **Terms gate, interactive tour, Help & FAQ** (Settings), public Privacy Policy and Account Deletion pages.
 - **Delete account** from Settings removes all of your data.
 - **Rate limits and monthly quotas** per user (free tier), failing safe if quota tables are missing.
@@ -382,7 +383,7 @@ your env vars; if you get a table-not-found error, re-check that
 | **Prompts** | No secrets, keys, plan limits or business rules appear in any prompt. User text and stored notes are always fenced in `<note>` / `<records>` / `<data>` tags with an instruction to treat them as data, never commands. |
 | **Output validation** | The extraction result is validated by Pydantic (`extraction_schema.py`): types coerced or dropped, string lengths capped, unknown keys discarded, and per-note fan-out capped (10 other people, 10 tasks, 5 important dates, ...). The same validation runs on the `extracted` payload a client sends back on a confirm call, and that call re-runs moderation on the note text. |
 | **Input limits** | Request bodies are length-capped (`api/schemas.py`); uploaded audio is capped at 10 MB; per-IP rate limits on every route, tighter on the AI routes; monthly per-user quotas. |
-| **App lock** | PIN stored only on the device (never sent to the server) as a salted PBKDF2-SHA256 hash (210,000 rounds); wrong guesses lock the screen for 30 s, doubling to 15 min. Optional biometric unlock via WebAuthn is a local convenience on top of the PIN. |
+| **App lock** | One PIN per account, stored on the server as a salted PBKDF2-SHA256 hash (210,000 rounds) mixed with a server-side secret derived from `ENCRYPTION_KEY`, in the `app_lock` table (`schema.sql` section 30; row-level security on, no policies, so only the backend can read it). The server checks guesses, so wrong PINs lock the account out - 30 s after five misses, doubling to 15 min - and clearing a browser can't reset that. Each device also keeps a locally cached verifier so the lock screen still works offline. Changing or removing the PIN needs the current one. Optional biometric unlock (WebAuthn) is a local convenience per device, with the PIN as the fallback. |
 | **Voice** | Audio is held in memory for one transcription call and sent to Groq's Whisper API. This app never writes it to disk or the database; only the resulting text is kept, and only if you save it as a note. Groq does not retain inference data by default, but may log inputs/outputs for up to 30 days for reliability and abuse monitoring unless Zero Data Retention is switched on in the Groq console (Data Controls). |
 | **Encryption** | Field-level, application-side Fernet (AES-128-CBC + HMAC) with one server-held `ENCRYPTION_KEY`. Encrypted: note text, summaries, location/address, task text, a person's description, personal notes, important dates, calendar tokens, AI reports. **Not** encrypted: names, role, company, phone, email, dates, task due dates, and the note embeddings (needed for similarity search). It protects against a database leak, not against the server itself - it is not end-to-end encryption. |
 

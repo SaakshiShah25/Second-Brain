@@ -26,7 +26,7 @@ import voice
 from llm_client import get_client as get_llm_client
 from api.auth import get_current_user_id
 from api.rate_limit import limiter
-from api.routers import ask, brief, calendar, capture, chat, initiatives, notes, people, reports, settings, tasks
+from api.routers import app_lock, ask, brief, calendar, capture, chat, initiatives, notes, people, reports, settings, tasks
 
 app = FastAPI(title="MyConfía API")
 
@@ -71,6 +71,7 @@ app.add_middleware(
 )
 
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
+app.include_router(app_lock.router, prefix="/api/app-lock", tags=["app-lock"])
 app.include_router(people.router, prefix="/api/people", tags=["people"])
 app.include_router(capture.router, prefix="/api/capture", tags=["capture"])
 app.include_router(ask.router, prefix="/api/ask", tags=["ask"])

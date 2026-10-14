@@ -22,9 +22,23 @@ def _days_ago(date_str: str) -> int:
     return (date.today() - datetime.fromisoformat(date_str).date()).days
 
 
+# Person fields a client may set back to empty by sending null.
+_CLEARABLE_PERSON_FIELDS = {"first_met_date", "keep_in_touch_days", "keep_in_touch_snoozed_until"}
+
+
 @router.get("")
 def list_people(user_id: str = Depends(get_current_user_id)):
-    return db.get_all_people(user_id)
+    """Every contact, plus how many notes you have about them and when you
+    last talked (what the Contacts list shows on each row)."""
+    stats = db.get_interaction_stats(user_id)
+    return [
+        {
+            **p,
+            "interaction_count": stats.get(p["id"], {}).get("count", 0),
+            "last_interaction_date": stats.get(p["id"], {}).get("last"),
+        }
+        for p in db.get_all_people(user_id)
+    ]
 
 
 @router.get("/stale")
@@ -144,9 +158,18 @@ def get_person(person_id: int, user_id: str = Depends(get_current_user_id)):
 
 @router.patch("/{person_id}")
 def update_person(person_id: int, body: PersonUpdate, user_id: str = Depends(get_current_user_id)):
-    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    # Only what the client actually sent. A field sent as null clears it for the
+    # few that can be empty (a first-met date, a keep-in-touch frequency or
+    # snooze); for every other field null just means "leave it alone".
+    sent = body.model_dump(exclude_unset=True)
+    fields = {k: v for k, v in sent.items() if v is not None or k in _CLEARABLE_PERSON_FIELDS}
     if fields:
-        db.update_person(user_id, person_id, **fields)
+        try:
+            db.update_person(user_id, person_id, **fields)
+        except Exception as e:
+            if any(k.startswith("keep_in_touch") for k in fields) and "keep_in_touch" in str(e):
+                raise HTTPException(503, "Keep in touch isn't available yet - the database needs an update.")
+            raise
     return db.get_person(user_id, person_id)
 
 

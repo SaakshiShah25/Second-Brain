@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { MapPin, X } from 'lucide-react'
 import { useCaptureCard, useCaptureCardConfirm } from '../api/capture'
+import { ApiError, ConnectionLostError, RequestTimeoutError, maybeProcessed } from '../api/client'
 import { useChat, useChatConfirm } from '../api/chat'
 import { useCreateInitiative } from '../api/initiatives'
 import { useUpdateInteraction } from '../api/people'
@@ -17,12 +19,49 @@ import ChatInput, { type ChatInputHandle } from '../components/chat/ChatInput'
 import DisambiguationCard from '../components/chat/DisambiguationCard'
 import ExamplePrompts from '../components/chat/ExamplePrompts'
 import { useChatSession } from '../chat/ChatSessionContext'
-import { friendlyMessage } from '../lib/friendlyMessage'
+import { OFFLINE_MESSAGE, friendlyMessage } from '../lib/friendlyMessage'
+import { shortInputKind, shortInputReply } from '../lib/shortInput'
 import { useLiveTranscript } from '../lib/useLiveTranscript'
+import { useOnlineStatus } from '../lib/useOnlineStatus'
 import { startVoiceMeter } from '../lib/voiceActivity'
+
+// How long a transcribed voice note waits, showing "Sending in Ns · Edit",
+// before it sends itself.
+const AUTO_SEND_SECONDS = 3
 
 const NO_SPEECH_NOTICE =
   "I didn't catch anything in that recording. Tap the mic and try again - speaking a little closer to the microphone helps."
+
+// Whether trying the same thing again could plausibly work: a dropped or slow
+// connection or a server hiccup can, a refusal for what was typed ("too
+// short", "can't be logged") can't - the Retry button is only offered for
+// the first kind.
+function isRetryable(err: unknown): boolean {
+  if (err instanceof ApiError) return err.status === 0 || err.status === 429 || err.status >= 500
+  return true
+}
+
+// Which kind of connection problem an error is, if it is one: the request
+// never got through ('lost'), or it may have been carried out before the
+// connection dropped ('maybe_saved'). undefined for everything else - a
+// refusal or a server error isn't fixed by the network coming back.
+function connectionIssueOf(err: unknown): ChatMessage['connectionIssue'] {
+  if (maybeProcessed(err)) return 'maybe_saved'
+  if (err instanceof TypeError) return 'lost'
+  return undefined
+}
+
+// Wording for a failed voice upload: nothing is saved by it, so unlike a
+// failed note there's no "check your Notes first" - and the recording is kept.
+function audioFailureMessage(err: unknown): string {
+  if (err instanceof RequestTimeoutError || err instanceof ConnectionLostError) {
+    return "Sending your recording is taking too long - your connection may be slow. Your recording is kept: tap Retry."
+  }
+  if (!(err instanceof ApiError) && isRetryable(err)) {
+    return "Couldn't send your recording - check your connection. Your recording is kept: tap Retry."
+  }
+  return friendlyMessage(err, "Couldn't turn that recording into text. Your recording is kept: tap Retry.")
+}
 
 function formatSavedMessage(result: CaptureSavedResult): string {
   // Only makes sense when the note is actually about a person - a
@@ -72,9 +111,25 @@ function formatSavedMessage(result: CaptureSavedResult): string {
 export default function ChatPage() {
   const { messages, setMessages, pendingConfirm, setPendingConfirm, pendingCard, setPendingCard } = useChatSession()
   const [inputText, setInputText] = useState('')
+  // Search's "Ask" / "Log a note" actions land here with the text to start from
+  // (put in the box, not sent, so it can be edited first).
+  const location = useLocation()
+  const navigateTo = useNavigate()
+  useEffect(() => {
+    const prefill = (location.state as { prefill?: string } | null)?.prefill
+    if (!prefill) return
+    setInputText(prefill)
+    navigateTo(location.pathname, { replace: true, state: null }) // so a refresh doesn't refill it
+    window.setTimeout(() => chatInputRef.current?.focus(), 0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state])
   const [isRecording, setIsRecording] = useState(false)
   const [isBusy, setIsBusy] = useState(false)
   const [stage, setStage] = useState<string | null>(null)
+  // A voice note's final text is sent automatically after a short countdown
+  // (one tap to speak, no second tap to send); "Edit", typing, or starting
+  // another recording cancels it and leaves the text in the box.
+  const [autoSend, setAutoSend] = useState<{ text: string; left: number } | null>(null)
   const [pendingLocation, setPendingLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [locationLoading, setLocationLoading] = useState(false)
   // A capture that didn't fit any existing initiative but reads like a
@@ -94,6 +149,9 @@ export default function ChatPage() {
   const scrollAnchorRef = useRef<HTMLDivElement>(null)
   const chatInputRef = useRef<ChatInputHandle>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  // The last recording that couldn't be turned into text, kept in memory so
+  // Retry can send it again instead of making the user record it twice.
+  const lastAudioRef = useRef<Blob | null>(null)
 
   const chatMutation = useChat()
   const chatConfirm = useChatConfirm()
@@ -124,8 +182,41 @@ export default function ChatPage() {
   // Something didn't work (nothing heard, mic blocked, a request that
   // didn't go through) - rendered as its own alert, not as a chat reply,
   // so it reads as a problem to act on rather than something MyConfía said.
-  function appendNotice(content: string) {
-    appendMessage('assistant', content, { kind: 'notice' })
+  function appendNotice(
+    content: string,
+    retry?: ChatMessage['retry'],
+    connectionIssue?: ChatMessage['connectionIssue'],
+  ) {
+    appendMessage('assistant', content, {
+      kind: 'notice',
+      ...(retry ? { retry } : {}),
+      ...(connectionIssue ? { connectionIssue } : {}),
+    })
+  }
+
+  // The wording a connection-problem notice switches to when the device is
+  // back online (see the effect below).
+  function recoveredMessage(m: ChatMessage): string {
+    const what = m.retry?.type === 'audio' ? 'recording' : 'note'
+    return m.connectionIssue === 'maybe_saved'
+      ? `You're back online. Your last ${what} may already have been saved - check your Notes first, then tap Retry if it isn't there.`
+      : `You're back online. Tap Retry to send your ${what}.`
+  }
+
+  // Puts a message that failed to send back in the input box - but never
+  // over something the user has since started typing.
+  function restoreInput(text: string) {
+    setInputText((current) => (current.trim() ? current : text))
+  }
+
+  // The bubble for a message that never went through: removed rather than
+  // left in the thread as if it had been sent (the text goes back in the
+  // input instead).
+  function dropLastUserMessage(text: string) {
+    setMessages((prev) => {
+      const last = prev[prev.length - 1]
+      return last && last.role === 'user' && last.content === text && !last.kind ? prev.slice(0, -1) : prev
+    })
   }
 
   // An AI answer carries the notes it was drawn from (so it can be
@@ -232,6 +323,35 @@ export default function ChatPage() {
 
   async function submitText(text: string) {
     if (!text.trim() || isBusy) return
+    // "Hi", "ok", "A", "thanks": nothing to log and nothing to ask. Answered
+    // right here - no request, no AI call, and never saved as a note.
+    const shortKind = shortInputKind(text)
+    if (shortKind) {
+      const { message, friendly } = shortInputReply(shortKind)
+      if (friendly) {
+        // A greeting or thanks gets a normal conversational reply.
+        appendMessage('user', text)
+        appendMessage('assistant', message)
+      } else {
+        // Too little to use: say so, and leave the text in the box to extend.
+        // (Not repeated if that is already the last thing on screen.)
+        setMessages((prev) => {
+          const last = prev[prev.length - 1]
+          return last?.kind === 'notice' && last.content === message
+            ? prev
+            : [...prev, { role: 'assistant', content: message, kind: 'notice' }]
+        })
+        restoreInput(text)
+      }
+      return
+    }
+    // No connection at all: say so now, before anything is sent, and keep
+    // the text where it is.
+    if (!navigator.onLine) {
+      appendNotice(OFFLINE_MESSAGE, { type: 'text', text }, 'lost')
+      restoreInput(text)
+      return
+    }
     // role/content only - sources and flags are display state, not conversation
     const historyForRequest = messages.filter((m) => m.kind !== 'notice').map(({ role, content }) => ({ role, content }))
     appendMessage('user', text)
@@ -250,7 +370,16 @@ export default function ChatPage() {
       if (err instanceof DOMException && err.name === 'AbortError') {
         appendMessage('assistant', '_Stopped._')
       } else {
-        appendNotice(friendlyMessage(err))
+        // Unless the request may have gone through anyway (timed out or cut
+        // off mid-answer), nothing was saved: take the bubble back and put the
+        // text in the input so it can be sent again - or edited first.
+        if (!maybeProcessed(err)) dropLastUserMessage(text)
+        appendNotice(
+          friendlyMessage(err),
+          isRetryable(err) ? { type: 'text', text } : undefined,
+          connectionIssueOf(err),
+        )
+        restoreInput(text)
       }
     } finally {
       setIsBusy(false)
@@ -258,6 +387,118 @@ export default function ChatPage() {
       abortControllerRef.current = null
     }
   }
+
+  // Retry button on a failed-send notice. The button is spent on the first
+  // tap (removed from that notice) so one failure can't be resent twice.
+  function handleRetry(index: number) {
+    const retry = messages[index]?.retry
+    if (!retry || isBusy) return
+    // The notice has done its job once Retry is tapped - take it away rather
+    // than leave a stale message (red or green) sitting above the new attempt.
+    setMessages((prev) => prev.filter((_, i) => i !== index))
+    if (retry.type === 'text') {
+      setInputText((current) => (current === retry.text ? '' : current))
+      void submitText(retry.text)
+    } else if (lastAudioRef.current) {
+      void transcribeBlob(lastAudioRef.current)
+    } else {
+      appendNotice('That recording is no longer available - please record it again.')
+    }
+  }
+
+  // Only one recording is kept (the latest), so only the newest failed-upload
+  // notice may offer Retry - an older one would silently resend the wrong audio.
+  function clearAudioRetries() {
+    setMessages((prev) => prev.map((m) => (m.retry?.type === 'audio' ? { ...m, retry: undefined } : m)))
+  }
+
+  // Turns a recording into text in the input box (never auto-sends, so a
+  // misheard word can be fixed first). The recording is held in lastAudioRef
+  // until it succeeds, so a failed upload can be retried.
+  async function transcribeBlob(blob: Blob) {
+    if (!navigator.onLine) {
+      lastAudioRef.current = blob
+      clearAudioRetries()
+      appendNotice("You're offline. Reconnect and tap Retry - your recording is kept.", { type: 'audio' }, 'lost')
+      return
+    }
+    setIsBusy(true)
+    try {
+      const { transcript } = await transcribe.mutateAsync(blob)
+      lastAudioRef.current = null
+      // Whisper's transcript replaces whatever the live browser preview
+      // showed - it's the more accurate, authoritative result. Populate
+      // the input rather than auto-sending, so the user can review/edit
+      // a misheard word before it goes anywhere.
+      setInputText(transcript)
+      // Too little to be a note or a question (just "hello", or only noise):
+      // don't send it by itself - say why and leave it in the box. Otherwise
+      // it goes by itself in a few seconds unless they step in.
+      if (shortInputKind(transcript)) {
+        if (transcript.trim()) appendNotice(shortInputReply('short').message)
+      } else {
+        setAutoSend({ text: transcript, left: AUTO_SEND_SECONDS })
+      }
+    } catch (err) {
+      const retryable = isRetryable(err)
+      // "Didn't catch anything" and similar refusals would just repeat on
+      // the same audio - nothing to keep.
+      lastAudioRef.current = retryable ? blob : null
+      clearAudioRetries()
+      appendNotice(
+        retryable ? audioFailureMessage(err) : friendlyMessage(err),
+        retryable ? { type: 'audio' } : undefined,
+        retryable ? 'lost' : undefined, // an upload failure saves nothing, so retrying is always safe
+      )
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  // Offline -> online: every connection-problem notice that still has a Retry
+  // button turns green and says what to do now, instead of keeping the
+  // "you're offline" text that is no longer true. Only on that transition -
+  // notices restored from an earlier session are left as they were.
+  const online = useOnlineStatus()
+  const wasOnlineRef = useRef(online)
+  useEffect(() => {
+    const cameBack = online && !wasOnlineRef.current
+    wasOnlineRef.current = online
+    if (!cameBack) return
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.kind === 'notice' && m.connectionIssue && m.retry && !m.recovered
+          ? { ...m, recovered: true, content: recoveredMessage(m) }
+          : m,
+      ),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online])
+
+  function cancelAutoSend() {
+    setAutoSend(null)
+  }
+
+  // Counts down once a second, then sends. Only ever armed by a finished
+  // transcription (see transcribeBlob), never by typed text.
+  useEffect(() => {
+    if (!autoSend) return
+    if (autoSend.left <= 0) {
+      const text = autoSend.text
+      setAutoSend(null)
+      setInputText('')
+      void submitText(text)
+      return
+    }
+    const timer = window.setTimeout(
+      () => setAutoSend((current) => (current ? { ...current, left: current.left - 1 } : current)),
+      1000,
+    )
+    return () => window.clearTimeout(timer)
+    // submitText is re-created every render; the countdown must not restart
+    // each time, only when the number of seconds left changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSend?.left, autoSend?.text])
 
   function stopRequest() {
     abortControllerRef.current?.abort()
@@ -370,6 +611,7 @@ export default function ChatPage() {
     liveTextRef.current = ''
     chunksRef.current = []
     setInputText('')
+    cancelAutoSend()
     recorder.ondataavailable = (e) => chunksRef.current.push(e.data)
     recorder.onstop = async () => {
       liveTranscript.stop()
@@ -382,21 +624,7 @@ export default function ChatPage() {
         appendNotice(NO_SPEECH_NOTICE)
         return
       }
-      const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-      setIsBusy(true)
-      try {
-        const { transcript } = await transcribe.mutateAsync(blob)
-        // Whisper's transcript replaces whatever the live browser preview
-        // showed - it's the more accurate, authoritative result. Populate
-        // the input rather than auto-sending, so the user can review/edit
-        // a misheard word before it goes anywhere.
-        setInputText(transcript)
-        chatInputRef.current?.focus()
-      } catch (err) {
-        appendNotice(friendlyMessage(err, "Couldn't turn that recording into text. Please try again."))
-      } finally {
-        setIsBusy(false)
-      }
+      void transcribeBlob(new Blob(chunksRef.current, { type: 'audio/webm' }))
     }
     recorder.start()
     liveTranscript.start()
@@ -414,7 +642,10 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-4 flex flex-1 flex-col space-y-4 overflow-y-auto">
+      {/* pt-11 once there are messages: clears the Search / Help buttons that
+          float in the top-right corner of every screen (see Layout.tsx), so the
+          first message or notice isn't tucked underneath them. */}
+      <div className={`mb-4 flex flex-1 flex-col space-y-4 overflow-y-auto ${messages.length > 0 ? 'pt-11' : ''}`}>
         {messages.length === 0 && !hasPending && (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-center">
             <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft text-text">
@@ -434,7 +665,13 @@ export default function ChatPage() {
         )}
 
         {messages.map((m, i) => (
-          <ChatBubble key={i} message={m} question={m.kind ? questionBefore(i) : ''} />
+          <ChatBubble
+            key={i}
+            message={m}
+            question={m.kind ? questionBefore(i) : ''}
+            onRetry={m.retry ? () => handleRetry(i) : undefined}
+            retryDisabled={isBusy}
+          />
         ))}
 
         {pendingConfirm && pendingConfirm.intent === 'capture' && (
@@ -608,16 +845,30 @@ export default function ChatPage() {
           <ChatInput
             ref={chatInputRef}
             value={inputText}
-            onChange={setInputText}
+            onChange={(value) => {
+              cancelAutoSend() // editing means they want to look at it first
+              setInputText(value)
+            }}
+            autoSendLeft={autoSend ? autoSend.left : null}
+            onCancelAutoSend={() => {
+              cancelAutoSend()
+              chatInputRef.current?.focus()
+            }}
             onSend={() => {
-              submitText(inputText)
+              cancelAutoSend()
+              // Clear first, then send: if the send fails straight away
+              // (offline), the text is put back after this clear, not wiped by it.
+              const text = inputText
               setInputText('')
+              void submitText(text)
             }}
             placeholder="Tell me about a conversation, or ask a question…"
             disabled={isBusy && !isRecording}
             isBusy={isBusy}
             onStop={stopRequest}
             isRecording={isRecording}
+            liveSupported={liveTranscript.supported}
+            transcribing={transcribe.isPending}
             onToggleRecord={isRecording ? stopRecording : startRecording}
             locationAttached={pendingLocation !== null}
             locationLoading={locationLoading}

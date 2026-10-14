@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Check, Plus, Trash2, X } from 'lucide-react'
 import { useCreateInitiative, useDeleteInitiative, useInitiatives, useUpdateInitiative } from '../api/initiatives'
-import { getInitiativeStyle, PICKABLE_INITIATIVE_COLORS } from '../lib/initiativeStyle'
+import { getInitiativeStyle, ICONS, PICKABLE_INITIATIVE_COLORS, suggestIconKey } from '../lib/initiativeStyle'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import { Input } from './fields'
@@ -43,6 +43,54 @@ function ColorPicker({ value, onChange }: { value: string | null; onChange: (col
   )
 }
 
+// A grid of icons to choose from, next to the color picker. "A" (null) means
+// automatic: a new initiative then gets an icon no other initiative uses, and
+// an existing one goes back to the icon its name suggests.
+function IconPicker({
+  value,
+  suggested,
+  color,
+  onChange,
+}: {
+  value: string | null
+  // What "Auto" would pick right now - shown on the A button as a hint.
+  suggested: string
+  color: string
+  onChange: (icon: string | null) => void
+}) {
+  const Suggested = ICONS[suggested]
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => onChange(null)}
+        title="Auto - picks an icon no other initiative is using"
+        className={`flex h-8 items-center gap-1 rounded-lg border px-2 text-[10px] font-semibold ${
+          value === null ? 'border-accent text-accent' : 'border-border-strong text-text-faint'
+        }`}
+      >
+        A{Suggested && <Suggested size={13} strokeWidth={1.8} />}
+      </button>
+      {Object.entries(ICONS).map(([key, Icon]) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => onChange(key)}
+          title={key}
+          aria-label={`Icon: ${key}`}
+          aria-pressed={value === key}
+          className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+            value === key ? 'border-transparent' : 'border-border text-text-muted hover:border-border-strong hover:text-text'
+          }`}
+          style={value === key ? { backgroundColor: `${color}26`, color, outline: `2px solid ${color}`, outlineOffset: -1 } : undefined}
+        >
+          <Icon size={15} strokeWidth={1.8} />
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // Initiative CRUD (add/rename/delete) - lives on the Notes page as its
 // own tab rather than buried in Settings, since initiatives are exactly
 // the categories the Notes page's own filter chips use. Settings is for
@@ -55,23 +103,36 @@ export default function InitiativesManager() {
   const deleteInitiative = useDeleteInitiative()
 
   const [newName, setNewName] = useState('')
-  const [newColor, setNewColor] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<number | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const [renameColor, setRenameColor] = useState<string | null>(null)
+  const [renameIcon, setRenameIcon] = useState<string | null>(null)
+  const [renameOriginalIcon, setRenameOriginalIcon] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
 
-  function startRename(id: number, currentName: string, currentColor: string | null) {
+  function startRename(id: number, currentName: string, currentColor: string | null, currentIcon: string | null) {
     setRenamingId(id)
     setRenameDraft(currentName)
     setRenameColor(currentColor)
+    setRenameIcon(currentIcon)
+    setRenameOriginalIcon(currentIcon)
   }
 
   function saveRename(id: number) {
     const name = renameDraft.trim()
-    if (name) updateInitiative.mutate({ id, fields: { name, color: renameColor } })
+    // Only send the icon when it was changed, so a plain rename never touches it.
+    const fields = {
+      name,
+      color: renameColor,
+      ...(renameIcon !== renameOriginalIcon ? { icon: renameIcon } : {}),
+    }
+    if (name) updateInitiative.mutate({ id, fields })
     setRenamingId(null)
   }
+
+  // What "Auto" would pick for the initiative being edited / created: an icon
+  // none of the OTHER initiatives is using.
+  const othersFor = (id: number | null) => (initiatives ?? []).filter((i) => i.id !== id)
 
   return (
     <div>
@@ -102,6 +163,12 @@ export default function InitiativesManager() {
                     </Button>
                   </div>
                   <ColorPicker value={renameColor} onChange={setRenameColor} />
+                  <IconPicker
+                    value={renameIcon}
+                    suggested={suggestIconKey(renameDraft || i.name, othersFor(i.id))}
+                    color={renameColor ?? catStyle?.color ?? '#7c5cd8'}
+                    onChange={setRenameIcon}
+                  />
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
@@ -115,9 +182,9 @@ export default function InitiativesManager() {
                   )}
                   <button
                     type="button"
-                    onClick={() => startRename(i.id, i.name, i.color)}
+                    onClick={() => startRename(i.id, i.name, i.color, i.icon ?? null)}
                     className="flex-1 truncate text-left text-[15px] text-text"
-                    title="Click to rename or change color"
+                    title="Click to rename or change color and icon"
                   >
                     {i.name}
                   </button>
@@ -141,12 +208,11 @@ export default function InitiativesManager() {
           e.preventDefault()
           const name = newName.trim()
           if (!name) return
-          createInitiative.mutate(
-            { name, color: newColor ?? undefined },
-            { onSuccess: () => { setNewName(''); setNewColor(null) } },
-          )
+          // Just the name: the colour and icon are picked automatically (see
+          // useCreateInitiative) and can be changed by clicking the initiative.
+          createInitiative.mutate({ name }, { onSuccess: () => setNewName('') })
         }}
-        className="mt-3 flex flex-col gap-2"
+        className="mt-3"
       >
         <div className="flex gap-2">
           <Input
@@ -159,7 +225,6 @@ export default function InitiativesManager() {
             <Plus size={14} strokeWidth={1.6} />
           </Button>
         </div>
-        {newName.trim() && <ColorPicker value={newColor} onChange={setNewColor} />}
       </form>
       {createInitiative.isError && (
         <p className="mt-2 text-xs text-danger">

@@ -34,6 +34,7 @@ from starlette.concurrency import run_in_threadpool
 
 import intent
 import moderation
+import text_utils
 from timing import step
 from api.auth import get_current_user_id
 from api.rate_limit import limiter
@@ -49,14 +50,38 @@ from api.schemas import (
 
 router = APIRouter()
 
-_OUT_OF_SCOPE_MESSAGE = (
-    "That's not something I can help with here - I'm built specifically for logging and recalling "
-    "your own notes, contacts, and follow-ups. Here are a few things you can try:\n\n"
+_EXAMPLES = (
     "- **Log a note:** \"Met Priya today, she wants a revised quote by Friday\"\n"
     "- **Ask about someone:** \"What did Priya say about pricing?\"\n"
-    "- **Ask about a time period:** \"Who did I meet last month?\"\n"
-    "- **Set a reminder:** \"Remind me to call Arjun tomorrow\""
+    "- **Add a task:** \"Send Arjun the proposal by Friday\""
 )
+_OUT_OF_SCOPE_MESSAGE = (
+    "That's not something I can help with here - I'm built specifically for logging and recalling "
+    "your own notes, contacts, and follow-ups. Here are a few things you can try:\n\n" + _EXAMPLES
+)
+# Replies to input too short to be a note or a question (see text_utils.short_input_kind).
+_GREETING_MESSAGE = (
+    "Hi! I'm ready when you are - tell me about a conversation, or ask about someone you've met. "
+    "For example:\n\n" + _EXAMPLES
+)
+_THANKS_MESSAGE = (
+    "You're welcome! Tell me about a conversation, or ask about someone you've met, whenever you're ready."
+)
+_TOO_SHORT_MESSAGE = (
+    "That's a little too short for me to log or answer. Try a full sentence, for example:\n\n" + _EXAMPLES
+)
+
+
+def _short_input_reply(text: str):
+    """The reply to give instead of running the pipeline, or None when `text`
+    is a real note/question. Runs before ANY model call."""
+    kind = text_utils.short_input_kind(text)
+    if kind is None:
+        return None
+    answer = {"greeting": _GREETING_MESSAGE, "thanks": _THANKS_MESSAGE}.get(kind, _TOO_SHORT_MESSAGE)
+    return {"intent": "blocked", "status": "answered", "reason": "too_short", "answer": answer}
+
+
 _UNSAFE_MESSAGE = "I can't help with that request."
 
 
@@ -64,6 +89,9 @@ _UNSAFE_MESSAGE = "I can't help with that request."
 @limiter.limit("20/minute")
 async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_current_user_id)):
     t_start = time.perf_counter()
+    short = _short_input_reply(body.text)
+    if short:
+        return short
     with step("moderation"):
         moderation_result = await run_in_threadpool(moderation.check, body.text)
     if not moderation_result["safe"]:
@@ -119,6 +147,10 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
     client as they happen rather than all at once after the fact. Always
     finishes by pushing exactly one ("result", ...) or ("error", ...)."""
     try:
+        short = _short_input_reply(body.text)
+        if short:
+            await queue.put(("result", short))
+            return
         await queue.put(("stage", "moderating"))
         moderation_result = await run_in_threadpool(moderation.check, body.text)
         if not moderation_result["safe"]:

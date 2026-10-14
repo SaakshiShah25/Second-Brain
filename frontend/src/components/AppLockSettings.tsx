@@ -1,30 +1,40 @@
 import { useEffect, useState } from 'react'
 import { Fingerprint, ShieldCheck } from 'lucide-react'
 import {
-  disableAppLock,
+  disableAccountLock,
   disableBiometric,
   enableBiometric,
   isAppLockEnabled,
   isBiometricEnabled,
   isBiometricSupported,
   pinLockoutRemainingMs,
-  setAppLockPin,
-  verifyPin,
+  refreshLockStatus,
+  setAccountPin,
+  type PinResult,
 } from '../lib/appLock'
 import Button from './Button'
 import Card from './Card'
 import { Input, Label } from './fields'
 
-// Settings > App Lock: set up or remove the local PIN gate AppLockGate.tsx
-// enforces on resume. Kept as its own component (rather than inlined in
-// SettingsPage.tsx) since it owns a small multi-step form (enter PIN,
-// confirm PIN / verify current PIN before turning off), unlike every
-// other Settings row which is a single toggle or button.
-type Mode = 'idle' | 'setting_up' | 'turning_off'
+// Settings > App lock: set, change or remove the PIN that AppLockGate.tsx
+// enforces on resume. The PIN belongs to the ACCOUNT - set it here once and
+// every device and browser signed in to this account asks for the same PIN.
+// Fingerprint / face unlock is the one part that is per device (it uses this
+// device's own secure hardware), so its switch only affects this device.
+//
+// Kept as its own component (rather than inlined in SettingsPage.tsx) since
+// it owns a small multi-step form, unlike every other Settings row which is a
+// single toggle or button.
+type Mode = 'idle' | 'setting_up' | 'changing' | 'turning_off'
+
+function wait(seconds: number): string {
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
+}
 
 export default function AppLockSettings() {
   const [enabled, setEnabled] = useState(isAppLockEnabled())
   const [mode, setMode] = useState<Mode>('idle')
+  const [currentPin, setCurrentPin] = useState('')
   const [pin, setPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
   const [error, setError] = useState('')
@@ -38,10 +48,89 @@ export default function AppLockSettings() {
     isBiometricSupported().then((ok) => {
       if (!cancelled) setBioSupported(ok)
     })
+    // The server is the source of truth: the lock may have been set up or
+    // removed on another device since this page last knew.
+    refreshLockStatus().then((result) => {
+      if (!cancelled && result) setEnabled(result.enabled)
+    })
     return () => {
       cancelled = true
     }
   }, [])
+
+  function reset() {
+    setMode('idle')
+    setCurrentPin('')
+    setPin('')
+    setConfirmPin('')
+    setError('')
+  }
+
+  // What to tell the user when the server turned a PIN away.
+  function rejection(result: PinResult): string {
+    const seconds = result.retry_after > 0 ? result.retry_after : Math.ceil(pinLockoutRemainingMs() / 1000)
+    return seconds > 0 ? `Too many wrong PINs. Try again in ${wait(seconds)}.` : 'Incorrect PIN.'
+  }
+
+  function failureMessage(err: unknown): string {
+    const message = err instanceof Error ? err.message : ''
+    if (message.includes('database needs an update')) {
+      return "App lock isn't available yet - please try again later."
+    }
+    return "Couldn't reach MyConfía to save this. Check your connection and try again."
+  }
+
+  function validNewPin(): boolean {
+    if (!/^\d{4,6}$/.test(pin)) {
+      setError('PIN must be 4 to 6 digits.')
+      return false
+    }
+    if (pin !== confirmPin) {
+      setError("PINs don't match.")
+      return false
+    }
+    return true
+  }
+
+  async function handleSave() {
+    if (!validNewPin()) return
+    setBusy(true)
+    setError('')
+    try {
+      const result = await setAccountPin(pin, mode === 'changing' ? currentPin : undefined)
+      if (!result.ok) {
+        setError(rejection(result))
+        setCurrentPin('')
+        return
+      }
+      setEnabled(true)
+      reset()
+    } catch (err) {
+      setError(failureMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleTurnOff() {
+    setBusy(true)
+    setError('')
+    try {
+      const result = await disableAccountLock(currentPin)
+      if (!result.ok) {
+        setError(rejection(result))
+        setCurrentPin('')
+        return
+      }
+      setEnabled(false)
+      setBioEnabled(false)
+      reset()
+    } catch (err) {
+      setError(failureMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function handleToggleBiometric() {
     setBioMessage('')
@@ -57,43 +146,11 @@ export default function AppLockSettings() {
     if (!ok) setBioMessage("Couldn't turn on biometric unlock. Your PIN still works.")
   }
 
-  function reset() {
-    setMode('idle')
-    setPin('')
-    setConfirmPin('')
-    setError('')
-  }
-
-  async function handleSetUp() {
-    if (pin.length < 4) {
-      setError('PIN must be at least 4 digits.')
-      return
-    }
-    if (pin !== confirmPin) {
-      setError("PINs don't match.")
-      return
-    }
-    setBusy(true)
-    await setAppLockPin(pin)
-    setBusy(false)
-    setEnabled(true)
-    reset()
-  }
-
-  async function handleTurnOff() {
-    setBusy(true)
-    const ok = await verifyPin(pin)
-    setBusy(false)
-    if (!ok) {
-      const wait = pinLockoutRemainingMs()
-      setError(wait > 0 ? `Too many wrong PINs. Try again in ${Math.ceil(wait / 1000)}s.` : 'Incorrect PIN.')
-      setPin('')
-      return
-    }
-    disableAppLock()
-    setEnabled(false)
-    setBioEnabled(false)
-    reset()
+  const pinInputProps = {
+    type: 'password' as const,
+    inputMode: 'numeric' as const,
+    pattern: '[0-9]*',
+    maxLength: 6,
   }
 
   return (
@@ -103,19 +160,26 @@ export default function AppLockSettings() {
         <h2 className="text-sm font-semibold tracking-tight text-text-muted">App lock</h2>
       </div>
       <p className="mb-3 text-xs leading-relaxed text-text-faint">
-        Require a PIN to reopen MyConfía on this device - stays signed in, but re-locks every time the app is
-        closed or left in the background for a bit. Set separately per device; it isn't tied to your account.
+        Require a PIN to reopen MyConfía - you stay signed in, but it locks every time the app is closed or left in
+        the background for a bit. <span className="text-text-muted">The PIN is part of your account: it's the same on
+        every device and browser you sign in on.</span> Fingerprint / face unlock is the one thing set up separately on
+        each device.
       </p>
 
       {mode === 'idle' && (
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => setMode(enabled ? 'turning_off' : 'setting_up')}>
-            {enabled ? 'Turn off app lock' : 'Set up app lock'}
-          </Button>
+          {enabled ? (
+            <>
+              <Button onClick={() => setMode('changing')}>Change PIN</Button>
+              <Button onClick={() => setMode('turning_off')}>Turn off app lock</Button>
+            </>
+          ) : (
+            <Button onClick={() => setMode('setting_up')}>Set up app lock</Button>
+          )}
           {enabled && bioSupported && (
             <Button onClick={handleToggleBiometric} disabled={busy}>
               <Fingerprint size={15} strokeWidth={1.6} />
-              {bioEnabled ? 'Turn off biometric unlock' : 'Use fingerprint / face to unlock'}
+              {bioEnabled ? 'Turn off biometric unlock on this device' : 'Use fingerprint / face on this device'}
             </Button>
           )}
         </div>
@@ -123,42 +187,52 @@ export default function AppLockSettings() {
       {mode === 'idle' && enabled && bioSupported && (
         <p className="mt-2 text-xs leading-relaxed text-text-faint">
           {bioEnabled
-            ? 'Fingerprint / face unlock is on. Your PIN still works as a fallback.'
-            : 'Your device supports fingerprint / face unlock. The PIN stays as a fallback either way.'}
+            ? 'Fingerprint / face unlock is on for this device. Your PIN still works as a fallback.'
+            : 'This device supports fingerprint / face unlock. It is switched on per device; the PIN stays as a fallback either way.'}
         </p>
       )}
       {bioMessage && <p className="mt-2 text-xs text-danger">{bioMessage}</p>}
 
-      {mode === 'setting_up' && (
+      {(mode === 'setting_up' || mode === 'changing') && (
         <div className="flex flex-col gap-2">
+          {mode === 'changing' && (
+            <div>
+              <Label>Current PIN</Label>
+              <Input
+                {...pinInputProps}
+                autoFocus
+                value={currentPin}
+                onChange={(e) => {
+                  setCurrentPin(e.target.value.replace(/\D/g, ''))
+                  setError('')
+                }}
+              />
+            </div>
+          )}
           <div>
-            <Label>New PIN (4-6 digits)</Label>
-            <Input
-              type="password"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={6}
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-            />
+            <Label>{mode === 'changing' ? 'New PIN (4-6 digits)' : 'New PIN (4-6 digits)'}</Label>
+            <Input {...pinInputProps} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} />
           </div>
           <div>
             <Label>Confirm PIN</Label>
             <Input
-              type="password"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={6}
+              {...pinInputProps}
               value={confirmPin}
               onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
             />
           </div>
           {error && <p className="text-xs text-danger">{error}</p>}
           <div className="flex gap-2">
-            <Button variant="primary" onClick={handleSetUp} disabled={busy}>
+            <Button
+              variant="primary"
+              onClick={handleSave}
+              disabled={busy || (mode === 'changing' && currentPin.length < 4)}
+            >
               {busy ? 'Saving…' : 'Save'}
             </Button>
-            <Button onClick={reset}>Cancel</Button>
+            <Button onClick={reset} disabled={busy}>
+              Cancel
+            </Button>
           </div>
         </div>
       )}
@@ -166,26 +240,25 @@ export default function AppLockSettings() {
       {mode === 'turning_off' && (
         <div className="flex flex-col gap-2">
           <div>
-            <Label>Enter your current PIN to turn off app lock</Label>
+            <Label>Enter your current PIN to turn off app lock on all your devices</Label>
             <Input
-              type="password"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={6}
+              {...pinInputProps}
               autoFocus
-              value={pin}
+              value={currentPin}
               onChange={(e) => {
-                setPin(e.target.value.replace(/\D/g, ''))
+                setCurrentPin(e.target.value.replace(/\D/g, ''))
                 setError('')
               }}
             />
           </div>
           {error && <p className="text-xs text-danger">{error}</p>}
           <div className="flex gap-2">
-            <Button variant="danger" onClick={handleTurnOff} disabled={busy || pin.length < 4}>
+            <Button variant="danger" onClick={handleTurnOff} disabled={busy || currentPin.length < 4}>
               {busy ? 'Checking…' : 'Turn off'}
             </Button>
-            <Button onClick={reset}>Cancel</Button>
+            <Button onClick={reset} disabled={busy}>
+              Cancel
+            </Button>
           </div>
         </div>
       )}

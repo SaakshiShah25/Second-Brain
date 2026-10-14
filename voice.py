@@ -8,7 +8,7 @@ shared Groq client and GROQ_API_KEY as extraction.py/retrieval.py.
 
 import re
 
-from llm_client import get_client, WHISPER_MODEL_NAME
+from llm_client import get_client, WHISPER_LANGUAGE, WHISPER_MODEL_NAME
 from text_utils import fix_transcript_casing
 
 # Whisper does not return an empty transcript for silence - it invents a
@@ -80,6 +80,8 @@ def transcribe_audio(audio_bytes: bytes, filename: str = "note.wav") -> str:
     transcription = client.audio.transcriptions.create(
         file=(filename, audio_bytes),
         model=WHISPER_MODEL_NAME,
+        language=WHISPER_LANGUAGE,
+        temperature=0.0,
     )
     text = transcription.text
     if is_whisper_filler(text):

@@ -26,7 +26,7 @@ def create_initiative(body: InitiativeCreate, user_id: str = Depends(get_current
     if not body.name.strip():
         raise HTTPException(400, "Name is required.")
     try:
-        return db.create_initiative(user_id, name=body.name.strip(), color=body.color)
+        return db.create_initiative(user_id, name=body.name.strip(), color=body.color, icon=body.icon)
     except ValueError as e:
         raise HTTPException(409, str(e))
 

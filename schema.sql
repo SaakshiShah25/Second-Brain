@@ -735,3 +735,42 @@ $$;
 
 revoke execute on function match_interactions(vector, uuid, int, bigint) from public, anon, authenticated;
 grant execute on function match_interactions(vector, uuid, int, bigint) to service_role;
+
+
+-- 30. The app-lock PIN belongs to the ACCOUNT, not to one browser. One row per
+--     user: a salted PBKDF2 hash (never the PIN) plus the wrong-PIN counter,
+--     kept here so the lockout is enforced by the server and can't be reset
+--     by clearing a browser's storage (see app_lock.py). RLS is on with NO
+--     policies on purpose: only the backend (service role) may read or write
+--     this table - the hash must not be reachable through the public API key
+--     even by its own user.
+create table if not exists app_lock (
+    user_id      uuid primary key references auth.users(id) on delete cascade,
+    salt         text not null,
+    pin_hash     text not null,
+    fails        integer not null default 0,
+    locked_until timestamptz,
+    updated_at   timestamptz not null default now()
+);
+
+alter table app_lock enable row level security;
+
+
+-- 31. A user-chosen icon per initiative. The icon used to be GUESSED from the
+--     initiative's name (so "Startup" and "Job" both got the briefcase, and
+--     two of the user's initiatives could look identical). It is now a key
+--     such as 'rocket' or 'briefcase' from the frontend's icon set; null
+--     means "not chosen", and the app falls back to the old guess. The app
+--     keeps working before this is run - it just can't remember a chosen icon.
+alter table initiative add column if not exists icon text;
+
+
+-- 32. Keep in touch: how often the user wants to catch up with each contact
+--     (7, 14, 30, 60, 90, 180 or 365 days; null = not tracked), and an
+--     optional "snooze until" date that pushes the next catch-up back. A
+--     contact is DUE once that many days have passed since the last note about
+--     them or the snooze ran out - computed from the notes, never stored (see
+--     keep_in_touch.py). The app still works before this is run; the Keep in
+--     touch page just can't save a frequency.
+alter table person add column if not exists keep_in_touch_days integer;
+alter table person add column if not exists keep_in_touch_snoozed_until date;

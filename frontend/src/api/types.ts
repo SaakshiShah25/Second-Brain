@@ -27,6 +27,14 @@ export interface Person {
   email: string
   // Absent until schema.sql section 28 has been run
   important_dates?: ImportantDate[]
+  // Only on the Contacts list (GET /api/people): how many notes you have about
+  // them and the date of the most recent one.
+  interaction_count?: number
+  last_interaction_date?: string | null
+  // Keep in touch: how often (days) to catch up, and a "not before" date from a
+  // snooze. Absent until schema.sql section 32 has been run. See lib/keepInTouch.ts.
+  keep_in_touch_days?: number | null
+  keep_in_touch_snoozed_until?: string | null
 }
 
 // A recurring occasion on a person's profile - a birthday or anniversary
@@ -131,6 +139,8 @@ export interface Initiative {
   id: number
   name: string
   color: string | null
+  // Key into lib/initiativeStyle's ICONS; null/absent = not chosen (guessed from the name)
+  icon?: string | null
   created_at: string
 }
 
@@ -308,6 +318,17 @@ export interface ChatMessage {
   // own alert style so it can't be mistaken for an answer, and never sent
   // back to the model as conversation history.
   kind?: 'answer' | 'capture' | 'notice'
+  // On a 'notice' about a send that failed: what a Retry button should do.
+  // 'text' resends that text; 'audio' re-uploads the kept recording (held in
+  // memory only, so it's gone after a page reload).
+  retry?: { type: 'text'; text: string } | { type: 'audio' }
+  // Set on a failed-send notice that was caused by the connection:
+  //   'lost'        - nothing was sent, so retrying is plainly safe
+  //   'maybe_saved' - the request may have gone through before it dropped
+  // When the device comes back online, the red notice turns into a green
+  // "you're back online" one (recovered) that says what to do next.
+  connectionIssue?: 'lost' | 'maybe_saved'
+  recovered?: boolean
   sources?: AnswerSource[]
   sourcesTotal?: number
 }

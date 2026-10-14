@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import {
   Calendar,
   CalendarCheck,
@@ -10,7 +10,6 @@ import {
   Mail,
   Sunrise,
   TriangleAlert,
-  UserRoundX,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -19,13 +18,13 @@ import { useCalendarStatus, useStartCalendarConnect } from '../api/calendar'
 import {
   useAddTaskToCalendar,
   useRemoveTaskFromCalendar,
-  useStalePeople,
   useTasks,
   useUpdateTaskOwner,
   useUpdateTaskStatus,
 } from '../api/tasks'
 import type { TaskFilter } from '../api/types'
 import AiNotice from '../components/AiNotice'
+import KeepInTouchCard from '../components/KeepInTouchCard'
 import Card from '../components/Card'
 import UpcomingDatesCard from '../components/UpcomingDatesCard'
 import Button from '../components/Button'
@@ -67,7 +66,7 @@ function MorningBriefCard() {
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{data?.brief ?? ''}</ReactMarkdown>
           </div>
           <div className="mt-2 border-t border-border pt-2">
-            <AiNotice />
+            <AiNotice kind="briefing" />
           </div>
         </>
       )}
@@ -115,7 +114,6 @@ const OWNER_FILTERS: { value: Exclude<OwnerFilter, 'all'>; label: string }[] = [
 export default function DigestPage() {
   const [filter, setFilter] = useState<TaskFilter>('open')
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('all')
-  const [threshold, setThreshold] = useState(30)
   // Which task's inline "pick a date" picker is open, and the date chosen
   // so far - lets scheduling a meeting land on a date other than the
   // task's own due_date (e.g. due-by-24th, meeting itself on the 21st).
@@ -131,7 +129,6 @@ export default function DigestPage() {
   )
   const updateStatus = useUpdateTaskStatus()
   const updateOwner = useUpdateTaskOwner()
-  const { data: stalePeople, isLoading: staleLoading } = useStalePeople(threshold)
 
   const { data: calendarStatus } = useCalendarStatus()
   const startConnect = useStartCalendarConnect()
@@ -158,6 +155,7 @@ export default function DigestPage() {
 
       <MorningBriefCard />
       <UpcomingDatesCard />
+      <KeepInTouchCard />
 
       {calendarResult === 'connected' && (
         <Card className="mb-4 flex items-center justify-between gap-3 border-green-600/40">
@@ -271,8 +269,8 @@ export default function DigestPage() {
       {!isLoading && visibleTasks.length === 0 && <p className="text-sm text-text-muted">Nothing here.</p>}
 
       {/* No separate "My tasks"/"Their tasks" color-swatch legend here
-          anymore - each row's own text already says "For X" (mine) vs a
-          bare name (theirs), so the left-border color is a reinforcing
+          anymore - each row's own text already says "About X" (mine) vs
+          "X owes you" (theirs), so the left-border color is a reinforcing
           detail, not the only way to tell them apart. A legend that only
           explains a color was one more thing to parse before the actual
           list. */}
@@ -362,12 +360,14 @@ export default function DigestPage() {
                         // read like the task was assigned to/by him
                         // rather than something I need to do involving
                         // him - the real distinction only showed up in
-                        // the "Owed by me" chip after expanding). "For X"
-                        // makes that relationship explicit right in the
-                        // collapsed summary line, with no extra click
-                        // needed. Left unprefixed when they actually owe
-                        // it - a bare name there already reads correctly.
-                        return task.owner === 'me' ? `For ${personLabel}` : personLabel
+                        // the "Owed by me" chip after expanding). "About X"
+                        // (not "For X", which read as if the task
+                        // belonged to them - e.g. "Gift Aditi a birthday
+                        // card" showed "For Aditi" and looked like
+                        // Aditi's task) names who it concerns without
+                        // implying who owns it, and "X owes you" makes
+                        // the other direction just as explicit.
+                        return task.owner === 'me' ? `About ${personLabel}` : `${personLabel} owes you`
                       })()}
                     </span>
                     <span>·</span>
@@ -476,56 +476,6 @@ export default function DigestPage() {
             </Card>
           )
         })}
-      </div>
-
-      {/* Renamed from the bare "Relationships gone quiet" + a separate
-          one-line hint - that left people unsure what the section was
-          for until they'd already scanned the list below it. The intro
-          now says the "why" up front (so you don't lose touch), and the
-          slider label says what it actually does ("Show", not "Flag" -
-          nothing is marked/flagged anywhere, it just filters this list). */}
-      <h2 className="mb-1 flex items-center gap-2 text-lg font-semibold tracking-tight">
-        <UserRoundX size={18} strokeWidth={1.6} className="text-text-muted" /> People you haven't talked to in a while
-      </h2>
-      <PageIntro>
-        People from your People list with no logged interaction recently - so you don't lose touch. Tap someone to
-        open their profile, where "Get briefing" can suggest how to reconnect.
-      </PageIntro>
-
-      <label className="mb-4 block text-sm">
-        Show people not talked to in the last <span className="font-semibold text-accent">{threshold}</span> days
-        <input
-          type="range"
-          min={7}
-          max={180}
-          value={threshold}
-          onChange={(e) => setThreshold(Number(e.target.value))}
-          className="mt-2 w-full accent-accent"
-        />
-      </label>
-
-      {staleLoading && <p className="text-sm text-text-muted">Loading…</p>}
-      {!staleLoading && stalePeople?.length === 0 && (
-        <p className="text-sm text-text-muted">Nobody's gone quiet by that threshold - you're caught up.</p>
-      )}
-      <div className="flex flex-col gap-2">
-        {stalePeople?.map((p) => (
-          <Link key={p.id} to={`/people/${p.id}`}>
-            <Card className="flex items-center justify-between gap-3">
-              <div>
-                <p className="font-medium">
-                  {p.name}
-                  {p.role || p.company ? (
-                    <span className="font-normal text-text-muted"> — {[p.role, p.company].filter(Boolean).join(', ')}</span>
-                  ) : null}
-                </p>
-              </div>
-              <span className="whitespace-nowrap text-xs text-text-muted">
-                Last talked {p.last_interaction_date} ({p.days_ago} days ago)
-              </span>
-            </Card>
-          </Link>
-        ))}
       </div>
     </div>
   )

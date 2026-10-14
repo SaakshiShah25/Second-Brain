@@ -18,6 +18,7 @@ from datetime import date, datetime
 import db
 import google_calendar
 import important_dates
+import keep_in_touch
 import text_utils
 from llm_client import get_client, MODEL_NAME
 
@@ -70,14 +71,25 @@ def _gather_brief_data(user_id: str) -> dict:
     calendar_events = google_calendar.list_events_for_date(user_id, today_str)
 
     people = db.get_people_with_last_interaction(user_id)
-    stale = sorted(
-        (
-            {**p, "days_ago": _days_ago(p["last_interaction_date"])}
-            for p in people
-            if p.get("last_interaction_date") and _days_ago(p["last_interaction_date"]) >= STALE_THRESHOLD_DAYS
-        ),
-        key=lambda p: -p["days_ago"],
-    )[:MAX_STALE_SHOWN]
+    # Someone who has set keep-in-touch frequencies gets THEIR schedule: the
+    # contacts due today or overdue, most overdue first. Someone who hasn't set
+    # any gets the original rule (no note for STALE_THRESHOLD_DAYS+ days), so
+    # the brief is unchanged until they opt in.
+    tracked = [p for p in people if p.get("keep_in_touch_days")]
+    if tracked:
+        stale = [
+            {**p, "days_ago": _days_ago(p["last_interaction_date"]) if p.get("last_interaction_date") else None}
+            for p in keep_in_touch.overdue_people(tracked)
+        ][:MAX_STALE_SHOWN]
+    else:
+        stale = sorted(
+            (
+                {**p, "days_ago": _days_ago(p["last_interaction_date"])}
+                for p in people
+                if p.get("last_interaction_date") and _days_ago(p["last_interaction_date"]) >= STALE_THRESHOLD_DAYS
+            ),
+            key=lambda p: -p["days_ago"],
+        )[:MAX_STALE_SHOWN]
 
     try:
         upcoming_dates = important_dates.upcoming(db.get_all_people(user_id), within_days=UPCOMING_DATES_DAYS)
@@ -132,7 +144,8 @@ def _build_context_block(data: dict) -> str:
     lines.append(f"\nRelationships that have gone quiet, {STALE_THRESHOLD_DAYS}+ days ({len(data['stale_people'])} shown):")
     if data["stale_people"]:
         for p in data["stale_people"]:
-            lines.append(f"- {p['name']}, last talked {p['days_ago']} days ago")
+            when = f"last talked {p['days_ago']} days ago" if p.get("days_ago") is not None else "no notes yet"
+            lines.append(f"- {p['name']}, {when}")
     else:
         lines.append("(none)")
 

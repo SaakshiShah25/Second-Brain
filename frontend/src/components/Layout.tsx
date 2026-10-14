@@ -1,14 +1,15 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LogOut, MessageSquare, NotebookText, Search, Settings, Sunrise, Users, type LucideIcon } from 'lucide-react'
+import { HelpCircle, LogOut, Wifi, WifiOff, MessageSquare, NotebookText, Search, Settings, Sunrise, Users, type LucideIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import ConfiaLogo from './ConfiaLogo'
+import { useOnlineStatus } from '../lib/useOnlineStatus'
 
 const navItems: { to: string; label: string; icon: LucideIcon; end: boolean }[] = [
   { to: '/', label: 'Chat', icon: MessageSquare, end: true },
   { to: '/notes', label: 'Notes', icon: NotebookText, end: false },
   { to: '/digest', label: 'Today', icon: Sunrise, end: false },
-  { to: '/people', label: 'People', icon: Users, end: false },
+  { to: '/people', label: 'Contacts', icon: Users, end: false },
   { to: '/settings', label: 'Settings', icon: Settings, end: false },
 ]
 
@@ -19,6 +20,22 @@ export default function Layout() {
   // The Chat tab already has a question box, and the search page is the
   // search - everywhere else gets a search button.
   const showSearchButton = pathname !== '/' && pathname !== '/search'
+  const showHelpButton = pathname !== '/help'
+  const online = useOnlineStatus()
+  // After an offline spell, confirm the return for a few seconds instead of
+  // the red bar just vanishing.
+  const [justBackOnline, setJustBackOnline] = useState(false)
+  const wasOnline = useRef(online)
+  useEffect(() => {
+    if (online && !wasOnline.current) {
+      setJustBackOnline(true)
+      const t = window.setTimeout(() => setJustBackOnline(false), 4000)
+      wasOnline.current = online
+      return () => window.clearTimeout(t)
+    }
+    wasOnline.current = online
+    if (!online) setJustBackOnline(false)
+  }, [online])
 
   // Cmd/Ctrl+K from anywhere jumps to search - the usual shortcut for it.
   useEffect(() => {
@@ -90,6 +107,17 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
+        <NavLink
+          to="/help"
+          className={({ isActive }) =>
+            `mt-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm tracking-[-0.006em] transition-colors ${
+              isActive ? 'bg-accent-soft font-semibold text-accent' : 'font-medium text-text-muted hover:bg-bg-hover hover:text-text'
+            }`
+          }
+        >
+          <HelpCircle size={18} strokeWidth={1.6} />
+          <span>Help &amp; FAQ</span>
+        </NavLink>
         {user && (
           <div className="mt-4 border-t border-border pt-3 px-2">
             <p className="mb-2 truncate text-xs text-text-faint">{user.email}</p>
@@ -106,17 +134,54 @@ export default function Layout() {
       </aside>
 
       <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Shown the moment the device loses its connection - nothing can be
+            sent or saved until it's back, and finding that out only after
+            typing a long note is the frustrating way to learn it. */}
+        {!online && (
+          <div
+            role="status"
+            className="flex flex-shrink-0 items-center justify-center gap-2 border-b border-danger/40 bg-danger/10 px-4 py-2 text-xs font-medium text-text"
+          >
+            <WifiOff size={14} strokeWidth={1.8} className="text-danger" />
+            You're offline - notes and questions can't be sent until you're back online.
+          </div>
+        )}
+        {online && justBackOnline && (
+          <div
+            role="status"
+            className="flex flex-shrink-0 items-center justify-center gap-2 border-b border-success/40 bg-success/10 px-4 py-2 text-xs font-medium text-text"
+          >
+            <Wifi size={14} strokeWidth={1.8} className="text-success" />
+            You're back online.
+          </div>
+        )}
         <main className="relative flex-1 overflow-y-auto">
-          {showSearchButton && (
-            <Link
-              to="/search"
-              aria-label="Search"
-              title="Search (Ctrl K)"
-              className="absolute right-4 top-4 z-[5] flex h-9 w-9 items-center justify-center rounded-full border border-border-strong bg-bg-card text-text-muted transition-colors hover:border-accent hover:text-accent md:right-8 md:top-8"
-            >
-              <Search size={16} strokeWidth={1.6} />
-            </Link>
-          )}
+          {/* Top-right shortcuts, on every screen: Search (not on Chat, which
+              has its own question box) and Help & FAQ - the usual home for
+              a help link, and the only place it fits on mobile where the
+              bottom bar is already full. */}
+          <div className="absolute right-4 top-4 z-[5] flex items-center gap-2 md:right-8 md:top-8">
+            {showSearchButton && (
+              <Link
+                to="/search"
+                aria-label="Search"
+                title="Search (Ctrl K)"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-border-strong bg-bg-card text-text-muted transition-colors hover:border-accent hover:text-accent"
+              >
+                <Search size={16} strokeWidth={1.6} />
+              </Link>
+            )}
+            {showHelpButton && (
+              <Link
+                to="/help"
+                aria-label="Help and FAQ"
+                title="Help & FAQ"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-border-strong bg-bg-card text-text-muted transition-colors hover:border-accent hover:text-accent"
+              >
+                <HelpCircle size={16} strokeWidth={1.6} />
+              </Link>
+            )}
+          </div>
           {/* flex + h-full so a page like ChatPage that itself uses
               "h-full flex-col" (to pin its input bar to the bottom)
               actually has a real height to fill, instead of collapsing

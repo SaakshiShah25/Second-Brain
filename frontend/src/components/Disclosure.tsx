@@ -10,16 +10,20 @@ interface DisclosureProps {
   // other caller (PersonDetailPage's timeline/mentioned-in/danger-zone)
   // omits this and is unaffected.
   accentColor?: string
+  // Drops the card box (border, background, radius) so rows can sit in a
+  // shared panel separated by hairlines - the Contacts-list look. The default
+  // stays a standalone card, which is what the Notes page uses.
+  flat?: boolean
 }
 
 // Generic collapsed-by-default summary/content row - the shared "click to
 // reveal" building block for PersonDetailPage's timeline entries,
 // mentioned-in entries, and danger-zone section.
-export default function Disclosure({ summary, children, defaultOpen = false, accentColor }: DisclosureProps) {
+export default function Disclosure({ summary, children, defaultOpen = false, accentColor, flat = false }: DisclosureProps) {
   const [open, setOpen] = useState(defaultOpen)
   return (
     <div
-      className="rounded-xl border border-border bg-bg-card"
+      className={flat ? '' : 'rounded-xl border border-border bg-bg-card'}
       style={accentColor ? { borderLeftColor: accentColor, borderLeftWidth: 3 } : undefined}
     >
       <button

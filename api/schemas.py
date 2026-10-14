@@ -16,7 +16,7 @@ never needs to re-look-up or re-guess what was shown to the user.
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Generous caps on every field that ends up inside an LLM prompt - not
 # about legitimate use (even a long rambling voice transcript is nowhere
@@ -126,9 +126,20 @@ class PersonUpdate(BaseModel):
     email: Optional[str] = None
     tags: Optional[list[str]] = None
     first_met_date: Optional[str] = None
+    # Keep in touch (keep_in_touch.py). Sent as null to switch it off / clear a snooze.
+    keep_in_touch_days: Optional[int] = None
+    keep_in_touch_snoozed_until: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     # The whole list, replacing what's stored - the profile's edit UI
     # always sends the full set it's showing.
     important_dates: Optional[list[ImportantDateIn]] = Field(None, max_length=20)
+
+
+    @field_validator("keep_in_touch_days")
+    @classmethod
+    def _valid_frequency(cls, v):
+        if v is not None and v not in (7, 14, 30, 60, 90, 180, 365):
+            raise ValueError("keep_in_touch_days must be one of 7, 14, 30, 60, 90, 180, 365")
+        return v
 
 
 class AddPersonalNoteRequest(BaseModel):
@@ -182,13 +193,16 @@ class UserPreferenceUpdate(BaseModel):
 
 
 class InitiativeCreate(BaseModel):
-    name: str
-    color: Optional[str] = None
+    name: str = Field(..., max_length=FIELD_MAX_LEN)
+    color: Optional[str] = Field(None, max_length=20)
+    # A key from the frontend's icon set (lib/initiativeStyle.ts), e.g. "rocket".
+    icon: Optional[str] = Field(None, pattern=r"^[a-z0-9-]{1,30}$")
 
 
 class InitiativeUpdate(BaseModel):
-    name: Optional[str] = None
-    color: Optional[str] = None
+    name: Optional[str] = Field(None, max_length=FIELD_MAX_LEN)
+    color: Optional[str] = Field(None, max_length=20)
+    icon: Optional[str] = Field(None, pattern=r"^[a-z0-9-]{1,30}$")
 
 
 REPORT_REASONS = ("incorrect", "offensive", "irrelevant", "other")
@@ -203,3 +217,18 @@ class ReportCreate(BaseModel):
     answer: str = Field(..., max_length=NOTE_MAX_LEN)
     details: str = Field("", max_length=1_000)
     source_interaction_ids: list[int] = Field(default_factory=list, max_length=50)
+
+
+# ---------- App lock (account-wide PIN, see app_lock.py) ----------
+
+class AppLockSet(BaseModel):
+    pin: str = Field(..., pattern=r"^\d{4,6}$")  # 4-6 digits
+    current_pin: Optional[str] = Field(None, max_length=12)  # required to change an existing PIN
+
+
+class AppLockVerify(BaseModel):
+    pin: str = Field(..., max_length=12)
+
+
+class AppLockDisable(BaseModel):
+    pin: str = Field(..., max_length=12)

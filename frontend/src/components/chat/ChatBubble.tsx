@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Flag, TriangleAlert } from 'lucide-react'
+import { CheckCircle2, Flag, RotateCw, TriangleAlert } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ChatMessage } from '../../api/types'
@@ -13,21 +13,53 @@ import SourcesList from './SourcesList'
 // question asked, or the note logged) - passed in by ChatPage, since a
 // bubble only knows its own message. Only needed to give a report enough
 // context to be reviewable.
-export default function ChatBubble({ message, question = '' }: { message: ChatMessage; question?: string }) {
+interface ChatBubbleProps {
+  message: ChatMessage
+  question?: string
+  // Present on a failed-send notice: runs the Retry action.
+  onRetry?: () => void
+  retryDisabled?: boolean
+}
+
+export default function ChatBubble({ message, question = '', onRetry, retryDisabled = false }: ChatBubbleProps) {
   const [reportOpen, setReportOpen] = useState(false)
   const [reported, setReported] = useState(false)
   // A problem, not an answer: its own alert styling (tinted box, warning
   // icon, no assistant avatar) so nobody reads "Didn't catch anything" as
   // something MyConfía said back about their note.
   if (message.kind === 'notice') {
+    // Once the connection is back the red problem becomes a green "you can
+    // go ahead" - the same box, so it's clearly the same message, updated.
+    const ok = message.recovered === true
     return (
       <div
-        role="alert"
-        className="flex items-start gap-2.5 rounded-xl border border-danger/40 bg-danger/10 px-3.5 py-2.5 text-sm text-text"
+        role={ok ? 'status' : 'alert'}
+        className={`flex items-start gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm text-text transition-colors ${
+          ok ? 'border-success/50 bg-success/10' : 'border-danger/40 bg-danger/10'
+        }`}
       >
-        <TriangleAlert size={16} strokeWidth={1.8} className="mt-0.5 flex-shrink-0 text-danger" />
-        <div className="prose-chat min-w-0">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+        {ok ? (
+          <CheckCircle2 size={16} strokeWidth={1.8} className="mt-0.5 flex-shrink-0 text-success" />
+        ) : (
+          <TriangleAlert size={16} strokeWidth={1.8} className="mt-0.5 flex-shrink-0 text-danger" />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="prose-chat">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+          </div>
+          {message.retry && onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              disabled={retryDisabled}
+              className={`mt-2 flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium text-text transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                ok ? 'border-success/60 hover:bg-success/15' : 'border-danger/50 hover:bg-danger/15'
+              }`}
+            >
+              <RotateCw size={12} strokeWidth={1.8} />
+              Retry
+            </button>
+          )}
         </div>
       </div>
     )
@@ -76,7 +108,7 @@ export default function ChatBubble({ message, question = '' }: { message: ChatMe
               <SourcesList sources={message.sources} total={message.sourcesTotal} />
             )}
             <div className="mt-2.5 flex items-start justify-between gap-3 border-t border-border pt-2">
-              <AiNotice>
+              <AiNotice kind={message.kind === 'capture' ? 'extraction' : 'answer'}>
                 {message.sources && message.sources.length > 0 ? 'Check the sources to verify.' : null}
               </AiNotice>
               {reported ? (

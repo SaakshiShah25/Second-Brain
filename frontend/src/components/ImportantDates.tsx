@@ -102,7 +102,7 @@ export default function ImportantDates({ person }: { person: Person }) {
           })}
         </ul>
       )}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1.5">
         <select
           id="important-date-label"
           aria-label="Occasion"
@@ -136,7 +136,7 @@ export default function ImportantDates({ person }: { person: Person }) {
         >
           {MONTHS.map((m, i) => (
             <option key={m} value={i + 1}>
-              {m}
+              {m.slice(0, 3)}
             </option>
           ))}
         </select>
@@ -153,17 +153,18 @@ export default function ImportantDates({ person }: { person: Person }) {
             </option>
           ))}
         </select>
-        <Input
+        <input
           id="important-date-year"
           aria-label="Year (optional)"
-          placeholder="Year (optional)"
+          title="Year (optional)"
+          placeholder="Year"
           inputMode="numeric"
           maxLength={4}
           value={year}
           onChange={(e) => setYear(e.target.value.replace(/\D/g, ''))}
-          className="w-32 text-sm"
+          className={`${selectClass} w-14 text-center placeholder:text-text-faint`}
         />
-        <Button type="button" onClick={handleAdd} disabled={update.isPending || !label} title="Add date">
+        <Button type="button" onClick={handleAdd} disabled={update.isPending || !label} title="Add date" className="!px-2.5">
           <Plus size={14} strokeWidth={1.6} />
         </Button>
       </div>

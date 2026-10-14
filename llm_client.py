@@ -33,6 +33,13 @@ FAST_MODEL_NAME = "openai/gpt-oss-20b"
 # Groq-hosted Whisper model used for voice-note transcription (voice.py).
 # Check console.groq.com/docs/speech-to-text for the current list if deprecated.
 WHISPER_MODEL_NAME = "whisper-large-v3-turbo"
+# Language of voice notes (ISO-639-1). Left to itself Whisper GUESSES the
+# language from the first seconds of audio, and on a short clip with an
+# unfamiliar name or an accent it guesses wrong - "Hey hi, Saakshi here" came
+# back as Icelandic. The whole app is English (notes, extraction, answers and
+# the embedding model are all English), so tell it. Override with the
+# WHISPER_LANGUAGE env var if other languages are ever supported.
+WHISPER_LANGUAGE = os.environ.get("WHISPER_LANGUAGE", "en")
 
 _client = None
 

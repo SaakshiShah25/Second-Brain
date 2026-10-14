@@ -16,7 +16,7 @@ const selectClass =
 // Collapsed by default (just the date/summary line, via Disclosure) -
 // owns its own edit-mode toggle locally now, so PersonDetailPage doesn't
 // need to track which interaction (if any) is being edited.
-export default function InteractionCard({ interaction }: { interaction: Interaction }) {
+export default function InteractionCard({ interaction, flat = false }: { interaction: Interaction; flat?: boolean }) {
   const updateInteraction = useUpdateInteraction()
   const deleteInteraction = useDeleteInteraction()
   const [editing, setEditing] = useState(false)
@@ -86,6 +86,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
         </span>
       }
       accentColor={initiativeStyle?.color}
+      flat={flat}
     >
       {showNoteContext && (
         <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
@@ -121,6 +122,11 @@ export default function InteractionCard({ interaction }: { interaction: Interact
       )}
       {!editing ? (
         <>
+          {/* The collapsed row above cuts a long summary off with "…", so
+              the full text has to be readable here once the card is open. */}
+          {interaction.summary && (
+            <p className="mb-2 whitespace-pre-wrap text-sm leading-relaxed text-text">{interaction.summary}</p>
+          )}
           {interaction.location && <p className="text-xs text-text-muted">Location: {interaction.location}</p>}
           {interaction.appearance && (
             <p className="text-xs text-text-muted">Appearance that day: {interaction.appearance}</p>
@@ -171,9 +177,12 @@ export default function InteractionCard({ interaction }: { interaction: Interact
             </div>
           )}
           {interaction.raw_text && (
-            <p className="mt-2 whitespace-pre-wrap rounded-lg bg-bg-elevated p-2 text-xs text-text-muted">
-              {interaction.raw_text}
-            </p>
+            <div className="mt-2">
+              <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.06em] text-text-faint">Your note</p>
+              <p className="whitespace-pre-wrap rounded-lg bg-bg-elevated p-2 text-xs text-text-muted">
+                {interaction.raw_text}
+              </p>
+            </div>
           )}
           <div className="mt-3 flex gap-2">
             <Button onClick={() => setEditing(true)}>Edit</Button>

@@ -26,6 +26,17 @@ interface ChatInputProps {
   onToggleLocation?: () => void
   // Business-card scan trigger - undefined hides the button.
   onAttachCard?: (file: File) => void
+  // Whether the browser can show words as they're spoken. When it can, the
+  // words appear in the box while recording ("Listening…" until the first
+  // one); when it can't, the box says the words will appear after stopping.
+  liveSupported?: boolean
+  // The recording has been sent to be transcribed - the box holds the
+  // browser's rough draft (if any) until the final text replaces it.
+  transcribing?: boolean
+  // A voice note that will send itself: seconds left on the countdown, and
+  // what "Edit" does (cancel the send and leave the text to change).
+  autoSendLeft?: number | null
+  onCancelAutoSend?: () => void
 }
 
 const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
@@ -43,12 +54,17 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
     locationLoading = false,
     onToggleLocation,
     onAttachCard,
+    liveSupported = false,
+    transcribing = false,
+    autoSendLeft = null,
+    onCancelAutoSend,
   },
   ref,
 ) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const cardInputRef = useRef<HTMLInputElement>(null)
   const [elapsed, setElapsed] = useState(0)
+  const liveWordsRef = useRef<HTMLDivElement>(null)
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
@@ -94,6 +110,12 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
     return () => clearInterval(interval)
   }, [isRecording])
 
+  // Keep the newest words in view as a long recording's text grows.
+  useEffect(() => {
+    const el = liveWordsRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [value, isRecording])
+
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -111,6 +133,24 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
 
   return (
     <div className="flex flex-col items-center gap-3">
+      {autoSendLeft !== null && (
+        <p role="status" className="flex items-center gap-2 text-xs text-text-muted">
+          <span>Sending in {autoSendLeft}s</span>
+          <button
+            type="button"
+            onClick={onCancelAutoSend}
+            className="rounded-full border border-border-strong px-2.5 py-0.5 font-medium text-text transition-colors hover:border-accent hover:text-accent"
+          >
+            Edit
+          </button>
+        </p>
+      )}
+      {transcribing && (
+        <p role="status" className="flex items-center gap-1.5 text-xs text-text-muted">
+          <Loader2 size={13} strokeWidth={1.8} className="animate-spin" />
+          Finalizing your words…
+        </p>
+      )}
       {/* rounded-[1.75rem], not rounded-full: a true pill (border-radius:
           9999px) looks right for a short single-line box, since the
           radius naturally caps at half the box's own height - but as
@@ -166,9 +206,23 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
         )}
 
         {isRecording ? (
-          <div className="flex flex-1 items-center gap-2 px-3 py-2.5 text-sm text-text-muted">
-            <span className="h-2 w-2 rounded-full bg-danger" style={{ animation: 'pulse-rec 1s infinite' }} />
-            Recording… {elapsed}s
+          <div className="flex min-w-0 flex-1 flex-col gap-1 px-3 py-2.5 text-sm">
+            <div className="flex items-center gap-2 text-text-muted">
+              <span className="h-2 w-2 rounded-full bg-danger" style={{ animation: 'pulse-rec 1s infinite' }} />
+              Recording… {elapsed}s
+            </div>
+            {/* The words the browser is hearing, as they arrive - so there is
+                visible proof the app is listening. This is only a draft: when
+                recording stops, the more accurate transcript replaces it. */}
+            <div ref={liveWordsRef} className="max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-[0.9375rem] leading-snug">
+              {value.trim() ? (
+                <span className="text-text">{value}</span>
+              ) : (
+                <span className="italic text-text-faint">
+                  {liveSupported ? 'Listening…' : 'Speak now - your words will appear when you stop.'}
+                </span>
+              )}
+            </div>
           </div>
         ) : (
           <textarea

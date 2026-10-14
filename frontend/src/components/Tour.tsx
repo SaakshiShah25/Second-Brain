@@ -79,7 +79,7 @@ const STEPS: Step[] = [
   },
   {
     icon: Users,
-    title: 'People',
+    title: 'Contacts',
     description: 'Everyone you’ve talked about, with their full history in one timeline.',
     path: '/people',
   },
