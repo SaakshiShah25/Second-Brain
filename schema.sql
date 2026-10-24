@@ -591,3 +591,158 @@ as $$
     do update set count = usage_counter.count + 1
     returning count;
 $$;
+
+-- 25. What the account is used for - 'work', 'personal' or 'both' -
+--     asked once during onboarding (frontend UsageModeSheet) and editable
+--     in Settings. Drives which features/wording the app leads with
+--     (business-card scan and company briefings are work features, Home
+--     shortcuts and Today's wording adapt, the morning brief's tone
+--     shifts) - it never hides or changes stored data. Nullable on
+--     purpose: null = "not asked yet", which is what makes the
+--     onboarding question appear, including once for every existing
+--     account.
+alter table user_preference add column if not exists usage_mode text
+    check (usage_mode in ('work', 'personal', 'both'));
+
+-- 26. Document organizer - uploaded files (IDs, statements, contracts,
+--     decks...) that organize themselves (documents.py asks Gemini for a
+--     title/category/owner/expiry on upload) and can be pulled back up
+--     from chat ("pull my aadhaar and photo"). The file bytes live in a
+--     PRIVATE Supabase Storage bucket ("documents", created by
+--     documents.ensure_bucket()), Fernet-encrypted by the app before
+--     upload exactly like note content - so storage access alone yields
+--     ciphertext. This row is the searchable index over those files;
+--     title/description/file_name/extracted_text/tags/owner are encrypted
+--     too (search runs in Python after decryption - personal scale - not
+--     in SQL). `source` is 'upload' today; it exists so a future Google
+--     Drive import can land in the same table.
+create table if not exists document (
+    id bigint generated always as identity primary key,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    title text not null,                         -- encrypted
+    description text,                            -- encrypted
+    category text not null default 'Other',      -- one of documents.CATEGORIES
+    tags text,                                   -- encrypted JSON list
+    owner text,                                  -- encrypted: 'Me' or whose document it is
+    person_id bigint references person(id) on delete set null,
+    initiative_id bigint references initiative(id) on delete set null,
+    file_name text not null,                     -- encrypted
+    mime_type text not null,
+    size_bytes bigint not null,
+    storage_path text not null,
+    thumb_path text,
+    extracted_text text,                         -- encrypted; what Gemini read off the file
+    issue_date date,
+    expiry_date date,
+    embedding vector(1024),                      -- Cohere, from title/description/text
+    source text not null default 'upload',
+    created_at timestamptz not null default now()
+);
+
+create index if not exists document_user_id_idx on document (user_id, created_at desc);
+
+alter table document enable row level security;
+drop policy if exists "Users manage their own documents" on document;
+create policy "Users manage their own documents" on document
+    for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- 27. One Google connection for everything + Google Drive import.
+--     google_credentials now backs every Google feature (google_oauth.py):
+--     its `scope` says which ones are granted (calendar, drive), and
+--     google_email labels which account is connected in Settings.
+--     drive_folder = a Drive folder the user added to their documents;
+--     google_drive.py syncs its files into `document` rows with
+--     source='gdrive' - indexed (AI-filed, searchable, with an encrypted
+--     thumbnail) but NOT copied: the bytes are fetched live from Drive when
+--     opened or shared, hence storage_path becoming nullable. `hidden`
+--     marks a Drive file the user removed from MyConfía so the next sync
+--     doesn't bring it back (it's never deleted from Drive itself).
+alter table google_credentials add column if not exists google_email text;
+
+create table if not exists drive_folder (
+    id bigint generated always as identity primary key,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    folder_id text not null,                     -- Google Drive folder id
+    name text not null,
+    status text not null default 'pending',      -- pending | syncing | ready | error
+    total_files int not null default 0,
+    synced_files int not null default 0,
+    error text,
+    last_synced_at timestamptz,
+    created_at timestamptz not null default now(),
+    unique (user_id, folder_id)
+);
+
+alter table drive_folder enable row level security;
+drop policy if exists "Users manage their own drive folders" on drive_folder;
+create policy "Users manage their own drive folders" on drive_folder
+    for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+alter table document alter column storage_path drop not null;
+alter table document add column if not exists drive_file_id text;
+alter table document add column if not exists drive_folder_id bigint references drive_folder(id) on delete cascade;
+alter table document add column if not exists drive_modified_time text;
+alter table document add column if not exists hidden boolean not null default false;
+create unique index if not exists document_drive_file_idx
+    on document (user_id, drive_file_id) where drive_file_id is not null;
+
+-- 28. Unified retrieval index (search_index.py) - ONE searchable layer over
+--     every source, used by the retrieval agent (agent.py). Each row is a
+--     "chunk": a short, self-contained text for one entity (a note, a task,
+--     a person's profile card, a document) plus filterable metadata.
+--     DERIVED data: rebuilt from the source tables at any time
+--     (scripts/reindex_search.py), and refreshed automatically after every
+--     write, so it can never become the source of truth.
+--     `text` is Fernet-encrypted like all other content - keyword (BM25)
+--     scoring therefore runs in Python after decryption (personal scale);
+--     vector similarity runs in SQL via match_search_chunks() below.
+create table if not exists search_chunk (
+    id bigint generated always as identity primary key,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    kind text not null,                  -- note | task | person | document
+    entity_id bigint not null,           -- id in the source table for `kind`
+    title text,                          -- encrypted, short label for citations
+    text text not null,                  -- encrypted, what gets searched / shown to the agent
+    embedding vector(1024),
+    item_date date,                      -- note date / task due / doc created
+    person_ids bigint[] not null default '{}',
+    initiative_id bigint,
+    meta jsonb not null default '{}',    -- non-sensitive extras (status, owner, category)
+    updated_at timestamptz not null default now(),
+    unique (user_id, kind, entity_id)
+);
+
+create index if not exists search_chunk_user_kind_idx on search_chunk (user_id, kind);
+create index if not exists search_chunk_embedding_idx
+    on search_chunk using hnsw (embedding vector_cosine_ops);
+
+alter table search_chunk enable row level security;
+drop policy if exists "Users manage their own search chunks" on search_chunk;
+create policy "Users manage their own search chunks" on search_chunk
+    for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create or replace function match_search_chunks (
+    query_embedding vector(1024),
+    filter_user_id uuid,
+    match_count int default 40,
+    filter_kinds text[] default null,
+    filter_person_id bigint default null,
+    filter_initiative_id bigint default null,
+    date_from date default null,
+    date_to date default null
+)
+returns table (id bigint, kind text, entity_id bigint, similarity float)
+language sql stable
+as $$
+    select c.id, c.kind, c.entity_id, 1 - (c.embedding <=> query_embedding) as similarity
+    from search_chunk c
+    where c.user_id = filter_user_id
+      and c.embedding is not null
+      and (filter_kinds is null or c.kind = any(filter_kinds))
+      and (filter_person_id is null or filter_person_id = any(c.person_ids))
+      and (filter_initiative_id is null or c.initiative_id = filter_initiative_id)
+      and (date_from is null or c.item_date >= date_from)
+      and (date_to is null or c.item_date <= date_to)
+    order by c.embedding <=> query_embedding
+    limit match_count;
+$$;

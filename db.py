@@ -78,10 +78,13 @@ _ENCRYPTED_TEXT_FIELDS = {
     "interaction": ["raw_text", "summary", "location", "appearance", "geo_address"],
     "task": ["description"],
     "google_credentials": ["access_token", "refresh_token"],
+    "document": ["title", "description", "owner", "file_name", "extracted_text"],
+    "search_chunk": ["title", "text"],
 }
 _ENCRYPTED_JSON_FIELDS = {
     "person": ["personal_notes"],
     "interaction": ["sentiment", "topics", "extracted_facts", "decisions", "concerns"],
+    "document": ["tags"],
 }
 
 
@@ -451,14 +454,24 @@ def get_google_credentials(user_id: str):
     return _decrypt_row("google_credentials", resp.data[0]) if resp.data else None
 
 
-def upsert_google_credentials(user_id: str, access_token: str, refresh_token: str, expires_at: str, scope: str):
-    get_client().table("google_credentials").upsert(_encrypt_fields("google_credentials", {
+def upsert_google_credentials(user_id: str, access_token: str, refresh_token: str, expires_at: str, scope: str,
+                              google_email: Optional[str] = None):
+    row = {
         "user_id": user_id,
         "access_token": access_token,
         "refresh_token": refresh_token,
         "expires_at": expires_at,
         "scope": scope,
-    })).execute()
+    }
+    try:
+        get_client().table("google_credentials").upsert(
+            _encrypt_fields("google_credentials", {**row, "google_email": google_email})).execute()
+    except Exception as e:
+        # google_email arrived with schema.sql section 27 - keep connecting
+        # (just without the account label) on a database that predates it.
+        if "google_email" not in str(e):
+            raise
+        get_client().table("google_credentials").upsert(_encrypt_fields("google_credentials", row)).execute()
 
 
 def update_google_access_token(user_id: str, access_token: str, expires_at: str):
@@ -818,3 +831,169 @@ if __name__ == "__main__":
     client = get_client()
     resp = client.table("person").select("id").limit(1).execute()
     print("Connected to Supabase successfully. `person` table is reachable.")
+
+
+# ---------- Documents (schema.sql section 26, documents.py) ----------
+#
+# Same row-boundary encryption as every other table (see the
+# _ENCRYPTED_*_FIELDS maps above). The list query deliberately leaves out
+# the heavy columns (embedding, extracted_text) - the Docs screen never
+# needs them; search fetches embeddings separately.
+
+_DOCUMENT_LIST_COLUMNS = (
+    "id, title, description, category, tags, owner, person_id, initiative_id, file_name, "
+    "mime_type, size_bytes, thumb_path, issue_date, expiry_date, source, created_at, "
+    "drive_file_id, drive_folder_id"
+)
+
+
+def create_document(user_id: str, **fields) -> dict:
+    resp = get_client().table("document").insert(_encrypt_fields("document", {"user_id": user_id, **fields})).execute()
+    return _decrypt_row("document", resp.data[0])
+
+
+def get_documents(user_id: str) -> list:
+    resp = (
+        get_client().table("document").select(_DOCUMENT_LIST_COLUMNS)
+        .eq("user_id", user_id).eq("hidden", False).order("created_at", desc=True).execute()
+    )
+    return _decrypt_rows("document", resp.data)
+
+
+def get_document(user_id: str, document_id: int, include_private: bool = False):
+    """include_private adds storage paths, extracted text and embedding -
+    for the backend's own use (serving the file, search), never returned
+    to the client as-is."""
+    cols = "*" if include_private else _DOCUMENT_LIST_COLUMNS
+    resp = get_client().table("document").select(cols).eq("id", document_id).eq("user_id", user_id).execute()
+    return _decrypt_row("document", resp.data[0]) if resp.data else None
+
+
+def get_documents_for_search(user_id: str) -> list:
+    resp = (
+        get_client().table("document")
+        .select(_DOCUMENT_LIST_COLUMNS + ", extracted_text, embedding")
+        .eq("user_id", user_id).eq("hidden", False).execute()
+    )
+    return _decrypt_rows("document", resp.data)
+
+
+def update_document(user_id: str, document_id: int, **fields) -> dict:
+    resp = (
+        get_client().table("document").update(_encrypt_fields("document", fields))
+        .eq("id", document_id).eq("user_id", user_id).execute()
+    )
+    return _decrypt_row("document", resp.data[0]) if resp.data else None
+
+
+def delete_document(user_id: str, document_id: int) -> None:
+    get_client().table("document").delete().eq("id", document_id).eq("user_id", user_id).execute()
+
+
+def get_drive_documents(user_id: str, drive_folder_id: int) -> list:
+    """Every row synced from one Drive folder, hidden ones included (the
+    sync needs those to know not to re-import them)."""
+    resp = (
+        get_client().table("document")
+        .select("id, drive_file_id, drive_modified_time, thumb_path, hidden")
+        .eq("user_id", user_id).eq("drive_folder_id", drive_folder_id).execute()
+    )
+    return resp.data
+
+
+def get_document_by_drive_id(user_id: str, drive_file_id: str):
+    resp = (
+        get_client().table("document").select("id, drive_folder_id, hidden")
+        .eq("user_id", user_id).eq("drive_file_id", drive_file_id).execute()
+    )
+    return resp.data[0] if resp.data else None
+
+
+# ---------- Google Drive folders (schema.sql section 27, google_drive.py) ----------
+
+def get_drive_folders(user_id: str) -> list:
+    return (
+        get_client().table("drive_folder").select("*").eq("user_id", user_id)
+        .order("created_at").execute().data
+    )
+
+
+def get_drive_folder(user_id: str, folder_row_id: int):
+    resp = get_client().table("drive_folder").select("*").eq("id", folder_row_id).eq("user_id", user_id).execute()
+    return resp.data[0] if resp.data else None
+
+
+def create_drive_folder(user_id: str, folder_id: str, name: str) -> dict:
+    resp = get_client().table("drive_folder").upsert(
+        {"user_id": user_id, "folder_id": folder_id, "name": name}, on_conflict="user_id,folder_id"
+    ).execute()
+    return resp.data[0]
+
+
+def update_drive_folder(user_id: str, folder_row_id: int, **fields) -> None:
+    get_client().table("drive_folder").update(fields).eq("id", folder_row_id).eq("user_id", user_id).execute()
+
+
+def delete_drive_folder(user_id: str, folder_row_id: int) -> None:
+    """Its documents go with it (ON DELETE CASCADE on document.drive_folder_id)."""
+    get_client().table("drive_folder").delete().eq("id", folder_row_id).eq("user_id", user_id).execute()
+
+
+# ---------- Unified search index (schema.sql section 28, search_index.py) ----------
+
+def get_interaction_links(user_id: str) -> list:
+    """Every secondary-mention link (interaction_person) for this user -
+    lets the indexer tag a note with everyone it mentions, not just its
+    primary person."""
+    return (
+        get_client().table("interaction_person").select("interaction_id, person_id")
+        .eq("user_id", user_id).execute().data
+    )
+
+
+def upsert_search_chunks(user_id: str, rows: list) -> None:
+    if not rows:
+        return
+    payload = [_encrypt_fields("search_chunk", {"user_id": user_id, **r}) for r in rows]
+    for start in range(0, len(payload), 200):
+        get_client().table("search_chunk").upsert(
+            payload[start:start + 200], on_conflict="user_id,kind,entity_id").execute()
+
+
+def delete_search_chunks(user_id: str, kind: str, entity_ids: list) -> None:
+    if entity_ids:
+        get_client().table("search_chunk").delete().eq("user_id", user_id).eq("kind", kind) \
+            .in_("entity_id", list(entity_ids)).execute()
+
+
+def get_search_chunk_keys(user_id: str) -> list:
+    return get_client().table("search_chunk").select("kind, entity_id").eq("user_id", user_id).execute().data
+
+
+def get_search_chunks(user_id: str, kinds=None, person_id=None, initiative_id=None,
+                      date_from=None, date_to=None) -> list:
+    """All chunks matching the filters, decrypted, WITHOUT embeddings -
+    the keyword (BM25) side of hybrid search scores these in Python."""
+    q = (get_client().table("search_chunk")
+         .select("id, kind, entity_id, title, text, item_date, person_ids, initiative_id, meta")
+         .eq("user_id", user_id))
+    if kinds:
+        q = q.in_("kind", list(kinds))
+    if person_id is not None:
+        q = q.contains("person_ids", [person_id])
+    if initiative_id is not None:
+        q = q.eq("initiative_id", initiative_id)
+    if date_from:
+        q = q.gte("item_date", date_from)
+    if date_to:
+        q = q.lte("item_date", date_to)
+    return _decrypt_rows("search_chunk", q.execute().data)
+
+
+def match_search_chunks(user_id: str, query_embedding, k: int = 40, kinds=None, person_id=None,
+                        initiative_id=None, date_from=None, date_to=None) -> list:
+    return get_client().rpc("match_search_chunks", {
+        "query_embedding": query_embedding, "filter_user_id": user_id, "match_count": k,
+        "filter_kinds": list(kinds) if kinds else None, "filter_person_id": person_id,
+        "filter_initiative_id": initiative_id, "date_from": date_from, "date_to": date_to,
+    }).execute().data

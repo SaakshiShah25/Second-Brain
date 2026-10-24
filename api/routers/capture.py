@@ -31,6 +31,7 @@ import extraction
 import google_maps
 import moderation
 import person_match
+import search_index
 import voice
 from timing import step
 from api.auth import get_current_user_id
@@ -240,6 +241,7 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
     all_people = db.get_all_people(user_id)
 
     tasks_created = []
+    task_ids = []
     skipped_due_dates = []
     for item in extracted.get("follow_ups", []) or []:
         if isinstance(item, dict):
@@ -264,12 +266,18 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
         if task_person_id is not None and task_person_id not in already_linked_ids:
             db.link_interaction_person(user_id, interaction_id, task_person_id, relation="")
             already_linked_ids.add(task_person_id)
-        db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner, person_id=task_person_id)
+        task_ids.append(db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner,
+                                       person_id=task_person_id))
         tasks_created.append({
             "description": task_desc, "due_date": due_date, "owner": owner, "person_id": task_person_id,
         })
 
     print(f"[timing] db_writes: {time.perf_counter() - _t_db0:.2f}s")
+
+    # Keep the unified search index in step (background - no added latency).
+    search_index.enqueue(user_id, "note", [interaction_id])
+    search_index.enqueue(user_id, "task", task_ids)
+    search_index.enqueue(user_id, "person", list(already_linked_ids))
 
     return {
         "status": "saved",

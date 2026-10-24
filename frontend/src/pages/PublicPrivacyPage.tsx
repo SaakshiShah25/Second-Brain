@@ -15,7 +15,7 @@ export default function PublicPrivacyPage() {
       <div className="prose-chat mt-6 text-sm leading-relaxed">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{TERMS_TEXT}</ReactMarkdown>
       </div>
-      <Link to="/login" className="mt-8 inline-block text-sm text-accent underline">
+      <Link to="/login" className="mt-8 inline-block text-sm text-link underline">
         Back to MyConfía
       </Link>
     </div>

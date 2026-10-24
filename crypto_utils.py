@@ -96,3 +96,20 @@ def decrypt_json(value):
         return json.loads(text)
     except (json.JSONDecodeError, TypeError):
         return text
+
+
+def encrypt_bytes(data: bytes) -> bytes:
+    """Encrypts raw file bytes (documents.py - uploaded documents and
+    their thumbnails) with the same key as every text field, so a file in
+    Supabase Storage is as unreadable to someone with storage access as a
+    note is to someone with database access."""
+    return _fernet().encrypt(data)
+
+
+def decrypt_bytes(data: bytes) -> bytes:
+    """Inverse of encrypt_bytes(). Unlike decrypt(), this does NOT fall
+    back to returning the input on InvalidToken - every stored document
+    was encrypted on the way in, so a failure here means a wrong key or a
+    corrupt object, which should surface as an error, not as ciphertext
+    served to the user as if it were their file."""
+    return _fernet().decrypt(data)

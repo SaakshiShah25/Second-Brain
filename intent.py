@@ -35,6 +35,14 @@ _SYSTEM_PROMPT = """You classify a message sent to a personal-CRM chat app as on
   interactions to answer well (open follow-ups, unresolved concerns, last topics discussed), so
   they're "ask", not "out_of_scope", even though they're phrased as asking for advice rather than
   asking what was literally said.
+- "documents": the user wants to FIND, PULL UP, SEND, SHARE or GATHER files they've stored in the
+  app's document organizer - IDs, photos, statements, certificates, contracts, decks, invoices,
+  tickets (e.g. "pull my aadhaar and photo", "send me the Acme contract", "I need my passport and
+  PAN", "get Mum's Aadhaar", "documents for my Schengen visa", "share last 3 salary slips"). It's
+  about retrieving a FILE, not recalling what someone said - "what did Priya say about the
+  contract?" is "ask", "pull up the Acme contract" is "documents". If ONE message both asks a
+  question AND wants files ("what did Neha want, and send me the Acme contract"), choose "ask" -
+  that path can also fetch files.
 - "out_of_scope": the user is asking for something a general-purpose chat assistant does, with
   no connection to their own logged notes/contacts/tasks - a joke, a story, a poem, code, an
   image, general trivia or how-to knowledge, or anything else this product isn't built to do.
@@ -42,7 +50,7 @@ _SYSTEM_PROMPT = """You classify a message sent to a personal-CRM chat app as on
   involve logging a note, a personal reminder, or recalling something the user themselves
   logged, it's out_of_scope, even if it's phrased politely or as a simple favor.
 
-Return ONLY valid JSON: {"intent": "capture" or "ask" or "out_of_scope"}
+Return ONLY valid JSON: {"intent": "capture" or "ask" or "documents" or "out_of_scope"}
 
 If genuinely ambiguous between capture and ask, default to "capture" - a plain factual statement
 with no question is more likely a note being logged than a question being asked. Only classify
@@ -51,7 +59,7 @@ notes/contacts/tasks - don't use it just because a message is short or informal.
 
 
 def classify(text: str) -> str:
-    """Returns "capture", "ask", or "out_of_scope". Defaults to "capture"
+    """Returns "capture", "ask", "documents", or "out_of_scope". Defaults to "capture"
     on any classification failure or an unrecognized value (matches the
     prompt's own ambiguity default) - a failed classification call
     shouldn't block the user's input from going anywhere, and failing
@@ -72,6 +80,6 @@ def classify(text: str) -> str:
         )
         result = json.loads(response.choices[0].message.content)
         detected = result.get("intent")
-        return detected if detected in ("capture", "ask", "out_of_scope") else "capture"
+        return detected if detected in ("capture", "ask", "documents", "out_of_scope") else "capture"
     except Exception:
         return "capture"

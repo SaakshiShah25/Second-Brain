@@ -8,8 +8,9 @@ token exchange/refresh and the Calendar API itself are both simple JSON
 REST calls, and this keeps the dependency footprint the same shape as
 llm_client.py's thin wrapper.
 
-See google_client.py's module docstring for the one-time Google Cloud
-Console setup this depends on (OAuth client id/secret, redirect URI).
+The Google account connection (OAuth, token refresh) is shared with Drive
+and lives in google_oauth.py; see google_client.py for the one-time
+Google Cloud Console setup.
 """
 
 from datetime import date, datetime, timedelta, timezone
@@ -17,81 +18,18 @@ from typing import Optional
 
 import requests
 
-import db
-from google_client import get_oauth_config
+import google_oauth
 
-TOKEN_URL = "https://oauth2.googleapis.com/token"
-AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
-SCOPE = "https://www.googleapis.com/auth/calendar.events"
 
-
-class NotConnectedError(Exception):
-    """Raised when a caller asks to sync a task but this user hasn't
-    connected Google Calendar yet."""
-
-
-def build_authorize_url(state: str) -> str:
-    config = get_oauth_config()
-    params = {
-        "client_id": config.client_id,
-        "redirect_uri": config.redirect_uri,
-        "response_type": "code",
-        "scope": SCOPE,
-        "access_type": "offline",  # required to receive a refresh_token
-        "prompt": "consent",       # force a refresh_token even on repeat connects
-        "state": state,
-    }
-    query = "&".join(f"{k}={requests.utils.quote(v)}" for k, v in params.items())
-    return f"{AUTH_URL}?{query}"
-
-
-def exchange_code(user_id: str, code: str) -> None:
-    """Exchanges an OAuth authorization code for an access+refresh token
-    pair and stores it (see db.upsert_google_credentials)."""
-    config = get_oauth_config()
-    resp = requests.post(TOKEN_URL, data={
-        "code": code,
-        "client_id": config.client_id,
-        "client_secret": config.client_secret,
-        "redirect_uri": config.redirect_uri,
-        "grant_type": "authorization_code",
-    })
-    resp.raise_for_status()
-    body = resp.json()
-    expires_at = datetime.now(timezone.utc) + timedelta(seconds=body["expires_in"])
-    db.upsert_google_credentials(
-        user_id,
-        access_token=body["access_token"],
-        refresh_token=body["refresh_token"],
-        expires_at=expires_at.isoformat(),
-        scope=body.get("scope", SCOPE),
-    )
-
-
-def _refresh_access_token(user_id: str, refresh_token: str) -> str:
-    config = get_oauth_config()
-    resp = requests.post(TOKEN_URL, data={
-        "refresh_token": refresh_token,
-        "client_id": config.client_id,
-        "client_secret": config.client_secret,
-        "grant_type": "refresh_token",
-    })
-    resp.raise_for_status()
-    body = resp.json()
-    expires_at = datetime.now(timezone.utc) + timedelta(seconds=body["expires_in"])
-    db.update_google_access_token(user_id, access_token=body["access_token"], expires_at=expires_at.isoformat())
-    return body["access_token"]
+# The OAuth connection itself (connect, token refresh, which features are
+# granted) lives in google_oauth.py, shared with Drive - re-exported here
+# so existing callers (api/routers/tasks.py) keep working unchanged.
+NotConnectedError = google_oauth.NotConnectedError
 
 
 def get_valid_access_token(user_id: str) -> str:
-    creds = db.get_google_credentials(user_id)
-    if not creds:
-        raise NotConnectedError("Google Calendar isn't connected for this account yet.")
-    expires_at = datetime.fromisoformat(creds["expires_at"])
-    if expires_at <= datetime.now(timezone.utc) + timedelta(seconds=60):
-        return _refresh_access_token(user_id, creds["refresh_token"])
-    return creds["access_token"]
+    return google_oauth.get_valid_access_token(user_id, "calendar")
 
 
 def create_event(user_id: str, task: dict, event_date: Optional[str] = None) -> dict:

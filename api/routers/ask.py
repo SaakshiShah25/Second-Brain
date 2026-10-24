@@ -63,14 +63,15 @@ def _proceed_with_retrieval(user_id: str, query: str, parsed: dict, person: Opti
     return retrieval.synthesize_answer(query, selected, None)
 
 
-def _ask_core(user_id: str, body: AskRequest) -> dict:
+def _ask_core(user_id: str, body: AskRequest, enforce: bool = True) -> dict:
     """The actual ask logic, factored out of ask() below for the same
     reason capture.py splits capture_text/_capture_text_core: so
     api/routers/chat.py can call this directly after ITS OWN
     moderation.check() without paying for a second Groq call here too.
     See capture.py's _capture_text_core docstring for why this can't
     just be a bool kwarg on the route function instead."""
-    _enforce(user_id, "ai_questions_asked")
+    if enforce:  # chat.py's agent path already counted this question
+        _enforce(user_id, "ai_questions_asked")
     conversation_context = retrieval.format_recent_context(body.history)
     try:
         parsed = retrieval.parse_query(body.query, conversation_context=conversation_context)

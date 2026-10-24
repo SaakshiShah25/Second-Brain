@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ListTree, NotebookText } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { useNotes } from '../api/notes'
+import Chip, { ChipRow } from '../components/Chip'
+import EmptyState from '../components/EmptyState'
 import InitiativesManager from '../components/InitiativesManager'
 import InteractionCard from '../components/InteractionCard'
-import PageIntro from '../components/PageIntro'
+import PageHeader from '../components/PageHeader'
+import Segmented from '../components/Segmented'
+import { groupBySection } from '../lib/dates'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
 
 // null = "All", -1 = "Uncategorized" (sentinel, since real initiative ids
@@ -18,138 +22,130 @@ export default function NotesPage() {
   const { data: notes, isLoading, error } = useNotes()
   const { data: initiatives } = useInitiatives()
   const [filter, setFilter] = useState<FilterValue>(null)
+  const [query, setQuery] = useState('')
 
-  // ?tab=initiatives deep-links straight to the Initiatives tab - used by
-  // the onboarding tour (Tour.tsx navigates here for its Initiatives
-  // step) so it can point at the real tab instead of just describing it,
-  // but works for anyone bookmarking/sharing the link too.
+  // ?tab=initiatives deep-links straight to the Initiatives view - used
+  // by the onboarding tour (Tour.tsx) so it can show the real screen.
   const [searchParams] = useSearchParams()
   const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'initiatives' ? 'initiatives' : 'notes')
   useEffect(() => {
     setTab(searchParams.get('tab') === 'initiatives' ? 'initiatives' : 'notes')
   }, [searchParams])
 
-  // If the initiative currently selected as a filter gets deleted (from
-  // the Initiatives tab), fall back to "All" instead of silently staying
-  // pointed at an id that no longer exists - without this, every note
-  // would appear to vanish ("No notes match this filter") with no chip
-  // even highlighted to explain why, since the deleted initiative's chip
-  // is gone too.
+  // If the initiative selected as a filter gets deleted, fall back to
+  // "All" instead of silently filtering on an id that no longer exists.
   useEffect(() => {
     if (typeof filter === 'number' && filter > 0 && initiatives && !initiatives.some((i) => i.id === filter)) {
       setFilter(null)
     }
   }, [initiatives, filter])
 
-  const visibleNotes = (notes ?? []).filter((n) => {
-    if (filter === null) return true
-    if (filter === -1) return n.initiative_id === null
-    return n.initiative_id === filter
-  })
+  // Client-side filtering + search - a personal-scale dataset, not worth
+  // a server round-trip per keystroke or chip tap.
+  const visibleNotes = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return (notes ?? []).filter((n) => {
+      if (filter === -1 && n.initiative_id !== null) return false
+      if (typeof filter === 'number' && filter > 0 && n.initiative_id !== filter) return false
+      if (!q) return true
+      return [n.summary, n.raw_text, n.person?.name, n.initiative?.name].some((f) => f?.toLowerCase().includes(q))
+    })
+  }, [notes, filter, query])
+
+  const sections = groupBySection(visibleNotes, (n) => n.date)
 
   return (
     <div>
-      <h1 className="mb-1 flex items-center gap-2 text-2xl font-bold tracking-tight">
-        <NotebookText size={22} strokeWidth={1.6} className="text-accent" /> Notes
-      </h1>
-      <PageIntro>
-        {tab === 'initiatives'
-          ? 'Your own categories — Job, Fitness, Personal, or anything else — that notes get automatically sorted into.'
-          : "Every note lands here, whether it's about a person or just an idea, filterable by initiative."}
-      </PageIntro>
+      <PageHeader title="Notes" showProfile />
 
-      {/* Initiatives moved here from Settings - this is where you're
-          actually filtering/thinking about them, not a one-time config
-          screen you'd otherwise have to remember to go find. */}
-      <div className="mb-4 flex gap-1 border-b border-border">
-        <button
-          type="button"
-          onClick={() => setTab('notes')}
-          className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-            tab === 'notes' ? 'border-accent text-accent' : 'border-transparent text-text-muted hover:text-text'
-          }`}
-        >
-          All Notes
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('initiatives')}
-          className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-            tab === 'initiatives' ? 'border-accent text-accent' : 'border-transparent text-text-muted hover:text-text'
-          }`}
-        >
-          <ListTree size={14} strokeWidth={1.6} />
-          Initiatives
-        </button>
-      </div>
+      <Segmented
+        className="mb-4"
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: 'notes', label: 'All notes' },
+          { value: 'initiatives', label: 'Initiatives' },
+        ]}
+      />
 
       {tab === 'initiatives' ? (
         <InitiativesManager />
       ) : (
         <>
-      {/* Client-side filtering - a personal-scale dataset and a handful
-          of initiatives, not worth a server round-trip per chip click. */}
-      <div className="mb-4 flex flex-wrap gap-2">
-        <button
-          onClick={() => setFilter(null)}
-          className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors ${
-            filter === null
-              ? 'border-accent bg-accent-soft text-accent'
-              : 'border-border-strong bg-bg-card text-text-muted hover:text-text'
-          }`}
-        >
-          All
-        </button>
-        {initiatives?.map((i) => {
-          const catStyle = getInitiativeStyle(i)
-          const active = filter === i.id
-          return (
-            <button
-              key={i.id}
-              onClick={() => setFilter(i.id)}
-              className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition-colors ${
-                active ? '' : 'border-border-strong bg-bg-card text-text-muted hover:text-text'
-              }`}
-              style={
-                active && catStyle
-                  ? { borderColor: catStyle.color, backgroundColor: `${catStyle.color}1a`, color: catStyle.color }
-                  : undefined
-              }
-            >
-              {catStyle && <catStyle.Icon size={13} strokeWidth={1.8} />}
-              {i.name}
-            </button>
-          )
-        })}
-        {/* Uncategorized is a first-class, always-present filter - every
-            pre-migration note (and anything the classifier wasn't
-            confident about) lives here, not an edge case. */}
-        <button
-          onClick={() => setFilter(-1)}
-          className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors ${
-            filter === -1
-              ? 'border-accent bg-accent-soft text-accent'
-              : 'border-border-strong bg-bg-card text-text-muted hover:text-text'
-          }`}
-        >
-          Others
-        </button>
-      </div>
+          {notes && notes.length > 0 && (
+            <div className="relative mb-3">
+              <Search
+                size={18}
+                strokeWidth={2}
+                className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-text-faint"
+              />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search notes"
+                className="h-11 w-full rounded-xl bg-bg-elevated pr-10 pl-10 text-base text-text placeholder:text-text-faint focus:outline-none focus:ring-2 focus:ring-accent/25 [&::-webkit-search-cancel-button]:hidden"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  aria-label="Clear search"
+                  className="absolute top-1/2 right-2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-text-faint"
+                >
+                  <X size={16} strokeWidth={2} />
+                </button>
+              )}
+            </div>
+          )}
 
-      {error && <p className="text-sm text-danger">Couldn't load notes: {String(error)}</p>}
-      {isLoading && <p className="text-sm text-text-muted">Loading…</p>}
-      {!isLoading && notes?.length === 0 && (
-        <p className="text-sm text-text-muted">Nothing logged yet — log a note on the Chat page first.</p>
-      )}
-      {!isLoading && notes && notes.length > 0 && visibleNotes.length === 0 && (
-        <p className="text-sm text-text-muted">No notes match this filter.</p>
-      )}
+          <ChipRow className="mb-5">
+            <Chip active={filter === null} onClick={() => setFilter(null)}>
+              All
+            </Chip>
+            {initiatives?.map((i) => {
+              const catStyle = getInitiativeStyle(i)
+              return (
+                <Chip key={i.id} active={filter === i.id} color={catStyle?.color} onClick={() => setFilter(i.id)}>
+                  {catStyle && <catStyle.Icon size={14} strokeWidth={2} />}
+                  {i.name}
+                </Chip>
+              )
+            })}
+            {/* Uncategorized is a first-class filter - every pre-migration
+                note (and anything the classifier wasn't sure about) lives
+                here, not an edge case. */}
+            <Chip active={filter === -1} onClick={() => setFilter(-1)}>
+              Others
+            </Chip>
+          </ChipRow>
 
-      <div className="flex flex-col gap-2">
-        {visibleNotes.map((note) => (
-          <InteractionCard key={note.id} interaction={note} />
-        ))}
-      </div>
+          {error && <p className="text-sm text-danger">Couldn't load notes: {String(error)}</p>}
+          {isLoading && <p className="text-sm text-text-muted">Loading…</p>}
+          {!isLoading && notes?.length === 0 && (
+            <EmptyState
+              title="No notes yet"
+              body="Head to Home and tell it about a conversation — it'll show up here, sorted and summarised."
+              to="/"
+              cta="Log your first note"
+            />
+          )}
+          {!isLoading && notes && notes.length > 0 && visibleNotes.length === 0 && (
+            <p className="py-10 text-center text-[0.9375rem] text-text-muted">
+              {query ? `No notes match “${query}”.` : 'No notes in this category yet.'}
+            </p>
+          )}
+
+          {sections.map(({ section, items }) => (
+            <section key={section} className="mb-5">
+              <h2 className="mb-2 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint">{section}</h2>
+              <div className="flex flex-col gap-2.5">
+                {items.map((note) => (
+                  <InteractionCard key={note.id} interaction={note} />
+                ))}
+              </div>
+            </section>
+          ))}
         </>
       )}
     </div>

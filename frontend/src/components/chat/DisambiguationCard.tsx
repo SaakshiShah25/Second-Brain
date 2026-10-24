@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import type { Candidate } from '../../api/types'
-import ConfiaLogo from '../ConfiaLogo'
 
 interface DisambiguationCardProps {
   prompt: ReactNode
@@ -25,32 +24,29 @@ function candidateLabel(c: Candidate) {
 // handlers.
 export default function DisambiguationCard({ prompt, candidates, onChoose, onNone, noneLabel, busy }: DisambiguationCardProps) {
   return (
-    <div className="flex items-start gap-3">
-      <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-text">
-        <ConfiaLogo size={15} />
-      </div>
-      <div className="min-w-0 flex-1 rounded-xl border border-border bg-bg-card p-4">
-        <p className="mb-3 text-sm">{prompt}</p>
-        <div className="flex flex-col gap-2">
-          {candidates.map((c, i) => (
-            <button
-              key={i}
-              disabled={busy}
-              onClick={() => onChoose(i)}
-              className="flex items-center justify-between gap-2 rounded-lg border border-border-strong bg-bg-elevated px-3 py-2 text-left text-sm transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <span>{candidateLabel(c)}</span>
-              <span className="flex-shrink-0 text-xs text-text-muted">{Math.round(c.score * 100)}% match</span>
-            </button>
-          ))}
+    <div className="rounded-2xl border border-border bg-bg-card p-4" style={{ animation: 'fade-in 0.2s ease-out' }}>
+      <p className="mb-3 text-[0.9375rem] leading-relaxed">{prompt}</p>
+      <div className="flex flex-col gap-2">
+        {candidates.map((c, i) => (
           <button
+            key={i}
             disabled={busy}
-            onClick={onNone}
-            className="rounded-lg border border-border-strong bg-bg-elevated px-3 py-2 text-left text-sm text-text-muted transition-colors hover:border-accent hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => onChoose(i)}
+            className="pressable flex items-center justify-between gap-3 rounded-xl border border-border-strong bg-bg px-3.5 py-3 text-left text-sm disabled:opacity-50"
           >
-            {noneLabel}
+            <span className="min-w-0">{candidateLabel(c)}</span>
+            <span className="flex-shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">
+              {Math.round(c.score * 100)}%
+            </span>
           </button>
-        </div>
+        ))}
+        <button
+          disabled={busy}
+          onClick={onNone}
+          className="pressable rounded-xl px-3.5 py-3 text-left text-sm font-medium text-link disabled:opacity-50"
+        >
+          {noneLabel}
+        </button>
       </div>
     </div>
   )

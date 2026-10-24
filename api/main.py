@@ -16,6 +16,8 @@ load_dotenv()
 
 from fastapi import Depends, FastAPI, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from postgrest.exceptions import APIError
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -25,7 +27,7 @@ import voice
 from llm_client import get_client as get_llm_client
 from api.auth import get_current_user_id
 from api.rate_limit import limiter
-from api.routers import ask, brief, calendar, capture, chat, initiatives, notes, people, settings, tasks
+from api.routers import ask, brief, calendar, capture, chat, documents, google, initiatives, notes, people, settings, tasks
 
 app = FastAPI(title="MyConfía API")
 
@@ -47,6 +49,22 @@ app = FastAPI(title="MyConfía API")
 # just a cost one.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# A table/column the code expects but the database doesn't have yet
+# (schema.sql not applied - see scripts/pending_migration.sql). Turned into
+# a clear 503 here because an unhandled exception skips CORSMiddleware's
+# headers, which the browser then reports as a bare "Failed to fetch"
+# network error - hiding the real, one-step fix.
+@app.exception_handler(APIError)
+async def _missing_schema_handler(request, exc: APIError):
+    if exc.code in ("PGRST205", "PGRST204", "42703", "42P01"):
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "This feature needs a one-time database update - run "
+                               "scripts/pending_migration.sql in the Supabase SQL editor."},
+        )
+    return JSONResponse(status_code=500, content={"detail": "Database error"})
 app.add_middleware(SlowAPIMiddleware)
 
 # Vite's default dev server port always allowed (local dev), plus the
@@ -79,6 +97,8 @@ app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(brief.router, prefix="/api/brief", tags=["brief"])
 app.include_router(initiatives.router, prefix="/api/initiatives", tags=["initiatives"])
 app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
+app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
+app.include_router(google.router, prefix="/api/google", tags=["google"])
 
 
 @app.get("/api/health")

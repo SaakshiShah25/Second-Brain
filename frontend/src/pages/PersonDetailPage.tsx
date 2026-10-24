@@ -1,6 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Mail, Pencil, Phone, Plus, Sunrise, Trash2 } from 'lucide-react'
+import { GitMerge, Mail, NotebookPen, Phone, Plus, Sparkles, Trash2, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -14,12 +14,48 @@ import {
   useUpdatePerson,
 } from '../api/people'
 import Avatar from '../components/Avatar'
-import Card from '../components/Card'
 import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
-import Disclosure from '../components/Disclosure'
 import InteractionCard from '../components/InteractionCard'
-import { Input, Label, Textarea } from '../components/fields'
+import { Input, Label, Select, Textarea } from '../components/fields'
+import { ListGroup, ListRow } from '../components/ListGroup'
+import PageHeader from '../components/PageHeader'
+import Sheet from '../components/Sheet'
+import { friendlyDate } from '../lib/dates'
+import { useUsageMode } from '../lib/usageMode'
+
+function QuickAction({
+  icon: Icon,
+  label,
+  href,
+  onClick,
+  disabled,
+}: {
+  icon: typeof Phone
+  label: string
+  href?: string
+  onClick?: () => void
+  disabled?: boolean
+}) {
+  const inner = (
+    <>
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft text-accent">
+        <Icon size={20} strokeWidth={2} />
+      </span>
+      <span className="text-xs font-medium text-text-muted">{label}</span>
+    </>
+  )
+  const cls = `pressable flex flex-1 flex-col items-center gap-1.5 ${disabled ? 'pointer-events-none opacity-35' : ''}`
+  return href && !disabled ? (
+    <a href={href} className={cls}>
+      {inner}
+    </a>
+  ) : (
+    <button type="button" onClick={onClick} disabled={disabled} className={cls}>
+      {inner}
+    </button>
+  )
+}
 
 interface PersonForm {
   name: string
@@ -50,6 +86,9 @@ export default function PersonDetailPage() {
   const [form, setForm] = useState<PersonForm | null>(null)
   const [mergeTargetId, setMergeTargetId] = useState<number | ''>('')
   const [confirmDialog, setConfirmDialog] = useState<'merge' | 'delete' | null>(null)
+  const [mergeOpen, setMergeOpen] = useState(false)
+  const noteInputRef = useRef<HTMLInputElement>(null)
+  const usage = useUsageMode()
   const [newNoteText, setNewNoteText] = useState('')
   const [pendingNoteDelete, setPendingNoteDelete] = useState<number | null>(null)
 
@@ -69,8 +108,20 @@ export default function PersonDetailPage() {
     }
   }, [data?.person])
 
-  if (isLoading) return <p className="text-sm text-text-muted">Loading…</p>
-  if (error || !data) return <p className="text-sm text-danger">Couldn't load this person.</p>
+  if (isLoading)
+    return (
+      <>
+        <PageHeader backTo="/people" backLabel="People" />
+        <p className="text-sm text-text-muted">Loading…</p>
+      </>
+    )
+  if (error || !data)
+    return (
+      <>
+        <PageHeader backTo="/people" backLabel="People" />
+        <p className="text-sm text-danger">Couldn't load this person.</p>
+      </>
+    )
 
   const { person, interactions, mentioned_in } = data
   const otherPeople = (allPeople ?? []).filter((p) => p.id !== id)
@@ -108,7 +159,7 @@ export default function PersonDetailPage() {
     // interactions, tasks, etc.) isn't instant, and closing the dialog
     // immediately on click left no visible sign anything was happening.
     deletePerson.mutate(id, {
-      onSuccess: () => navigate('/people'),
+      onSuccess: () => navigate('/people', { replace: true }),
       onError: () => setConfirmDialog(null),
     })
   }
@@ -118,261 +169,322 @@ export default function PersonDetailPage() {
     mergePerson.mutate(
       { personId: id, targetId: mergeTargetId },
       {
-        onSuccess: (res) => navigate(`/people/${res.person_id}`),
+        onSuccess: (res) => {
+          setConfirmDialog(null)
+          setMergeOpen(false)
+          navigate(`/people/${res.person_id}`, { replace: true })
+        },
         onError: () => setConfirmDialog(null),
       },
     )
   }
 
+  // Role/company lead the edit form for work use; in Personal mode they
+  // move to an optional section at the end rather than disappearing.
+  const workFields = form && (
+    <>
+          <div>
+            <Label>Role</Label>
+            <Input value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} />
+          </div>
+          <div>
+            <Label>Company</Label>
+            <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
+          </div>
+    </>
+  )
+
   return (
     <div>
-      <Button onClick={() => navigate('/people')} className="mb-4">
-        <span className="flex items-center gap-1.5">
-          <ArrowLeft size={14} strokeWidth={1.6} /> Back to People
-        </span>
-      </Button>
+      <PageHeader
+        backTo="/people"
+        backLabel="People"
+        actions={
+          <button
+            type="button"
+            onClick={() => setIsEditing(true)}
+            className="pressable h-11 px-1 text-[0.9375rem] font-medium text-link"
+          >
+            Edit
+          </button>
+        }
+      />
 
-      {!isEditing ? (
-        <div className="mb-4 flex items-start gap-4">
-          <Avatar id={person.id} name={person.name} size="lg" />
-          <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-bold tracking-tight">{person.name}</h1>
-            {roleCompany && <p className="text-sm text-text-muted">{roleCompany}</p>}
-            {person.description && <p className="mt-2 whitespace-pre-wrap text-sm text-text">{person.description}</p>}
-            <div className="mt-2">
-              <p className="mb-1 text-xs font-medium text-text-muted">Personal notes</p>
-              {person.personal_notes.length > 0 && (
-                <ul className="mb-2 flex flex-col gap-1">
-                  {person.personal_notes
-                    .map((entry, index) => ({ entry, index }))
-                    .slice()
-                    .reverse()
-                    .map(({ entry, index }) => (
-                      <li key={index} className="flex items-start justify-between gap-2 text-sm text-text">
-                        <span className="min-w-0">
-                          <span className="text-text-faint">{entry.date} — </span>
-                          {entry.note}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setPendingNoteDelete(index)}
-                          disabled={deletePersonalNote.isPending}
-                          className="flex-shrink-0 text-text-faint hover:text-danger"
-                          title="Remove this note"
-                        >
-                          <Trash2 size={13} strokeWidth={1.6} />
-                        </button>
-                      </li>
-                    ))}
-                </ul>
-              )}
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Add a personal note (e.g. likes trekking, moved to Pune)"
-                  value={newNoteText}
-                  onChange={(e) => setNewNoteText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      handleAddNote()
-                    }
-                  }}
-                  className="flex-1 text-sm"
-                />
-                <Button
-                  type="button"
-                  onClick={handleAddNote}
-                  disabled={addPersonalNote.isPending || !newNoteText.trim()}
-                  title="Add note"
-                >
-                  <Plus size={14} strokeWidth={1.6} />
-                </Button>
-              </div>
-            </div>
-            {person.tags.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {person.tags.map((t) => (
-                  <span key={t} className="rounded-full bg-bg-card px-2 py-0.5 text-xs text-text-muted">
-                    {t}
-                  </span>
-                ))}
-              </div>
-            )}
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-faint">
-              {person.first_met_date && <span>First met {person.first_met_date}</span>}
-              {/* Icon, not a text label ("Contact number:") - a phone
-                  number/email is already self-evident by format, so a
-                  compact icon reads clearly without lengthening this row
-                  on a narrow mobile screen the way a written label would. */}
-              {person.phone && (
-                <a href={`tel:${person.phone}`} className="flex items-center gap-1 hover:text-text-muted hover:underline">
-                  <Phone size={12} strokeWidth={1.6} />
-                  {person.phone}
-                </a>
-              )}
-              {person.email && (
-                <a href={`mailto:${person.email}`} className="flex items-center gap-1 hover:text-text-muted hover:underline">
-                  <Mail size={12} strokeWidth={1.6} />
-                  {person.email}
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : (
-        form && (
-          <Card className="mb-4">
-            <form onSubmit={handleSave} className="flex flex-col gap-3">
-              <div>
-                <Label>Name</Label>
-                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-              </div>
-              <div>
-                <Label>Description (general/stable traits)</Label>
-                <Textarea
-                  rows={3}
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Role</Label>
-                  <Input value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} />
-                </div>
-                <div>
-                  <Label>Company</Label>
-                  <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
-                </div>
-                <div>
-                  <Label>Phone</Label>
-                  <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-                </div>
-                <div>
-                  <Label>Email</Label>
-                  <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-                </div>
-              </div>
-              <div>
-                <Label>Tags (comma-separated)</Label>
-                <Input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} />
-              </div>
-              <div>
-                <Label>First met</Label>
-                <Input
-                  type="date"
-                  value={form.first_met_date}
-                  onChange={(e) => setForm({ ...form, first_met_date: e.target.value })}
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button type="submit" variant="primary" disabled={updatePerson.isPending}>
-                  {updatePerson.isPending ? 'Saving…' : 'Save changes'}
-                </Button>
-                <Button type="button" onClick={() => setIsEditing(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          </Card>
-        )
-      )}
-
-      <div className="mb-6 flex gap-2">
-        <Button variant="primary" onClick={() => briefing.mutate()} disabled={briefing.isPending}>
-          <span className="flex items-center gap-1.5">
-            <Sunrise size={15} strokeWidth={1.6} /> {briefing.isPending ? 'Preparing briefing…' : 'Get briefing'}
-          </span>
-        </Button>
-        {!isEditing && (
-          <Button onClick={() => setIsEditing(true)}>
-            <span className="flex items-center gap-1.5">
-              <Pencil size={14} strokeWidth={1.6} /> Edit info
-            </span>
-          </Button>
-        )}
+      <div className="mb-6 flex flex-col items-center text-center">
+        <Avatar id={person.id} name={person.name} size="lg" />
+        <h1 className="mt-3 font-display text-[1.75rem] leading-tight font-semibold tracking-[-0.03em]">{person.name}</h1>
+        {roleCompany && <p className="mt-0.5 text-[0.9375rem] text-text-muted">{roleCompany}</p>}
       </div>
+
+      <div className="mb-6 flex justify-between px-2">
+        <QuickAction icon={Phone} label="Call" href={person.phone ? `tel:${person.phone}` : undefined} disabled={!person.phone} />
+        <QuickAction icon={Mail} label="Email" href={person.email ? `mailto:${person.email}` : undefined} disabled={!person.email} />
+        <QuickAction
+          icon={Sparkles}
+          label={briefing.isPending ? 'Preparing…' : 'Briefing'}
+          onClick={() => briefing.mutate()}
+          disabled={briefing.isPending}
+        />
+        <QuickAction icon={NotebookPen} label="Note" onClick={() => noteInputRef.current?.focus()} />
+      </div>
+
       {briefing.data && (
-        <Card className="mb-6 bg-accent-soft">
-          <div className="prose-chat min-w-0 text-sm">
+        <section className="relative mb-6 rounded-2xl border border-brand/30 bg-brand-soft p-4">
+          <p className="mb-2 flex items-center gap-1.5 text-[0.8125rem] font-semibold uppercase tracking-wide text-brand-ink">
+            <Sparkles size={14} strokeWidth={2} /> Briefing
+          </p>
+          <button
+            type="button"
+            onClick={() => briefing.reset()}
+            aria-label="Dismiss briefing"
+            className="pressable absolute top-2.5 right-2.5 flex h-8 w-8 items-center justify-center rounded-full text-text-muted"
+          >
+            <X size={16} strokeWidth={2} />
+          </button>
+          <div className="prose-chat text-[0.9375rem] leading-relaxed">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{briefing.data.briefing}</ReactMarkdown>
           </div>
-        </Card>
+        </section>
       )}
 
-      <h2 className="mb-3 text-lg font-semibold tracking-tight">Interaction timeline</h2>
-      {interactions.length === 0 && (
-        <p className="mb-6 text-sm text-text-muted">No interactions logged with this person yet.</p>
+      {(person.description || person.tags.length > 0 || person.first_met_date || person.phone || person.email) && (
+        <section className="mb-6 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
+          {person.description && (
+            <div className="px-4 py-3">
+              <p className="mb-0.5 text-[0.8125rem] text-text-muted">About</p>
+              <p className="whitespace-pre-wrap text-[0.9375rem] leading-relaxed">{person.description}</p>
+            </div>
+          )}
+          {person.phone && (
+            <a href={`tel:${person.phone}`} className="pressable block px-4 py-3">
+              <p className="mb-0.5 text-[0.8125rem] text-text-muted">Phone</p>
+              <p className="text-[0.9375rem] text-link">{person.phone}</p>
+            </a>
+          )}
+          {person.email && (
+            <a href={`mailto:${person.email}`} className="pressable block px-4 py-3">
+              <p className="mb-0.5 text-[0.8125rem] text-text-muted">Email</p>
+              <p className="truncate text-[0.9375rem] text-link">{person.email}</p>
+            </a>
+          )}
+          {person.first_met_date && (
+            <div className="px-4 py-3">
+              <p className="mb-0.5 text-[0.8125rem] text-text-muted">First met</p>
+              <p className="text-[0.9375rem]">{friendlyDate(person.first_met_date)}</p>
+            </div>
+          )}
+          {person.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-4 py-3">
+              {person.tags.map((t) => (
+                <span key={t} className="rounded-full bg-bg-elevated px-2.5 py-1 text-[0.8125rem] text-text-muted">
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+        </section>
       )}
-      <div className="mb-6 flex flex-col gap-2">
+
+      <h2 className="mb-2 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint">Personal notes</h2>
+      <section className="mb-6 overflow-hidden rounded-2xl border border-border bg-bg-card">
+        {person.personal_notes.length > 0 && (
+          <ul className="divide-y divide-border">
+            {person.personal_notes
+              .map((entry, index) => ({ entry, index }))
+              .slice()
+              .reverse()
+              .map(({ entry, index }) => (
+                <li key={index} className="flex items-start gap-2 py-2.5 pr-1.5 pl-4">
+                  <span className="min-w-0 flex-1 text-[0.9375rem] leading-snug">
+                    {entry.note}
+                    <span className="mt-0.5 block text-[0.8125rem] text-text-faint">{friendlyDate(entry.date)}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPendingNoteDelete(index)}
+                    disabled={deletePersonalNote.isPending}
+                    aria-label="Remove this note"
+                    className="pressable flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-text-faint"
+                  >
+                    <Trash2 size={16} strokeWidth={1.8} />
+                  </button>
+                </li>
+              ))}
+          </ul>
+        )}
+        <div className={`flex items-center gap-2 p-2 pl-4 ${person.personal_notes.length > 0 ? 'border-t border-border' : ''}`}>
+          <input
+            ref={noteInputRef}
+            placeholder="Add a detail — likes trekking, moved to Pune…"
+            value={newNoteText}
+            onChange={(e) => setNewNoteText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                handleAddNote()
+              }
+            }}
+            className="h-10 min-w-0 flex-1 bg-transparent text-base text-text placeholder:text-text-faint focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={handleAddNote}
+            disabled={addPersonalNote.isPending || !newNoteText.trim()}
+            aria-label="Add note"
+            className="pressable flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast disabled:opacity-30"
+          >
+            <Plus size={20} strokeWidth={2.2} />
+          </button>
+        </div>
+      </section>
+
+      <h2 className="mb-3 font-display text-[1.375rem] font-semibold tracking-[-0.025em]">Timeline</h2>
+      {interactions.length === 0 && (
+        <p className="mb-6 text-[0.9375rem] text-text-muted">No conversations logged with {person.name} yet.</p>
+      )}
+      <div className="mb-6 flex flex-col gap-2.5">
         {interactions.map((interaction) => (
           <InteractionCard key={interaction.id} interaction={interaction} />
         ))}
       </div>
 
-      {/* Only shown when it's actually relevant - a secondary-mention
-          note somewhere else (e.g. "Rhea, Priya's sister" showing up in
-          a note that's really about Priya). For someone you also have a
-          real interaction history with, an empty "Mentioned in: not
-          mentioned..." section right below a full timeline is just
-          clutter, not information - so this whole block, heading
-          included, only renders when there's at least one to show. */}
+      {/* Only when relevant - a secondary mention in someone else's note
+          (e.g. "Rhea, Priya's sister" in a note about Priya). */}
       {mentioned_in.length > 0 && (
         <>
-          <h2 className="mb-3 text-lg font-semibold tracking-tight">Mentioned in</h2>
-          <div className="mb-6 flex flex-col gap-2">
+          <h2 className="mb-2 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint">Mentioned in</h2>
+          <div className="mb-6 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
             {mentioned_in.map((m, i) => (
-              <Disclosure
-                key={i}
-                summary={`${m.interaction.date ?? 'unknown date'} — mentioned in ${
-                  m.interaction.person ? `a note about ${m.interaction.person.name}` : 'a personal note'
-                }`}
-              >
-                {m.relation && <p className="text-xs text-text-muted">Relation: {m.relation}</p>}
-                {m.interaction.summary && <p className="mt-1 text-sm">{m.interaction.summary}</p>}
-              </Disclosure>
+              <div key={i} className="px-4 py-3">
+                <p className="text-[0.8125rem] text-text-muted">
+                  {friendlyDate(m.interaction.date)} ·{' '}
+                  {m.interaction.person ? `a note about ${m.interaction.person.name}` : 'a personal note'}
+                  {m.relation && ` · ${m.relation}`}
+                </p>
+                {m.interaction.summary && <p className="mt-0.5 text-[0.9375rem] leading-snug">{m.interaction.summary}</p>}
+              </div>
             ))}
           </div>
         </>
       )}
 
-      <Disclosure summary="Merge or delete this person">
-        <div className="flex flex-col gap-3">
-          {otherPeople.length > 0 ? (
+      <div className="mt-8">
+        <ListGroup>
+          <ListRow
+            icon={GitMerge}
+            iconColor="#78716c"
+            label="Merge with another person"
+            chevron
+            onClick={() => setMergeOpen(true)}
+          />
+          <ListRow
+            icon={Trash2}
+            iconColor="#e5383b"
+            label={`Delete ${person.name}`}
+            danger
+            onClick={() => setConfirmDialog('delete')}
+          />
+        </ListGroup>
+      </div>
+
+      {isEditing && form && (
+        <Sheet onClose={updatePerson.isPending ? undefined : () => setIsEditing(false)} title="Edit contact" tall>
+          <form onSubmit={handleSave} className="flex flex-col gap-3.5">
             <div>
-              <Label>Merge this person into…</Label>
-              <div className="flex gap-2">
-                <select
-                  value={mergeTargetId}
-                  onChange={(e) => setMergeTargetId(e.target.value ? Number(e.target.value) : '')}
-                  className="flex-1 rounded-lg border border-border-strong bg-bg-card px-3 py-2 text-sm"
-                >
-                  <option value="">Select a person…</option>
-                  {otherPeople.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                      {p.role ? ` — ${p.role}` : ''} (id {p.id})
-                    </option>
-                  ))}
-                </select>
-                <Button onClick={() => setConfirmDialog('merge')} disabled={mergeTargetId === ''}>
-                  Merge
-                </Button>
-              </div>
+              <Label>Name</Label>
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </div>
+            {usage.isWork && workFields}
+            <div>
+              <Label>Phone</Label>
+              <Input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            </div>
+            <div>
+              <Label>Email</Label>
+              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            </div>
+            <div>
+              <Label>About (general, stable traits)</Label>
+              <Textarea
+                rows={3}
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Tags (comma-separated)</Label>
+              <Input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} />
+            </div>
+            <div>
+              <Label>First met</Label>
+              <Input
+                type="date"
+                value={form.first_met_date}
+                onChange={(e) => setForm({ ...form, first_met_date: e.target.value })}
+              />
+            </div>
+            {!usage.isWork && (
+              <>
+                <p className="mt-2 -mb-1.5 text-[0.8125rem] font-medium uppercase tracking-wide text-text-faint">
+                  Work details (optional)
+                </p>
+                {workFields}
+              </>
+            )}
+            <div className="mt-1 flex gap-2">
+              <Button type="button" className="flex-1" onClick={() => setIsEditing(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" className="flex-1" disabled={updatePerson.isPending}>
+                {updatePerson.isPending ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
+          </form>
+        </Sheet>
+      )}
+
+      {mergeOpen && (
+        <Sheet onClose={() => setMergeOpen(false)} title={`Merge ${person.name}`}>
+          {otherPeople.length > 0 ? (
+            <>
+              <p className="mb-4 text-[0.9375rem] leading-relaxed text-text-muted">
+                Duplicate contact? Move all of {person.name}'s notes and follow-ups onto someone else, then remove this
+                entry.
+              </p>
+              <Label>Merge into</Label>
+              <Select
+                value={mergeTargetId}
+                onChange={(e) => setMergeTargetId(e.target.value ? Number(e.target.value) : '')}
+              >
+                <option value="">Select a person…</option>
+                {otherPeople.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                    {p.role ? ` — ${p.role}` : ''}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                variant="primary"
+                size="lg"
+                block
+                className="mt-4"
+                onClick={() => setConfirmDialog('merge')}
+                disabled={mergeTargetId === ''}
+              >
+                Merge
+              </Button>
+            </>
           ) : (
-            <p className="text-sm text-text-muted">No other people to merge into yet.</p>
+            <p className="text-[0.9375rem] text-text-muted">There's no one else to merge into yet.</p>
           )}
-          <Button variant="danger" onClick={() => setConfirmDialog('delete')} className="self-start">
-            Delete this person
-          </Button>
-        </div>
-      </Disclosure>
+        </Sheet>
+      )}
 
       {confirmDialog === 'merge' && (
         <ConfirmDialog
           title="Confirm merge"
-          message={`Merge ${person.name} into the selected person? All of their interactions and follow-ups will be reassigned, and this person record will be removed. This cannot be undone.`}
+          message={`Merge ${person.name} into the selected person? All of their notes and follow-ups will be reassigned, and this contact will be removed. This cannot be undone.`}
           confirmLabel="Merge"
           busy={mergePerson.isPending}
           busyLabel="Merging…"
@@ -382,8 +494,8 @@ export default function PersonDetailPage() {
       )}
       {confirmDialog === 'delete' && (
         <ConfirmDialog
-          title="Confirm delete"
-          message={`Delete ${person.name}? This also deletes all of their interactions and follow-up tasks. This cannot be undone.`}
+          title={`Delete ${person.name}?`}
+          message="This also deletes all of their notes and follow-up tasks. This cannot be undone."
           confirmLabel="Delete"
           busy={deletePerson.isPending}
           busyLabel="Deleting…"
@@ -393,8 +505,8 @@ export default function PersonDetailPage() {
       )}
       {pendingNoteDelete !== null && (
         <ConfirmDialog
-          title="Remove this note?"
-          message="This personal note entry will be permanently removed. This cannot be undone."
+          title="Remove this detail?"
+          message="This personal note will be permanently removed."
           confirmLabel="Remove"
           busy={deletePersonalNote.isPending}
           busyLabel="Removing…"

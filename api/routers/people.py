@@ -10,7 +10,9 @@ from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException
 
 import db
+import embeddings
 import retrieval
+import search_index
 from api.auth import get_current_user_id
 from api.schemas import AddPersonalNoteRequest, InteractionUpdate, MergeRequest, PersonUpdate
 
@@ -85,18 +87,26 @@ def update_person(person_id: int, body: PersonUpdate, user_id: str = Depends(get
     fields = {k: v for k, v in body.model_dump().items() if v is not None}
     if fields:
         db.update_person(user_id, person_id, **fields)
+        # Their name/role/company also appears in their notes' and tasks' index text.
+        search_index.enqueue(user_id, "person", [person_id])
+        search_index.enqueue(user_id, "note", [i["id"] for i in db.get_interactions_for_person(user_id, person_id)])
     return db.get_person(user_id, person_id)
 
 
 @router.delete("/{person_id}")
 def delete_person(person_id: int, user_id: str = Depends(get_current_user_id)):
     db.delete_person(user_id, person_id)
+    search_index.enqueue(user_id, "person", [], prune_after=True)  # cascaded notes/tasks drop out too
     return {"ok": True}
 
 
 @router.post("/{person_id}/merge")
 def merge_person(person_id: int, body: MergeRequest, user_id: str = Depends(get_current_user_id)):
     new_id = db.merge_persons(user_id, person_id, body.target_id)
+    search_index.enqueue(user_id, "person", [new_id])
+    search_index.enqueue(user_id, "note", [i["id"] for i in db.get_interactions_for_person(user_id, new_id)],
+                         prune_after=True)
+    search_index.enqueue(user_id, "task", [t["id"] for t in db.get_tasks_for_person(user_id, new_id)])
     return {"person_id": new_id}
 
 
@@ -109,12 +119,14 @@ def get_briefing(person_id: int, user_id: str = Depends(get_current_user_id)):
 def add_personal_note(person_id: int, body: AddPersonalNoteRequest, user_id: str = Depends(get_current_user_id)):
     entry_date = body.date or date.today().isoformat()
     db.update_person_personal_notes(user_id, person_id, body.note, entry_date)
+    search_index.enqueue(user_id, "person", [person_id])
     return db.get_person(user_id, person_id)
 
 
 @router.delete("/{person_id}/personal_notes/{entry_index}")
 def delete_personal_note(person_id: int, entry_index: int, user_id: str = Depends(get_current_user_id)):
     db.delete_person_personal_note(user_id, person_id, entry_index)
+    search_index.enqueue(user_id, "person", [person_id])
     return db.get_person(user_id, person_id)
 
 
@@ -124,12 +136,18 @@ def update_interaction(interaction_id: int, body: InteractionUpdate, user_id: st
     # - like initiative_id, to uncategorize a note back to "Uncategorized"
     # - is distinguishable from a field the client simply didn't include.
     fields = body.model_dump(exclude_unset=True)
+    if fields.get("raw_text"):
+        # The note's own embedding (legacy Ask path) used to keep matching the OLD text.
+        fields["embedding"] = embeddings.compute_embedding(fields["raw_text"])
     if fields:
         db.update_interaction(user_id, interaction_id, **fields)
+        search_index.enqueue(user_id, "note", [interaction_id])
+        search_index.enqueue(user_id, "task", [t["id"] for t in db.get_tasks_for_interactions(user_id, [interaction_id])])
     return {"ok": True}
 
 
 @router.delete("/interactions/{interaction_id}")
 def delete_interaction(interaction_id: int, user_id: str = Depends(get_current_user_id)):
     db.delete_interaction(user_id, interaction_id)
+    search_index.enqueue(user_id, "note", [], prune_after=True)
     return {"ok": True}

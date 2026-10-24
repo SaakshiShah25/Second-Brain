@@ -1,75 +1,40 @@
 """
 api/routers/calendar.py — Google Calendar connect/disconnect/status.
 
-The OAuth callback (GET /oauth/callback) is deliberately NOT behind
-Depends(get_current_user_id) - it's reached by Google's own browser
-redirect, which carries no Authorization header. See google_calendar.py's
-module docstring and POST /connect/start below for how the `state`
-parameter carries the user's identity across that unauthenticated hop
-instead.
+Kept for the Today page's existing calls; the connection itself is now the
+single shared Google connection (google_oauth.py / api/routers/google.py),
+asked for just the "calendar" feature here. The old callback path stays as
+an alias so an OAuth client still configured with it keeps working.
 """
 
-import logging
-import os
-import secrets
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Depends
 
-import db
-import google_calendar
+import google_oauth
 from api.auth import get_current_user_id
-
-logger = logging.getLogger(__name__)
+from api.routers import google as google_router
 
 router = APIRouter()
-
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 
 
 @router.post("/connect/start")
 def connect_start(user_id: str = Depends(get_current_user_id)):
-    try:
-        state = secrets.token_urlsafe(32)
-        db.create_oauth_state(state, user_id)
-        return {"authorize_url": google_calendar.build_authorize_url(state)}
-    except RuntimeError as e:
-        # GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI not configured yet - see
-        # google_client.py's module docstring for setup steps.
-        raise HTTPException(503, str(e))
+    return google_router.start_connect(user_id, ["calendar"], "digest")
 
 
 @router.get("/oauth/callback")
 def oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
-    if error:
-        return RedirectResponse(f"{FRONTEND_URL}/digest?calendar=error")
-    if not code or not state:
-        raise HTTPException(400, "Missing code or state")
-
-    user_id = db.consume_oauth_state(state)
-    if not user_id:
-        raise HTTPException(400, "This connection link has expired or was already used - try connecting again.")
-
-    try:
-        google_calendar.exchange_code(user_id, code)
-    except Exception:
-        # Previously swallowed with no trace at all, so a failing connect
-        # (bad redirect URI, invalid_grant, a missing refresh_token on
-        # Google's response, etc.) was undiagnosable from the UI's generic
-        # error banner alone - at least log it server-side.
-        logger.exception("Google Calendar OAuth exchange failed for user %s", user_id)
-        return RedirectResponse(f"{FRONTEND_URL}/digest?calendar=error")
-    return RedirectResponse(f"{FRONTEND_URL}/digest?calendar=connected")
+    return google_router.handle_callback(code, state, error)
 
 
 @router.get("/status")
 def status(user_id: str = Depends(get_current_user_id)):
-    creds = db.get_google_credentials(user_id)
-    return {"connected": creds is not None}
+    return {"connected": "calendar" in google_oauth.status(user_id)["features"]}
 
 
 @router.post("/disconnect")
 def disconnect(user_id: str = Depends(get_current_user_id)):
-    db.delete_google_credentials(user_id)
-    return {"ok": True}
+    """Calendar-only callers get the same full disconnect - there is one
+    Google connection, not one per feature."""
+    return google_router.disconnect(user_id)

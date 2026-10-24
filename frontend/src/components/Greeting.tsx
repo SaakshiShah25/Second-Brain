@@ -41,9 +41,9 @@ export default function Greeting() {
   }, [])
 
   return (
-    <h1 className="text-2xl font-semibold tracking-tight text-text">
+    <h1 className="font-display text-[2rem] leading-[1.15] font-semibold tracking-[-0.03em] text-text">
       {greeting}
-      {name && <>, {name}</>}
+      {name && <>, <span className="text-accent">{name}</span></>}
     </h1>
   )
 }

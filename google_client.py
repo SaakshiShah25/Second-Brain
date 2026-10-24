@@ -5,18 +5,28 @@ google_calendar.py (Calendar OAuth + event sync) and google_maps.py
 (no google-api-python-client/google-auth-oauthlib) - one less set of SDKs
 to depend on, consistent with llm_client.py's thin env-var-backed client.
 
-Setup (Google Cloud Console - console.cloud.google.com):
-    1. Create/reuse a project, enable the "Google Calendar API".
-    2. Configure the OAuth consent screen (External; Testing mode is
-       fine for personal use - add your own Google account as a test
-       user under "Test users").
-    3. Create an OAuth 2.0 Client ID (Application type: Web application),
-       with an authorized redirect URI matching GOOGLE_OAUTH_REDIRECT_URI
-       below (e.g. http://localhost:8000/api/calendar/oauth/callback).
-    4. Set these environment variables:
+Setup (Google Cloud Console - console.cloud.google.com) - one OAuth
+client serves all three Google features: Sign in with Google (via
+Supabase Auth), Calendar and Drive (via google_oauth.py):
+    1. Create/reuse a project; enable the "Google Calendar API" and the
+       "Google Drive API".
+    2. OAuth consent screen: External. Add the scopes openid, email,
+       calendar.events and drive.readonly. While in Testing mode, add every
+       Google account that will use it under "Test users" (max 100).
+       Publishing for everyone needs Google's verification - drive.readonly
+       is a restricted scope (security assessment required).
+    3. Create an OAuth 2.0 Client ID (Web application) with BOTH
+       authorized redirect URIs:
+         - GOOGLE_OAUTH_REDIRECT_URI below
+           (e.g. http://localhost:8000/api/google/oauth/callback)
+         - https://<project-ref>.supabase.co/auth/v1/callback  (sign-in)
+    4. Supabase dashboard > Authentication > Providers > Google: enable,
+       paste the same client id/secret. Under URL Configuration, add the
+       frontend URL(s) (e.g. http://localhost:5173/**) to Redirect URLs.
+    5. Set these environment variables:
         export GOOGLE_CLIENT_ID="..."
         export GOOGLE_CLIENT_SECRET="..."
-        export GOOGLE_OAUTH_REDIRECT_URI="http://localhost:8000/api/calendar/oauth/callback"
+        export GOOGLE_OAUTH_REDIRECT_URI="http://localhost:8000/api/google/oauth/callback"
 
     Optional, only needed for human-readable addresses (google_maps.py's
     reverse_geocode) - without it, location capture still works and

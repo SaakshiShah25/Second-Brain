@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
-import type { FontSize, Theme, UserPreference } from './types'
+import type { FontSize, Theme, UsageMode, UserPreference } from './types'
 
 export function useSettings() {
   return useQuery({
@@ -12,7 +12,12 @@ export function useSettings() {
 export function useUpdateSettings() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: { theme?: Theme; font_size?: FontSize; daily_brief_email_enabled?: boolean }) =>
+    mutationFn: (body: {
+      theme?: Theme
+      font_size?: FontSize
+      daily_brief_email_enabled?: boolean
+      usage_mode?: UsageMode
+    }) =>
       api.patch<UserPreference>('/api/settings', body),
     onSuccess: (updated) => {
       queryClient.setQueryData(['settings'], updated)

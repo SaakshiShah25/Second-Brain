@@ -1,19 +1,21 @@
-// Small fixed palette, distinct hues from the primary accent - picked
-// deterministically via person.id so the same person always gets the
-// same color (Slack/Linear-style per-person variety in a list).
+// The app's fun hues (index.css --sb-fun-*, which brighten in the dark
+// theme) - picked deterministically via
+// person.id so the same person always gets the same color (Clay/Slack-
+// style per-person variety in a list). Tinted ground + solid text.
 const PALETTE = [
-  { bg: 'rgba(124, 108, 246, 0.18)', text: '#a99cf9' }, // violet (accent family)
-  { bg: 'rgba(56, 189, 248, 0.18)', text: '#7dd3fc' }, // sky
-  { bg: 'rgba(52, 211, 153, 0.18)', text: '#6ee7b7' }, // emerald
-  { bg: 'rgba(251, 191, 36, 0.18)', text: '#fcd34d' }, // amber
-  { bg: 'rgba(244, 114, 182, 0.18)', text: '#f9a8d4' }, // pink
-  { bg: 'rgba(129, 140, 248, 0.18)', text: '#a5b4fc' }, // indigo
+  'var(--sb-fun-orange)',
+  'var(--sb-fun-sky)',
+  'var(--sb-fun-pink)',
+  'var(--sb-fun-teal)',
+  'var(--sb-fun-sun)',
+  'var(--sb-fun-blue)',
+  'var(--sb-fun-red)',
 ]
 
 const SIZES = {
   sm: 'h-8 w-8 text-xs',
-  md: 'h-10 w-10 text-sm',
-  lg: 'h-14 w-14 text-lg',
+  md: 'h-11 w-11 text-[0.9375rem]',
+  lg: 'h-20 w-20 text-2xl',
 }
 
 function initials(name: string): string {
@@ -34,7 +36,7 @@ export default function Avatar({ id, name, size = 'md' }: AvatarProps) {
   return (
     <div
       className={`flex flex-shrink-0 items-center justify-center rounded-full font-semibold ${SIZES[size]}`}
-      style={{ backgroundColor: color.bg, color: color.text }}
+      style={{ backgroundColor: `color-mix(in srgb, ${color} 16%, transparent)`, color }}
     >
       {initials(name)}
     </div>

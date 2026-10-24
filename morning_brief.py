@@ -119,6 +119,15 @@ def _build_context_block(data: dict) -> str:
     return "\n".join(lines)
 
 
+_USAGE_MODE_TONE = {
+    "work": "\nThis person uses the app for WORK: frame the day like a professional's - clients, "
+            "colleagues, meetings, deals. Crisp and businesslike, still friendly.",
+    "personal": "\nThis person uses the app for their PERSONAL life: friends, family, health, home. "
+                "Warm and relaxed, never corporate - say 'catch up with' rather than 'follow up with', "
+                "'to-dos' rather than 'tasks'.",
+}
+
+
 def generate_morning_brief(user_id: str) -> str:
     data = _gather_brief_data(user_id)
 
@@ -136,6 +145,12 @@ data given below - never invent tasks, meetings, or people not listed. Structure
    Skip entirely if empty.
 4. "Worth reconnecting with" - the relationships that have gone quiet, one short line each. Skip if empty.
 This should read in under 20 seconds, not be studied - keep it tight, no filler, no invented urgency."""
+
+    # Tone follows what the account is used for (Settings > Using MyConfía
+    # for). .get() rather than [] - before schema.sql section 25 is applied
+    # the column simply isn't there, and the brief should read as before.
+    usage_mode = db.get_user_preference(user_id).get("usage_mode")
+    system_prompt += _USAGE_MODE_TONE.get(usage_mode, "")
 
     client = get_client()
     response = client.chat.completions.create(

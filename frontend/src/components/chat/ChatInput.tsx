@@ -1,14 +1,17 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { ArrowUp, Camera, Loader2, MapPin, Mic, Square } from 'lucide-react'
+import { ArrowUp, Camera, Loader2, MapPin, Mic, Plus, Square } from 'lucide-react'
+import Sheet from '../Sheet'
+import { ListGroup, ListRow, Toggle } from '../ListGroup'
 
 export interface ChatInputHandle {
   focus: () => void
+  openCardPicker: () => void
 }
 
-// Kept as a JS constant, not just a max-h-40 Tailwind class, so the
-// auto-resize effect below can compare against the exact same number
-// when deciding whether the textarea has actually overflowed it.
-const MAX_HEIGHT = 160
+// Kept as a JS constant, not just a max-h class, so the auto-resize
+// effect below compares against the exact same number when deciding
+// whether the textarea has actually overflowed it.
+const MAX_HEIGHT = 140
 
 interface ChatInputProps {
   value: string
@@ -20,14 +23,24 @@ interface ChatInputProps {
   onStop?: () => void
   isRecording: boolean
   onToggleRecord: () => void
-  // Opt-in device location - undefined `onToggleLocation` hides the button.
+  // Opt-in device location - undefined `onToggleLocation` hides the option.
   locationAttached?: boolean
   locationLoading?: boolean
   onToggleLocation?: () => void
-  // Business-card scan trigger - undefined hides the button.
+  // Business-card scan trigger - undefined hides the option.
   onAttachCard?: (file: File) => void
 }
 
+function formatElapsed(s: number) {
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+// One-row composer, the layout every mainstream mobile messaging/AI app
+// has converged on (WhatsApp, iMessage, ChatGPT): a "+" for the less
+// frequent attachments on the left, the text field in the middle, and a
+// single trailing button on the right that is the MIC while the field
+// is empty and becomes SEND the moment there's text - so voice stays
+// one tap away without a second, separate control eating vertical space.
 const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
   {
     value,
@@ -49,32 +62,18 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const cardInputRef = useRef<HTMLInputElement>(null)
   const [elapsed, setElapsed] = useState(0)
+  const [attachOpen, setAttachOpen] = useState(false)
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
+    openCardPicker: () => cardInputRef.current?.click(),
   }))
 
-  // Auto-resize the textarea to fit its content, capped at MAX_HEIGHT.
-  // useLayoutEffect, NOT useEffect - this must run BEFORE the browser
-  // paints. useEffect fires after paint, so on every keystroke the
-  // browser would paint one frame with the OLD (too-short) height first
-  // - the row's height comes from its tallest child under items-end, so
-  // that stale-height frame flashes the whole input bar (and the
-  // camera/location/Send buttons riding along the bottom of it) at the
-  // wrong height for an instant before snapping to the corrected one.
-  // At normal typing speed that reads as the buttons visibly jumping/
-  // misaligning on every character. useLayoutEffect closes that gap by
-  // correcting the height synchronously before anything is painted.
-  //
-  // overflowY is also toggled here rather than left as a fixed class:
-  // a plain `overflow-y-auto` textarea can round its own scrollHeight up
-  // by a pixel vs. its set height even for perfectly-fitting single-line
-  // text, which keeps the scrollbar track visibly reserved/painted the
-  // whole time - it "looks like" there's a scrollbar on a box that isn't
-  // actually scrolled. Forcing `hidden` whenever content fits within
-  // MAX_HEIGHT, and only switching to `auto` once content genuinely
-  // exceeds it, means the scrollbar only ever appears once there's
-  // something to scroll to.
+  // Auto-resize to content, capped at MAX_HEIGHT. useLayoutEffect (not
+  // useEffect) so the corrected height is applied before paint - avoids
+  // the bar visibly jumping one frame per keystroke. overflowY is only
+  // switched to auto once content genuinely exceeds the cap, so a
+  // single-line field never shows a reserved scrollbar track.
   useLayoutEffect(() => {
     const el = textareaRef.current
     if (!el) return
@@ -82,7 +81,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
     const overflowing = el.scrollHeight > MAX_HEIGHT
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`
     el.style.overflowY = overflowing ? 'auto' : 'hidden'
-  }, [value])
+  }, [value, isRecording])
 
   useEffect(() => {
     if (!isRecording) {
@@ -90,156 +89,182 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
       return
     }
     const start = Date.now()
-    const interval = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 200)
+    const interval = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 250)
     return () => clearInterval(interval)
   }, [isRecording])
 
+  // Enter inserts a newline on a phone keyboard (where there's no
+  // Shift+Enter) - only a hardware keyboard's plain Enter sends.
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    const coarse = window.matchMedia('(pointer: coarse)').matches
+    if (e.key === 'Enter' && !e.shiftKey && !coarse) {
       e.preventDefault()
       onSend()
     }
   }
 
-  // The record/stop button lives as its own round element below the text
-  // field entirely - not nested inside the same bordered input bar as the
-  // camera/location icons and textarea - so it reads as a distinct,
-  // deliberate control rather than another item crammed into a text
-  // field's toolbar. It only appears when there's no typed text to send,
-  // so typing still gets a normal compact Send pill inline instead.
-  const showRecordButton = (isBusy && onStop) || isRecording || !value.trim()
+  const hasText = value.trim().length > 0
+  const hasAttachments = Boolean(onAttachCard || onToggleLocation)
+
+  let trailing
+  if (isBusy && onStop && !isRecording) {
+    trailing = (
+      <button
+        type="button"
+        onClick={onStop}
+        aria-label="Stop"
+        className="pressable flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-text text-bg"
+      >
+        <Square size={15} strokeWidth={2} fill="currentColor" />
+      </button>
+    )
+  } else if (isRecording) {
+    trailing = (
+      <button
+        type="button"
+        onClick={onToggleRecord}
+        aria-label="Stop recording"
+        className="pressable flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-danger text-white"
+      >
+        <Square size={15} strokeWidth={2} fill="currentColor" />
+      </button>
+    )
+  } else if (hasText) {
+    trailing = (
+      <button
+        type="button"
+        onClick={onSend}
+        disabled={disabled}
+        aria-label="Send"
+        className="pressable flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast disabled:opacity-40"
+      >
+        <ArrowUp size={21} strokeWidth={2.4} />
+      </button>
+    )
+  } else {
+    trailing = (
+      <button
+        type="button"
+        onClick={onToggleRecord}
+        disabled={disabled}
+        aria-label="Record a voice note"
+        className="pressable flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-brand text-[#1b1a17] disabled:opacity-40"
+      >
+        <Mic size={21} strokeWidth={2} />
+      </button>
+    )
+  }
 
   return (
-    <div className="flex flex-col items-center gap-3">
-      {/* rounded-[1.75rem], not rounded-full: a true pill (border-radius:
-          9999px) looks right for a short single-line box, since the
-          radius naturally caps at half the box's own height - but as
-          multi-line text grows this bar much taller, that SAME cap grows
-          right along with it, so the curve balloons and eats into the
-          sides, squeezing the button row against it. A fixed radius
-          (~half the single-line collapsed height, so it still reads as
-          a pill when short) keeps a consistent, sane rounded-rectangle
-          shape no matter how tall the box gets instead. */}
-      <div className="flex w-full items-end gap-1.5 rounded-[1.75rem] border border-border-strong bg-bg-card p-1.5 shadow-sm">
-        {onAttachCard && (
-          <>
-            <button
-              type="button"
-              onClick={() => cardInputRef.current?.click()}
+    <>
+      <div className="flex items-end gap-2">
+        {hasAttachments && !isRecording && (
+          <button
+            type="button"
+            onClick={() => setAttachOpen(true)}
+            disabled={disabled}
+            aria-label="Attach"
+            className={`pressable relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-border-strong bg-bg-card text-text-muted disabled:opacity-40`}
+          >
+            <Plus size={22} strokeWidth={2} />
+            {locationAttached && <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-accent" />}
+          </button>
+        )}
+
+        <div
+          className={`flex min-h-11 min-w-0 flex-1 items-center rounded-[1.4rem] border bg-bg-card shadow-card ${
+            isRecording ? 'border-danger/40' : 'border-border-strong'
+          }`}
+        >
+          {isRecording ? (
+            <div className="flex min-w-0 flex-1 items-center gap-2.5 px-4 py-2.5">
+              <span className="h-2 w-2 flex-shrink-0 rounded-full bg-danger" style={{ animation: 'pulse-rec 1s infinite' }} />
+              <span className="flex-shrink-0 text-sm font-medium tabular-nums text-text">{formatElapsed(elapsed)}</span>
+              {value ? (
+                // Live browser transcript (useLiveTranscript) - shows the
+                // words landing as you speak; Whisper's final transcript
+                // replaces it when recording stops.
+                <span className="min-w-0 flex-1 truncate text-sm text-text-muted">{value}</span>
+              ) : (
+                <span className="flex h-5 flex-1 items-center gap-[3px]" aria-hidden="true">
+                  {Array.from({ length: 18 }).map((_, i) => (
+                    <span
+                      key={i}
+                      className="h-full w-[3px] origin-center rounded-full bg-danger/70"
+                      style={{ animation: `wave ${0.7 + (i % 5) * 0.12}s ease-in-out ${i * 0.05}s infinite` }}
+                    />
+                  ))}
+                </span>
+              )}
+            </div>
+          ) : (
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              value={value}
               disabled={disabled}
-              title="Scan a business card"
-              className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-bg-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Camera size={19} strokeWidth={1.6} />
-            </button>
-            <input
-              ref={cardInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) onAttachCard(file)
-                e.target.value = ''
-              }}
+              onChange={(e) => onChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={placeholder}
+              enterKeyHint="enter"
+              style={{ maxHeight: MAX_HEIGHT }}
+              className="block min-w-0 flex-1 resize-none overflow-hidden bg-transparent px-4 py-2.5 text-base leading-6 text-text placeholder:text-text-faint focus:outline-none disabled:opacity-50"
             />
-          </>
-        )}
+          )}
+        </div>
 
-        {onToggleLocation && (
-          <button
-            type="button"
-            onClick={onToggleLocation}
-            disabled={disabled || locationLoading}
-            title={locationAttached ? 'Remove location' : 'Add my location'}
-            className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-              locationAttached ? 'bg-accent-soft text-accent' : 'text-text-muted hover:bg-bg-hover hover:text-text'
-            }`}
-          >
-            {locationLoading ? (
-              <Loader2 size={18} strokeWidth={1.6} className="animate-spin" />
-            ) : (
-              <MapPin size={18} strokeWidth={1.6} />
-            )}
-          </button>
-        )}
-
-        {isRecording ? (
-          <div className="flex flex-1 items-center gap-2 px-3 py-2.5 text-sm text-text-muted">
-            <span className="h-2 w-2 rounded-full bg-danger" style={{ animation: 'pulse-rec 1s infinite' }} />
-            Recording… {elapsed}s
-          </div>
-        ) : (
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={value}
-            disabled={disabled}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            style={{ maxHeight: MAX_HEIGHT }}
-            className="flex-1 resize-none overflow-hidden bg-transparent px-2 py-2.5 text-[0.9375rem] text-text placeholder:text-text-faint focus:outline-none disabled:opacity-50"
-          />
-        )}
-
-        {!showRecordButton && (
-          // A compact round icon button, not a "Send" text pill - the
-          // pill's width scaled with its label and ate into the row next
-          // to the camera/location buttons on narrow phone screens. An
-          // arrow (the same shape chat apps use for this exact control)
-          // says "send" just as clearly at a third of the width.
-          <button
-            type="button"
-            onClick={onSend}
-            disabled={disabled}
-            aria-label="Send"
-            title="Send"
-            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-sm transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <ArrowUp size={20} strokeWidth={2.2} />
-          </button>
-        )}
+        {trailing}
       </div>
 
-      {/* A big, round, standalone primary action - deliberately separate
-          from the text field above it, matching how a camera shutter or
-          Voice Memos' record button isn't part of any other control. */}
-      {showRecordButton &&
-        (isBusy && onStop ? (
-          <div className="flex flex-col items-center gap-1.5">
-            <button
-              type="button"
-              onClick={onStop}
-              className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-full bg-danger/15 text-danger shadow-sm transition-colors hover:bg-danger/25"
-            >
-              <Square size={24} strokeWidth={1.6} fill="currentColor" />
-            </button>
-            <span className="text-xs font-medium text-text-muted">Stop</span>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-1.5">
-            <button
-              type="button"
-              onClick={onToggleRecord}
-              disabled={disabled}
-              className={`flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-full shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                isRecording ? 'bg-danger text-white hover:bg-danger/85' : 'bg-accent text-accent-contrast hover:bg-accent-hover'
-              }`}
-            >
-              {isRecording ? (
-                <Square size={26} strokeWidth={1.6} fill="currentColor" />
-              ) : (
-                <Mic size={28} strokeWidth={1.6} />
-              )}
-            </button>
-            <span className="text-xs font-medium text-text-muted">
-              {isRecording ? 'Stop recording' : 'Tap to record'}
-            </span>
-          </div>
-        ))}
-    </div>
+      {onAttachCard && (
+        <input
+          ref={cardInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) onAttachCard(file)
+            e.target.value = ''
+          }}
+        />
+      )}
+
+      {attachOpen && (
+        <Sheet onClose={() => setAttachOpen(false)} title="Add to this note">
+          <ListGroup>
+            {onAttachCard && (
+              <ListRow
+                icon={Camera}
+                label="Scan a business card"
+                detail="Take a photo - name, role and company are filled in for you."
+                chevron
+                onClick={() => {
+                  setAttachOpen(false)
+                  cardInputRef.current?.click()
+                }}
+              />
+            )}
+            {onToggleLocation && (
+              <ListRow
+                icon={MapPin}
+                iconColor="#2563eb"
+                label="Attach my location"
+                detail="Saved with the next note only."
+                trailing={
+                  locationLoading ? (
+                    <Loader2 size={20} className="animate-spin text-text-muted" />
+                  ) : (
+                    <Toggle on={locationAttached} onChange={onToggleLocation} label="Attach my location" />
+                  )
+                }
+              />
+            )}
+          </ListGroup>
+        </Sheet>
+      )}
+    </>
   )
 })
 

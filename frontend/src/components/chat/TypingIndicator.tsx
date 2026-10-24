@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import ConfiaLogo from '../ConfiaLogo'
 
 // Stage names match the `stage` SSE events api/routers/chat.py's
 // /api/chat/stream emits, in order: moderating -> classifying ->
@@ -12,6 +11,15 @@ const STAGE_LABELS: Record<string, string> = {
   extracting: 'Extracting the details…',
   saving: 'Saving…',
   thinking: 'Looking through your notes…',
+  finding_documents: 'Finding your documents…',
+  planning: 'Working out where to look…',
+  searching: 'Searching notes, people and files…',
+  reading_profile: 'Checking their profile…',
+  reading_notes: 'Reading the relevant notes…',
+  checking_tasks: 'Checking your follow-ups…',
+  counting: 'Counting across your contacts…',
+  checking_calendar: 'Checking your calendar…',
+  writing: 'Writing the answer…',
 }
 
 // extraction is the one stage with real, wide variance (2026-10 timing
@@ -37,21 +45,18 @@ export default function TypingIndicator({ stage }: { stage?: string | null }) {
 
   return (
     <div className="flex items-center gap-3">
-      <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-text">
-        <ConfiaLogo size={15} />
-      </div>
-      <div className="flex items-center gap-2 py-1">
+      <div className="flex items-center gap-2.5 py-1">
         <div className="flex items-center gap-1">
           {[0, 1, 2].map((i) => (
             <span
               key={i}
-              className="h-1.5 w-1.5 rounded-full bg-text-faint"
+              className="h-2 w-2 rounded-full bg-accent"
               style={{ animation: 'typing-bounce 1.2s infinite', animationDelay: `${i * 0.15}s` }}
             />
           ))}
         </div>
         {label && (
-          <span className="text-xs text-text-muted">
+          <span className="text-sm text-text-muted">
             {showSlowHint ? 'Longer notes take a bit more time to process…' : label}
           </span>
         )}

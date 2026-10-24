@@ -13,12 +13,12 @@ import { Input } from './fields'
 // matches the default.
 function ColorPicker({ value, onChange }: { value: string | null; onChange: (color: string | null) => void }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-2.5 py-1">
       <button
         type="button"
         onClick={() => onChange(null)}
         title="Auto (based on name)"
-        className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border text-[9px] font-semibold ${
+        className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold ${
           value === null ? 'border-accent text-accent' : 'border-border-strong text-text-faint'
         }`}
       >
@@ -30,7 +30,7 @@ function ColorPicker({ value, onChange }: { value: string | null; onChange: (col
           type="button"
           onClick={() => onChange(c)}
           title={c}
-          className="h-6 w-6 flex-shrink-0 rounded-full transition-transform"
+          className="h-8 w-8 flex-shrink-0 rounded-full transition-transform"
           style={{
             backgroundColor: c,
             outline: value === c ? `2px solid ${c}` : 'none',
@@ -75,15 +75,15 @@ export default function InitiativesManager() {
 
   return (
     <div>
-      <p className="mb-3 text-xs text-text-faint">
-        Notes are automatically classified into these when you log them - manage your own categories here.
+      <p className="mb-3 px-1 text-[0.9375rem] leading-relaxed text-text-muted">
+        Your own categories — Job, Fitness, Personal, anything. New notes are sorted into them automatically.
       </p>
 
-      <div className="flex flex-col gap-2">
+      <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card empty:hidden">
         {initiatives?.map((i) => {
           const catStyle = getInitiativeStyle(i)
           return (
-            <div key={i.id} className="rounded-lg border border-border-strong px-3 py-2">
+            <div key={i.id} className="px-4 py-2.5">
               {renamingId === i.id ? (
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
@@ -104,10 +104,10 @@ export default function InitiativesManager() {
                   <ColorPicker value={renameColor} onChange={setRenameColor} />
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
+                <div className="flex min-h-10 items-center gap-3">
                   {catStyle && (
                     <span
-                      className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full"
+                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
                       style={{ backgroundColor: `${catStyle.color}1a`, color: catStyle.color }}
                     >
                       <catStyle.Icon size={14} strokeWidth={1.8} />
@@ -116,7 +116,7 @@ export default function InitiativesManager() {
                   <button
                     type="button"
                     onClick={() => startRename(i.id, i.name, i.color)}
-                    className="flex-1 truncate text-left text-[15px] text-text"
+                    className="pressable flex-1 truncate py-1 text-left text-base text-text"
                     title="Click to rename or change color"
                   >
                     {i.name}
@@ -124,7 +124,8 @@ export default function InitiativesManager() {
                   <button
                     type="button"
                     onClick={() => setConfirmDeleteId(i.id)}
-                    className="flex-shrink-0 text-text-faint transition-colors hover:text-danger"
+                    aria-label={`Delete ${i.name}`}
+                    className="pressable flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-text-faint"
                     title="Delete initiative"
                   >
                     <Trash2 size={15} strokeWidth={1.6} />
@@ -146,17 +147,17 @@ export default function InitiativesManager() {
             { onSuccess: () => { setNewName(''); setNewColor(null) } },
           )
         }}
-        className="mt-3 flex flex-col gap-2"
+        className="mt-4 flex flex-col gap-2.5"
       >
         <div className="flex gap-2">
           <Input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Add an initiative…"
+            placeholder="New initiative…"
             className="flex-1"
           />
-          <Button type="submit" disabled={!newName.trim() || createInitiative.isPending}>
-            <Plus size={14} strokeWidth={1.6} />
+          <Button type="submit" variant="primary" className="!h-auto aspect-square" disabled={!newName.trim() || createInitiative.isPending} aria-label="Add initiative">
+            <Plus size={20} strokeWidth={2} />
           </Button>
         </div>
         {newName.trim() && <ColorPicker value={newColor} onChange={setNewColor} />}

@@ -1,6 +1,7 @@
 """
 api/routers/settings.py — Per-account settings: theme/font-size
-preference and Terms of Service acceptance. Stored server-side (not just
+preference, usage mode (work/personal/both) and Terms of Service
+acceptance. Stored server-side (not just
 localStorage) so a choice made on the web app also applies on the
 Android app, since both point at the same account. See db.py's
 get_user_preference()/update_user_preference() and schema.sql section 18.
@@ -11,6 +12,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 
 import db
+import documents
+import google_oauth
 from api.auth import get_current_user_id
 from api.schemas import UserPreferenceUpdate
 
@@ -18,6 +21,7 @@ router = APIRouter()
 
 _THEMES = {"dark", "light"}
 _FONT_SIZES = {"small", "default", "large"}
+_USAGE_MODES = {"work", "personal", "both"}
 
 
 @router.get("")
@@ -38,6 +42,10 @@ def update_settings(body: UserPreferenceUpdate, user_id: str = Depends(get_curre
         fields["font_size"] = body.font_size
     if body.daily_brief_email_enabled is not None:
         fields["daily_brief_email_enabled"] = body.daily_brief_email_enabled
+    if body.usage_mode is not None:
+        if body.usage_mode not in _USAGE_MODES:
+            raise HTTPException(400, f"usage_mode must be one of {sorted(_USAGE_MODES)}")
+        fields["usage_mode"] = body.usage_mode
     if not fields:
         return db.get_user_preference(user_id)
     return db.update_user_preference(user_id, **fields)
@@ -64,4 +72,10 @@ def delete_account(user_id: str = Depends(get_current_user_id)):
     way to pass a different id here, so this can only ever delete your
     own account. See db.delete_account() for what actually gets removed
     (everything, via cascading foreign keys - one call covers it)."""
+    # Storage objects don't cascade from auth.users like table rows do.
+    documents.purge_user_files(user_id)
+    try:
+        google_oauth.disconnect(user_id)  # revoke the grant at Google too
+    except Exception:
+        pass
     db.delete_account(user_id)

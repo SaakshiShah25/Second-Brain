@@ -12,6 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 import db
+import search_index
 import google_calendar
 from api.auth import get_current_user_id
 from api.schemas import ScheduleCalendarRequest, TaskStatusUpdate
@@ -63,6 +64,7 @@ def update_task(task_id: int, body: TaskStatusUpdate, user_id: str = Depends(get
         if body.owner not in ("me", "them"):
             raise HTTPException(400, "owner must be 'me' or 'them'")
         db.update_task_owner(user_id, task_id, body.owner)
+    search_index.enqueue(user_id, "task", [task_id])
     return {"ok": True}
 
 

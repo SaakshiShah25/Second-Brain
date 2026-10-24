@@ -225,9 +225,30 @@ export interface CardFields {
   email: string
 }
 
+// One item the answer relied on (agent.py) - shown as a tappable chip.
+export interface AnswerSource {
+  ref: string
+  kind: 'note' | 'task' | 'person' | 'document'
+  id: number
+  title: string
+  date: string | null
+  person_id: number | null
+}
+
 export interface AskAnsweredResult {
   status: 'answered'
   answer: string
+  sources?: AnswerSource[]
+  // Files the agent found along the way - rendered as a DocumentResultCard.
+  documents?: DocumentSearchResult | null
+}
+
+// The agent needs one detail before it can answer ("Which Priya?") - the
+// options are real matches, sent back as the user's next message.
+export interface AskClarifyResult {
+  status: 'clarify'
+  answer: string
+  options: string[]
 }
 
 export interface AskConfirmRequiredResult {
@@ -237,11 +258,62 @@ export interface AskConfirmRequiredResult {
   candidates: Candidate[]
 }
 
-export type AskResult = AskAnsweredResult | AskConfirmRequiredResult
+export type AskResult = AskAnsweredResult | AskConfirmRequiredResult | AskClarifyResult
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  // Present on an assistant message that answered a "pull my documents"
+  // request - rendered as a DocumentResultCard instead of plain text.
+  documents?: DocumentSearchResult
+  sources?: AnswerSource[]
+  options?: string[]
+}
+
+// ---------- Documents (document organizer) ----------
+
+export interface DocumentItem {
+  id: number
+  title: string
+  description: string | null
+  category: string
+  tags: string[] | null
+  owner: string | null
+  person_id: number | null
+  initiative_id: number | null
+  file_name: string
+  mime_type: string
+  size_bytes: number
+  issue_date: string | null
+  expiry_date: string | null
+  source: string
+  created_at: string
+  has_thumbnail: boolean
+  // Set for documents synced from a Google Drive folder (source 'gdrive').
+  drive_url: string | null
+  drive_folder_id: number | null
+}
+
+export interface DocumentMatch extends DocumentItem {
+  score: number
+}
+
+export interface DocumentSearchGroup {
+  label: string
+  matches: DocumentMatch[]
+  best: number | null
+}
+
+export interface DocumentSearchResult {
+  groups: DocumentSearchGroup[]
+  total_documents: number
+  query?: string
+}
+
+export interface ChatDocumentsResult extends DocumentSearchResult {
+  intent: 'documents'
+  status: 'answered'
+  query: string
 }
 
 // ---------- Unified chat (single thread, no mode tabs) ----------
@@ -259,12 +331,13 @@ export interface ChatBlockedResult {
   reason: 'unsafe' | 'out_of_scope'
   answer: string
 }
-export type ChatResult = ChatCaptureResult | ChatAskResult | ChatBlockedResult
+export type ChatResult = ChatCaptureResult | ChatAskResult | ChatBlockedResult | ChatDocumentsResult
 
 // ---------- Settings (theme, font size, Terms of Service) ----------
 
 export type Theme = 'dark' | 'light'
 export type FontSize = 'small' | 'default' | 'large'
+export type UsageMode = 'work' | 'personal' | 'both'
 
 export interface UserPreference {
   user_id: string
@@ -273,6 +346,10 @@ export interface UserPreference {
   terms_accepted_at: string | null
   daily_brief_email_enabled: boolean
   tour_completed_at: string | null
+  // null = not asked yet (triggers the onboarding question). Absent
+  // entirely (undefined) until schema.sql section 25 is applied - the
+  // feature stays dormant then; see lib/usageMode.ts.
+  usage_mode?: UsageMode | null
   updated_at: string
 }
 

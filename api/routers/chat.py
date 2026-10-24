@@ -9,7 +9,8 @@ through two gates before reaching capture.py/ask.py:
      from scope, since a harmful request phrased as a first-person
      statement needs to be caught the same as one phrased as a question.
   2. intent.py - classifies what's left as "capture" (a note to log),
-     "ask" (a question about the user's own data), or "out_of_scope" (a
+     "ask" (a question about the user's own data), "documents" (pull up
+     stored files - see documents.py), or "out_of_scope" (a
      general-purpose request this product isn't built to handle - a joke,
      a story, code, trivia). Only capture/ask reach the existing
      capture.py/ask.py route functions - this file is only a routing
@@ -32,6 +33,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
+import agent
+import documents
 import intent
 import moderation
 from timing import step
@@ -78,6 +81,11 @@ async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_c
             "answer": _OUT_OF_SCOPE_MESSAGE,
         }
 
+    if detected == "documents":
+        result = await run_in_threadpool(documents.search, user_id, body.text)
+        print(f"[timing] chat_total: {time.perf_counter() - t_start:.2f}s")
+        return {"intent": "documents", "status": "answered", "query": body.text, **result}
+
     if detected == "capture":
         # Calls the core function directly, not the capture_text ROUTE -
         # we already ran moderation.check() above for this exact text;
@@ -89,17 +97,28 @@ async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_c
         print(f"[timing] chat_total: {time.perf_counter() - t_start:.2f}s")
         return {"intent": "capture", **result}
 
-    # _ask_core, not the ask() route - same reasoning as the capture
-    # branch above: moderation already ran on this exact text.
-    try:
-        with step("ask_total"):
-            result = await run_in_threadpool(
-                ask_router._ask_core, user_id, AskRequest(query=body.text, history=body.history)
-            )
-    except HTTPException:
-        raise
+    with step("ask_total"):
+        result = await run_in_threadpool(_answer_question, user_id, body)
     print(f"[timing] chat_total: {time.perf_counter() - t_start:.2f}s")
     return {"intent": "ask", **result}
+
+
+def _answer_question(user_id: str, body: ChatRequest, on_stage=None) -> dict:
+    """Questions go to the retrieval agent (agent.py); if it fails for any
+    reason (rate limit, provider hiccup, missing search index) the previous
+    fixed pipeline answers instead - a question always gets an answer.
+    _ask_core, not the ask() route: moderation already ran on this text."""
+    ask_router._enforce(user_id, "ai_questions_asked")
+    try:
+        with step("agent"):
+            return agent.run(user_id, body.text, body.history, on_stage)
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[warn] retrieval agent failed, using fixed pipeline: {e}")
+        if on_stage:
+            on_stage("thinking")
+        return ask_router._ask_core(user_id, AskRequest(query=body.text, history=body.history), enforce=False)
 
 
 def _sse(event: str, data) -> str:
@@ -130,6 +149,12 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
             ))
             return
 
+        if detected == "documents":
+            await queue.put(("stage", "finding_documents"))
+            result = await run_in_threadpool(documents.search, user_id, body.text)
+            await queue.put(("result", {"intent": "documents", "status": "answered", "query": body.text, **result}))
+            return
+
         if detected == "capture":
             async def on_stage(stage: str) -> None:
                 await queue.put(("stage", stage))
@@ -141,9 +166,12 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
             return
 
         await queue.put(("stage", "thinking"))
-        result = await run_in_threadpool(
-            ask_router._ask_core, user_id, AskRequest(query=body.text, history=body.history)
-        )
+        loop = asyncio.get_running_loop()
+
+        def on_stage(stage: str) -> None:  # called from the agent's worker thread
+            loop.call_soon_threadsafe(queue.put_nowait, ("stage", stage))
+
+        result = await run_in_threadpool(_answer_question, user_id, body, on_stage)
         await queue.put(("result", {"intent": "ask", **result}))
     except HTTPException as e:
         await queue.put(("error", {"detail": e.detail, "status_code": e.status_code}))
