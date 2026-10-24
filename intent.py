@@ -16,8 +16,10 @@ filtering happens earlier, in moderation.py, before this ever runs.
 """
 
 import json
+import re
 
-from llm_client import get_client, FAST_MODEL_NAME
+import llm_budget
+from llm_client import FAST_MODEL_NAME
 
 _SYSTEM_PROMPT = """You classify a message sent to a personal-CRM chat app as one of:
 
@@ -58,6 +60,30 @@ as "out_of_scope" when you're confident the request has nothing to do with the u
 notes/contacts/tasks - don't use it just because a message is short or informal."""
 
 
+_DOC_VERB = re.compile(r"^\s*(please\s+)?(pull|send|share|get|fetch|show|find|open|give)(\s+me)?(\s+up)?\b", re.I)
+_DOC_NOUN = re.compile(
+    r"\b(aadhaar|aadhar|pan( card)?|passport|licen[cs]e|statements?|slips?|payslips?|itr|contract|agreement|nda|msa|sow|"
+    r"invoices?|decks?|resume|cv|certificates?|polic(y|ies)|tickets?|bills?|photos?|documents?|docs?|files?|pdfs?|"
+    r"insurance|report|receipts?|visa)\b", re.I)
+_QUESTION = re.compile(r"^\s*(what|who|when|where|which|why|how|whom|whose)\b.*\?\s*$", re.I | re.S)
+
+
+def fast_classify(text: str):
+    """Free, deterministic routing for the obvious cases - each one skips
+    an LLM call (~930 Groq tokens, measured) from a shared free-tier
+    budget. Deliberately conservative: anything mixed or unusual returns
+    None and goes to the model. Moderation still runs first regardless."""
+    t = (text or "").strip()
+    if not t or len(t) > 300:
+        return None
+    if _DOC_VERB.search(t) and _DOC_NOUN.search(t) and "?" not in t \
+            and not re.search(r"\b(what|who|when|why|how|tell me)\b", t, re.I):
+        return "documents"
+    if _QUESTION.match(t):
+        return "ask"
+    return None
+
+
 def classify(text: str) -> str:
     """Returns "capture", "ask", "documents", or "out_of_scope". Defaults to "capture"
     on any classification failure or an unrecognized value (matches the
@@ -67,10 +93,11 @@ def classify(text: str) -> str:
     incorrectly refuses a legitimate note."""
     if not text or not text.strip():
         return "capture"
+    fast = fast_classify(text)
+    if fast:
+        return fast
     try:
-        client = get_client()
-        response = client.chat.completions.create(
-            model=FAST_MODEL_NAME,
+        response = llm_budget.chat(FAST_MODEL_NAME, reasoning_effort="low",
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": text},

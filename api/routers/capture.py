@@ -30,6 +30,7 @@ import entitlements
 import extraction
 import google_maps
 import moderation
+import graph
 import person_match
 import search_index
 import voice
@@ -278,6 +279,8 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
     search_index.enqueue(user_id, "note", [interaction_id])
     search_index.enqueue(user_id, "task", task_ids)
     search_index.enqueue(user_id, "person", list(already_linked_ids))
+    # Graph + facts from the same extraction - deterministic, no extra LLM call.
+    graph.submit(graph.on_capture, user_id, interaction_id, interaction_date, person_id, extracted, linked_others)
 
     return {
         "status": "saved",

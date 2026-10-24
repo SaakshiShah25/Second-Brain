@@ -32,7 +32,27 @@ EMBED_URL = "https://api.cohere.com/v2/embed"
 MODEL_NAME = "embed-english-v3.0"
 
 
+_query_cache: dict = {}
+_rerank_day = {"day": None, "count": 0}
+
+
 def compute_embedding(text: str, input_type: str = "search_document"):
+    """Cached for search queries - a trial Cohere key allows only 1,000 calls
+    a month, and the agent often searches the same phrasing more than once."""
+    if input_type == "search_query":
+        key = text.strip().lower()
+        if key in _query_cache:
+            return _query_cache[key]
+        vec = _compute_embedding(text, input_type)
+        if vec is not None:
+            if len(_query_cache) > 500:
+                _query_cache.clear()
+            _query_cache[key] = vec
+        return vec
+    return _compute_embedding(text, input_type)
+
+
+def _compute_embedding(text: str, input_type: str = "search_document"):
     """Returns a list[float] (1024-dim), or None if the embedding API
     isn't reachable/configured (e.g. COHERE_API_KEY not set, or a
     transient API error) - callers already handle None gracefully (a
@@ -107,8 +127,16 @@ def rerank(query: str, documents: list, top_n: int) -> list:
     actually answers the question" - search_index.search() uses it as the
     final ordering step over hybrid (vector + keyword) candidates."""
     api_key = os.environ.get("COHERE_API_KEY")
-    if not api_key or not documents:
-        return []
+    if not api_key or len(documents) <= 3:
+        return []  # nothing to gain from reordering three or fewer candidates
+    from datetime import date
+
+    today = date.today().isoformat()
+    if _rerank_day["day"] != today:
+        _rerank_day.update(day=today, count=0)
+    if _rerank_day["count"] >= int(os.environ.get("COHERE_RERANK_DAILY_CAP", "25")):
+        return []  # daily cap reached (trial keys: 1,000 calls/month) - hybrid order is used instead
+    _rerank_day["count"] += 1
     try:
         resp = requests.post(
             RERANK_URL,

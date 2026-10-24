@@ -184,7 +184,7 @@ def resolve_and_link_other_people(user_id: str, interaction_id: int, other_peopl
             people.append(db.get_person(user_id, person_id))
 
         db.link_interaction_person(user_id, interaction_id, person_id, relation)
-        linked.append({"name": name, "person_id": person_id})
+        linked.append({"name": name, "person_id": person_id, "relation": relation})
 
     return linked
 

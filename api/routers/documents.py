@@ -23,6 +23,7 @@ import db
 import documents
 import embeddings
 import google_oauth
+import graph
 import search_index
 from api.auth import get_current_user_id
 from api.rate_limit import limiter
@@ -163,6 +164,7 @@ def update_document(document_id: int, body: DocumentUpdate, user_id: str = Depen
     fields["embedding"] = embeddings.compute_embedding(documents.embedding_text(merged))
     updated = db.update_document(user_id, document_id, **fields)
     search_index.enqueue(user_id, "document", [document_id])
+    graph.submit(graph.on_document, user_id, updated)
     return documents.public_doc(updated)
 
 
@@ -176,6 +178,7 @@ def delete_document(document_id: int, user_id: str = Depends(get_current_user_id
         search_index.enqueue(user_id, "document", [], prune_after=True)
         return
     db.delete_document(user_id, document_id)
+    graph.forget(user_id, "document", document_id)
     search_index.enqueue(user_id, "document", [], prune_after=True)
     try:
         documents.remove_objects([doc.get("storage_path"), doc.get("thumb_path")])

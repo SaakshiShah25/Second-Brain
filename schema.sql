@@ -746,3 +746,74 @@ as $$
     order by c.embedding <=> query_embedding
     limit match_count;
 $$;
+
+-- 29. Knowledge graph + facts (graph.py). Derived deterministically from what
+--     note extraction / filing already returns - no extra LLM calls.
+--     organization: companies as real records, matched case- and
+--       suffix-insensitively via name_key ("Northwind Pvt Ltd" = "northwind").
+--     entity_edge: typed links between entities - person works_at
+--       organization (with valid_from/valid_to, so job changes keep
+--       history), person family/colleague/friend/related_to person (label
+--       keeps the words used, e.g. "Priya's sister"), document belongs_to
+--       person/organization. Polymorphic (type + id), so deletes/merges are
+--       handled in graph.py rather than by foreign keys.
+--     fact: one attribute value about one entity, with provenance (which
+--       note/document/edit it came from), when it was observed, and
+--       supersession: a new role/company/phone never overwrites the old one,
+--       it supersedes it - so "where did Priya work before?" is answerable.
+create table if not exists organization (
+    id bigint generated always as identity primary key,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    name text not null,
+    name_key text not null,
+    created_at timestamptz not null default now(),
+    unique (user_id, name_key)
+);
+
+create table if not exists entity_edge (
+    id bigint generated always as identity primary key,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    src_type text not null,              -- person | organization | document | interaction
+    src_id bigint not null,
+    rel text not null,                   -- works_at | family | colleague | friend | related_to | belongs_to
+    dst_type text not null,
+    dst_id bigint not null,
+    label text,                          -- encrypted: the words used ("Priya's sister", "VP Operations")
+    source_type text,                    -- interaction | document | manual | backfill
+    source_id bigint,
+    valid_from date,
+    valid_to date,                       -- null = current
+    created_at timestamptz not null default now(),
+    unique (user_id, src_type, src_id, rel, dst_type, dst_id)
+);
+create index if not exists entity_edge_src_idx on entity_edge (user_id, src_type, src_id);
+create index if not exists entity_edge_dst_idx on entity_edge (user_id, dst_type, dst_id);
+
+create table if not exists fact (
+    id bigint generated always as identity primary key,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    entity_type text not null,           -- person | organization | document
+    entity_id bigint not null,
+    attribute text not null,             -- role | company | phone | email | personal | trait | relation_to_me
+    value text not null,                 -- encrypted
+    source_type text,                    -- interaction | document | manual | backfill
+    source_id bigint,
+    observed_on date,
+    superseded_by bigint references fact(id) on delete set null,
+    superseded_on date,
+    created_at timestamptz not null default now()
+);
+create index if not exists fact_entity_idx on fact (user_id, entity_type, entity_id);
+
+alter table organization enable row level security;
+alter table entity_edge enable row level security;
+alter table fact enable row level security;
+drop policy if exists "Users manage their own organizations" on organization;
+create policy "Users manage their own organizations" on organization
+    for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "Users manage their own edges" on entity_edge;
+create policy "Users manage their own edges" on entity_edge
+    for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "Users manage their own facts" on fact;
+create policy "Users manage their own facts" on fact
+    for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

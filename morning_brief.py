@@ -18,7 +18,8 @@ from datetime import date, datetime
 import db
 import google_calendar
 import text_utils
-from llm_client import get_client, MODEL_NAME
+import llm_budget
+from llm_client import MODEL_NAME
 
 STALE_THRESHOLD_DAYS = 30
 MAX_STALE_SHOWN = 5
@@ -152,9 +153,7 @@ This should read in under 20 seconds, not be studied - keep it tight, no filler,
     usage_mode = db.get_user_preference(user_id).get("usage_mode")
     system_prompt += _USAGE_MODE_TONE.get(usage_mode, "")
 
-    client = get_client()
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
+    response = llm_budget.chat(MODEL_NAME,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": context},

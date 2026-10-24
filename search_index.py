@@ -35,7 +35,7 @@ from typing import Optional
 import db
 import embeddings
 
-KINDS = ("note", "task", "person", "document")
+KINDS = ("note", "task", "person", "document", "organization")
 
 
 # ---------------------------------------------------------------- chunk text
@@ -122,6 +122,21 @@ def _document_chunk(d: dict) -> dict:
             "initiative_id": d.get("initiative_id"), "meta": {"category": d.get("category")}}
 
 
+def _organization_chunk(profile: dict) -> dict:
+    people = "; ".join(f"{p['name']}" + (f" ({p['role']})" if p.get("role") else "") for p in profile["people"])
+    former = "; ".join(p["name"] for p in profile["former_people"])
+    docs = "; ".join(d["title"] for d in profile["documents"])
+    text = "\n".join(x for x in [
+        f"Organization: {profile['name']}",
+        f"People there: {people}" if people else "",
+        f"Previously there: {former}" if former else "",
+        f"Documents: {docs}" if docs else "",
+    ] if x)
+    ids = [p["person_id"] for p in profile["people"] + profile["former_people"]]
+    return {"kind": "organization", "entity_id": profile["id"], "title": f"Organization · {profile['name']}",
+            "text": text, "item_date": None, "person_ids": sorted(set(ids)), "initiative_id": None, "meta": {}}
+
+
 def _build(user_id: str, wanted: Optional[dict] = None) -> list:
     """Chunks for the given {kind: {ids}} (or everything when None)."""
     def want(kind):
@@ -150,6 +165,15 @@ def _build(user_id: str, wanted: Optional[dict] = None) -> list:
         except Exception:
             docs = []  # documents table not migrated yet
         chunks += [_document_chunk(d) for d in docs if keep("document", d["id"])]
+    if want("organization"):
+        try:
+            import graph
+
+            for org in db.get_organizations(user_id):
+                if keep("organization", org["id"]):
+                    chunks.append(_organization_chunk(graph.organization_profile(user_id, org["id"])))
+        except Exception:
+            pass  # graph tables not migrated yet
     return chunks
 
 
@@ -175,6 +199,10 @@ def prune(user_id: str) -> int:
         live["document"] = {d["id"] for d in db.get_documents(user_id)}
     except Exception:
         live["document"] = set()
+    try:
+        live["organization"] = {o["id"] for o in db.get_organizations(user_id)}
+    except Exception:
+        live["organization"] = set()
     stale: dict = {}
     for row in db.get_search_chunk_keys(user_id):
         if row["entity_id"] not in live.get(row["kind"], set()):

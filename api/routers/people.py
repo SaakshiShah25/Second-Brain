@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 import db
 import embeddings
+import graph
 import retrieval
 import search_index
 from api.auth import get_current_user_id
@@ -42,22 +43,24 @@ def stale_people(threshold_days: int = 30, user_id: str = Depends(get_current_us
 
 @router.get("/companies")
 def list_companies(user_id: str = Depends(get_current_user_id)):
-    """Groups people by their `company` field (case-sensitive grouping key
-    here, purely for display - db.get_people_by_company() does the actual
-    case-insensitive lookup when a briefing is requested for one)."""
-    people = db.get_all_people(user_id)
+    """Groups people by company, folding case/punctuation/legal suffixes
+    (graph.org_key) - "Northwind", "northwind" and "Northwind Pvt Ltd" are
+    one company. Shown under the most common spelling."""
     grouped: dict[str, list] = {}
-    for p in people:
+    spellings: dict[str, dict] = {}
+    for p in db.get_all_people(user_id):
         company = (p.get("company") or "").strip()
-        if not company:
+        key = graph.org_key(company)
+        if not key:
             continue
-        grouped.setdefault(company, []).append(p)
+        grouped.setdefault(key, []).append(p)
+        spellings.setdefault(key, {})[company] = spellings.get(key, {}).get(company, 0) + 1
     return [
         {
-            "company": name,
+            "company": max(spellings[key], key=spellings[key].get),
             "people": [{"id": p["id"], "name": p["name"], "role": p.get("role") or ""} for p in members],
         }
-        for name, members in sorted(grouped.items())
+        for key, members in sorted(grouped.items())
     ]
 
 
@@ -87,6 +90,7 @@ def update_person(person_id: int, body: PersonUpdate, user_id: str = Depends(get
     fields = {k: v for k, v in body.model_dump().items() if v is not None}
     if fields:
         db.update_person(user_id, person_id, **fields)
+        graph.on_person_edit(user_id, person_id, fields)
         # Their name/role/company also appears in their notes' and tasks' index text.
         search_index.enqueue(user_id, "person", [person_id])
         search_index.enqueue(user_id, "note", [i["id"] for i in db.get_interactions_for_person(user_id, person_id)])
@@ -96,6 +100,7 @@ def update_person(person_id: int, body: PersonUpdate, user_id: str = Depends(get
 @router.delete("/{person_id}")
 def delete_person(person_id: int, user_id: str = Depends(get_current_user_id)):
     db.delete_person(user_id, person_id)
+    graph.forget(user_id, "person", person_id)
     search_index.enqueue(user_id, "person", [], prune_after=True)  # cascaded notes/tasks drop out too
     return {"ok": True}
 
@@ -103,6 +108,7 @@ def delete_person(person_id: int, user_id: str = Depends(get_current_user_id)):
 @router.post("/{person_id}/merge")
 def merge_person(person_id: int, body: MergeRequest, user_id: str = Depends(get_current_user_id)):
     new_id = db.merge_persons(user_id, person_id, body.target_id)
+    graph.repoint(user_id, person_id, new_id)
     search_index.enqueue(user_id, "person", [new_id])
     search_index.enqueue(user_id, "note", [i["id"] for i in db.get_interactions_for_person(user_id, new_id)],
                          prune_after=True)

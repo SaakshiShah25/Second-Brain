@@ -13,7 +13,8 @@ from datetime import date
 import gemini_client
 import text_utils
 from groq import RateLimitError
-from llm_client import get_client, MODEL_NAME
+import llm_budget
+from llm_client import MODEL_NAME
 
 
 def _build_system_prompt(reference_date: str, reference_weekday: str, initiative_names: list = None) -> str:
@@ -200,7 +201,6 @@ def extract_info(raw_text: str, reference_date: date = None, initiative_names: l
     Returns a dict matching the schema in _build_system_prompt.
     Raises ValueError if the model doesn't return valid JSON.
     """
-    client = get_client()
 
     if reference_date is None:
         reference_date = date.today()
@@ -217,8 +217,7 @@ def extract_info(raw_text: str, reference_date: date = None, initiative_names: l
     # message the model might feel obligated to respond/comply with.
     user_content = f"<note>\n{raw_text}\n</note>"
     try:
-        response = client.chat.completions.create(
-            model=MODEL_NAME,
+        response = llm_budget.chat(MODEL_NAME,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},

@@ -232,6 +232,9 @@ def _import_file(user_id: str, folder_row_id: int, f: dict, people: list, curren
     else:
         doc = db.create_document(user_id, **row)
         search_index.enqueue(user_id, "document", [doc["id"]])
+        import graph
+
+        graph.submit(graph.on_document, user_id, doc)
 
 
 def start_sync(user_id: str, folder_row_id: int) -> bool:

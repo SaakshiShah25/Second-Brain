@@ -45,6 +45,7 @@ import crypto_utils
 import db
 import embeddings
 import gemini_client
+import llm_budget
 from llm_client import FAST_MODEL_NAME, get_client
 
 BUCKET = "documents"
@@ -352,6 +353,9 @@ def create_from_bytes(user_id: str, data: bytes, mime_type: str, file_name: str,
     import search_index  # local: search_index reads documents via db, no cycle at import time
 
     search_index.enqueue(user_id, "document", [doc["id"]])
+    import graph
+
+    graph.submit(graph.on_document, user_id, doc)
     return doc
 
 
@@ -373,8 +377,7 @@ Max 10 items. If the request names no specific documents (e.g. "show my document
 
 def _parse_request(text: str) -> list:
     try:
-        resp = get_client().chat.completions.create(
-            model=FAST_MODEL_NAME,
+        resp = llm_budget.chat(FAST_MODEL_NAME, reasoning_effort="low",
             messages=[{"role": "system", "content": _PARSE_PROMPT}, {"role": "user", "content": text}],
             temperature=0, response_format={"type": "json_object"},
         )
@@ -488,8 +491,9 @@ def search(user_id: str, text: str) -> dict:
 
     groups = []
     chosen: set = set()  # "my last two salary slips" -> two items, two DIFFERENT slips
-    for item in items:
-        q_vec = embeddings.compute_embedding(f"{item['label']}. {item.get('search') or ''}", input_type="search_query")
+    # One embedding call for every requested item (Cohere trial keys: 1,000 calls a month).
+    q_vecs = embeddings.compute_embeddings([f"{i['label']}. {i.get('search') or ''}" for i in items], input_type="search_query")
+    for item, q_vec in zip(items, q_vecs):
         scored = sorted(((_score(item, d, q_vec), d) for d in docs), key=lambda t: t[0][0], reverse=True)
         top = [(sc, d) for sc, d in scored[:5] if sc[0] >= _MIN_SCORE]
         # Pre-tick only a confident match: it scores well AND actually

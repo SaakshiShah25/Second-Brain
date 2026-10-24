@@ -80,6 +80,8 @@ _ENCRYPTED_TEXT_FIELDS = {
     "google_credentials": ["access_token", "refresh_token"],
     "document": ["title", "description", "owner", "file_name", "extracted_text"],
     "search_chunk": ["title", "text"],
+    "entity_edge": ["label"],
+    "fact": ["value"],
 }
 _ENCRYPTED_JSON_FIELDS = {
     "person": ["personal_notes"],
@@ -136,17 +138,13 @@ def get_all_people(user_id: str):
 
 
 def get_people_by_company(user_id: str, company: str):
-    """Case-insensitive exact match on company (ilike with no wildcards in
-    `company` behaves as case-insensitive equality) - deliberately not
-    fuzzy, since company names typed inconsistently (e.g. "Acme" vs "Acme
-    Corp") should be a follow-up if it turns out to matter in practice,
-    not guessed at upfront."""
-    resp = (
-        get_client().table("person").select("*")
-        .eq("user_id", user_id).ilike("company", company)
-        .execute()
-    )
-    return _decrypt_rows("person", resp.data)
+    """Everyone at a company, matched on graph.org_key - case, punctuation
+    and legal suffixes folded, so "Northwind", "northwind" and "Northwind
+    Pvt Ltd" are the same company (an exact ilike match split them)."""
+    from graph import org_key  # local import: graph imports this module
+
+    key = org_key(company)
+    return [p for p in get_all_people(user_id) if key and org_key(p.get("company") or "") == key]
 
 
 def create_person(user_id: str, name, description="", role="", company="", phone="", email="",
@@ -997,3 +995,73 @@ def match_search_chunks(user_id: str, query_embedding, k: int = 40, kinds=None, 
         "filter_kinds": list(kinds) if kinds else None, "filter_person_id": person_id,
         "filter_initiative_id": initiative_id, "date_from": date_from, "date_to": date_to,
     }).execute().data
+
+
+# ---------- Knowledge graph + facts (schema.sql section 29, graph.py) ----------
+
+def get_organizations(user_id: str) -> list:
+    return get_client().table("organization").select("*").eq("user_id", user_id).order("name").execute().data
+
+
+def upsert_organization(user_id: str, name: str, name_key: str) -> dict:
+    resp = get_client().table("organization").upsert(
+        {"user_id": user_id, "name": name, "name_key": name_key}, on_conflict="user_id,name_key",
+        ignore_duplicates=True).execute()
+    if resp.data:
+        return resp.data[0]
+    return get_client().table("organization").select("*").eq("user_id", user_id).eq("name_key", name_key) \
+        .execute().data[0]
+
+
+def delete_organizations(user_id: str, ids: list) -> None:
+    if ids:
+        get_client().table("organization").delete().eq("user_id", user_id).in_("id", list(ids)).execute()
+
+
+def get_edges(user_id: str, entity_type: str = None, entity_id: int = None, rel: str = None) -> list:
+    """Edges touching an entity (either direction), or all of a user's edges."""
+    q = get_client().table("entity_edge").select("*").eq("user_id", user_id)
+    if rel:
+        q = q.eq("rel", rel)
+    rows = q.execute().data
+    if entity_type is not None:
+        rows = [r for r in rows if (r["src_type"] == entity_type and r["src_id"] == entity_id)
+                or (r["dst_type"] == entity_type and r["dst_id"] == entity_id)]
+    return _decrypt_rows("entity_edge", rows)
+
+
+def upsert_edge(user_id: str, **fields) -> None:
+    get_client().table("entity_edge").upsert(
+        _encrypt_fields("entity_edge", {"user_id": user_id, **fields}),
+        on_conflict="user_id,src_type,src_id,rel,dst_type,dst_id").execute()
+
+
+def update_edge(user_id: str, edge_id: int, **fields) -> None:
+    get_client().table("entity_edge").update(_encrypt_fields("entity_edge", fields)) \
+        .eq("id", edge_id).eq("user_id", user_id).execute()
+
+
+def delete_edges(user_id: str, ids: list) -> None:
+    if ids:
+        get_client().table("entity_edge").delete().eq("user_id", user_id).in_("id", list(ids)).execute()
+
+
+def get_facts(user_id: str, entity_type: str = None, entity_id: int = None) -> list:
+    q = get_client().table("fact").select("*").eq("user_id", user_id)
+    if entity_type is not None:
+        q = q.eq("entity_type", entity_type).eq("entity_id", entity_id)
+    return _decrypt_rows("fact", q.order("observed_on", nullsfirst=True).order("id").execute().data)
+
+
+def insert_fact(user_id: str, **fields) -> dict:
+    resp = get_client().table("fact").insert(_encrypt_fields("fact", {"user_id": user_id, **fields})).execute()
+    return _decrypt_row("fact", resp.data[0])
+
+
+def update_fact(user_id: str, fact_id: int, **fields) -> None:
+    get_client().table("fact").update(_encrypt_fields("fact", fields)).eq("id", fact_id).eq("user_id", user_id).execute()
+
+
+def delete_facts(user_id: str, ids: list) -> None:
+    if ids:
+        get_client().table("fact").delete().eq("user_id", user_id).in_("id", list(ids)).execute()
