@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { useInitiatives } from '../api/initiatives'
 import { useDeleteInteraction, useUpdateInteraction } from '../api/people'
 import type { Interaction } from '../api/types'
-import { friendlyDate } from '../lib/dates'
+import { dueLabel, friendlyDate } from '../lib/dates'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
@@ -205,7 +205,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
                           {t.description}
                           <span className="block text-[0.8125rem] text-text-muted">
                             {t.owner === 'them' ? 'They owe this' : 'You owe this'}
-                            {t.due_date ? ` · due ${friendlyDate(t.due_date)}` : ''}
+                            {t.due_date ? ` · due ${dueLabel(t.due_date, t.due_time)}` : ''}
                           </span>
                         </span>
                       </li>

@@ -28,9 +28,13 @@ interface ListRowProps {
   chevron?: boolean
   danger?: boolean
   disabled?: boolean
+  // Quiet icon tile: a pale tint of iconColor with the icon in iconColor,
+  // instead of a solid fill with a white icon - for rows that shouldn't
+  // compete for attention (Merge, Delete).
+  soft?: boolean
 }
 
-export function ListRow({ icon: Icon, iconColor, leading, label, detail, trailing, onClick, to, chevron, danger, disabled }: ListRowProps) {
+export function ListRow({ icon: Icon, iconColor, leading, label, detail, trailing, onClick, to, chevron, danger, disabled, soft }: ListRowProps) {
   const body = (
     <>
       {leading && (
@@ -39,7 +43,14 @@ export function ListRow({ icon: Icon, iconColor, leading, label, detail, trailin
       {Icon && (
         <span
           className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-          style={{ backgroundColor: iconColor ?? 'var(--sb-accent)', color: '#fff' }}
+          style={
+            soft
+              ? {
+                  backgroundColor: `color-mix(in srgb, ${iconColor ?? 'var(--sb-accent)'} 14%, transparent)`,
+                  color: iconColor ?? 'var(--sb-accent)',
+                }
+              : { backgroundColor: iconColor ?? 'var(--sb-accent)', color: '#fff' }
+          }
         >
           <Icon size={17} strokeWidth={2} />
         </span>

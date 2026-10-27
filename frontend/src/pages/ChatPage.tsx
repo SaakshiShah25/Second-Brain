@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Camera, FolderOpen, Heart, MapPin, MessageCircleQuestion, Mic, Sparkles, SquarePen, X } from 'lucide-react'
+import { Camera, FolderOpen, Heart, MapPin, MessageCircleQuestion, Mic, Sparkles, SquarePen, Tag, X } from 'lucide-react'
 import { useCaptureCard, useCaptureCardConfirm } from '../api/capture'
 import { useChat, useChatConfirm } from '../api/chat'
-import { useCreateInitiative } from '../api/initiatives'
+import { useCreateInitiative, useInitiatives } from '../api/initiatives'
 import { useUpdateInteraction } from '../api/people'
 import { useTranscribe } from '../api/voice'
 import type { CaptureResult, CaptureSavedResult, ChatMessage, ChatResult } from '../api/types'
@@ -19,16 +19,12 @@ import ChatInput, { type ChatInputHandle } from '../components/chat/ChatInput'
 import DisambiguationCard from '../components/chat/DisambiguationCard'
 import { useChatSession } from '../chat/ChatSessionContext'
 import { useLiveTranscript } from '../lib/useLiveTranscript'
+import { dueLabel } from '../lib/dates'
 import { useUsageMode } from '../lib/usageMode'
 
-// One hue per Home starter tile, in order, so the empty state reads as a
-// colorful set of shortcuts rather than four identical rows.
-const STARTER_TINTS = [
-  'bg-fun-orange/15 text-fun-orange',
-  'bg-fun-sky/15 text-fun-sky',
-  'bg-fun-teal/15 text-fun-teal',
-  'bg-fun-pink/15 text-fun-pink',
-]
+// One shared soft tint for every Home starter tile - the tiles are
+// equal-weight shortcuts, so a different hue on each only added noise.
+const STARTER_TINT = 'bg-accent-soft text-accent'
 
 function formatSavedMessage(result: CaptureSavedResult): string {
   // Only makes sense when the note is actually about a person - a
@@ -59,8 +55,15 @@ function formatSavedMessage(result: CaptureSavedResult): string {
     lines.push('**Follow-ups:**')
     for (const t of result.tasks_created) {
       const owner = t.owner === 'them' ? 'Them' : 'Me'
-      lines.push(`- ${t.description}${t.due_date ? ` _(due ${t.due_date})_` : ''} — ${owner}`)
+      lines.push(`- ${t.description}${t.due_date ? ` _(due ${dueLabel(t.due_date, t.due_time)})_` : ''} — ${owner}`)
     }
+  }
+  if (result.remembered && result.remembered.length > 0) {
+    lines.push('**Remembered:**')
+    for (const r of result.remembered) lines.push(`- ${r}`)
+  }
+  if (result.memory_saved === false) {
+    lines.push("_The note is saved, but I couldn't file its details (dates, family, preferences) just now._")
   }
   if (result.date_warning) lines.push(`_Note: ${result.date_warning}_`)
   for (const skipped of result.skipped_due_dates) {
@@ -79,8 +82,13 @@ export default function ChatPage() {
   const { messages, setMessages, pendingConfirm, setPendingConfirm, pendingCard, setPendingCard } = useChatSession()
   const [inputText, setInputText] = useState('')
   const [isRecording, setIsRecording] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
+  const cancelledRef = useRef(false) // set when the user discards a recording instead of finishing it
   const [isBusy, setIsBusy] = useState(false)
   const [stage, setStage] = useState<string | null>(null)
+  const [selectedInitiativeId, setSelectedInitiativeId] = useState<number | null>(null)
+  const { data: initiativeList = [] } = useInitiatives()
+  const selectedInitiative = initiativeList.find((i) => i.id === selectedInitiativeId) ?? null
   const [pendingLocation, setPendingLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [locationLoading, setLocationLoading] = useState(false)
   // A capture that didn't fit any existing initiative but reads like a
@@ -229,18 +237,26 @@ export default function ChatPage() {
   async function submitText(text: string) {
     if (!text.trim() || isBusy) return
     // Plain role/content only - document result payloads stay client-side.
-    const historyForRequest = messages.map(({ role, content }) => ({ role, content }))
+    // `options` rides along so the server can tell a tapped "which one?" answer from a new note.
+    const historyForRequest = messages.map(({ role, content, options }) => ({ role, content, ...(options?.length ? { options } : {}) }))
     appendMessage('user', text)
     setIsBusy(true)
     const controller = new AbortController()
     abortControllerRef.current = controller
     try {
       const result = await chatMutation.mutateAsync({
-        body: { text, history: historyForRequest, geoLat: pendingLocation?.lat, geoLng: pendingLocation?.lng },
+        body: {
+          text,
+          history: historyForRequest,
+          geoLat: pendingLocation?.lat,
+          geoLng: pendingLocation?.lng,
+          initiativeId: selectedInitiativeId,
+        },
         signal: controller.signal,
         onStage: setStage,
       })
       setPendingLocation(null) // one-shot per note, not sticky across future sends
+      if (result.intent === 'capture') setSelectedInitiativeId(null) // likewise the chosen category
       handleChatResult(result)
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
@@ -355,6 +371,11 @@ export default function ChatPage() {
     recorder.onstop = async () => {
       liveTranscript.stop()
       stream.getTracks().forEach((t) => t.stop())
+      if (cancelledRef.current) {  // discarded: nothing is transcribed, nothing is kept
+        cancelledRef.current = false
+        chunksRef.current = []
+        return
+      }
       const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
       setIsBusy(true)
       try {
@@ -380,6 +401,31 @@ export default function ChatPage() {
   function stopRecording() {
     mediaRecorderRef.current?.stop()
     setIsRecording(false)
+    setIsPaused(false)
+  }
+
+  function pauseRecording() {
+    const recorder = mediaRecorderRef.current
+    if (!recorder || recorder.state !== 'recording') return
+    recorder.pause()
+    liveTranscript.stop() // the live words are only a preview; the real transcript comes at the end
+    setIsPaused(true)
+  }
+
+  function resumeRecording() {
+    const recorder = mediaRecorderRef.current
+    if (!recorder || recorder.state !== 'paused') return
+    recorder.resume()
+    liveTranscript.start()
+    setIsPaused(false)
+  }
+
+  function cancelRecording() {
+    cancelledRef.current = true
+    mediaRecorderRef.current?.stop()
+    setIsRecording(false)
+    setIsPaused(false)
+    setInputText('')
   }
 
   const hasPending = pendingConfirm !== null || pendingCard !== null || pendingInitiativeSuggestion !== null
@@ -453,7 +499,7 @@ export default function ChatPage() {
                 : 'Tell me about a conversation, or ask about someone you’ve met.'}
             </p>
             <div className="flex flex-col gap-2.5">
-              {starters.map(({ icon: Icon, title, body, onClick }, i) => (
+              {starters.map(({ icon: Icon, title, body, onClick }) => (
                 <button
                   key={title}
                   type="button"
@@ -461,7 +507,7 @@ export default function ChatPage() {
                   disabled={isBusy}
                   className="pressable flex items-center gap-3.5 rounded-2xl border border-border bg-bg-card p-3.5 text-left shadow-card disabled:opacity-50"
                 >
-                  <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${STARTER_TINTS[i % STARTER_TINTS.length]}`}>
+                  <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${STARTER_TINT}`}>
                     <Icon size={21} strokeWidth={2} />
                   </span>
                   <span className="min-w-0">
@@ -519,15 +565,23 @@ export default function ChatPage() {
 
         {pendingInitiativeSuggestion && (
           <Card style={{ animation: 'fade-in 0.2s ease-out' }}>
-            <p className="mb-3 text-[0.9375rem] leading-relaxed">
-              This seems to be about <strong>{pendingInitiativeSuggestion.name}</strong>. Add it as a new initiative
-              and tag this note?
-            </p>
+            <div className="mb-3 flex items-start gap-3">
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-ink">
+                <Tag size={18} strokeWidth={1.9} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[0.8125rem] font-medium text-text-muted">New category?</p>
+                <p className="text-[1rem] leading-snug font-semibold">{pendingInitiativeSuggestion.name}</p>
+                <p className="mt-0.5 text-[0.875rem] leading-snug text-text-muted">
+                  This note seems to belong to a category you don't have yet.
+                </p>
+              </div>
+            </div>
             {namingCustomInitiative ? (
               <div className="flex flex-col gap-2">
                 <Input
                   autoFocus
-                  placeholder="Initiative name"
+                  placeholder="Category name"
                   value={customInitiativeName}
                   onChange={(e) => setCustomInitiativeName(e.target.value)}
                   onKeyDown={(e) => {
@@ -536,52 +590,49 @@ export default function ChatPage() {
                     }
                   }}
                 />
-                <div className="flex gap-2">
+                <div className="flex justify-end gap-2">
                   <Button
-                    variant="primary"
-                    className="flex-1"
-                    disabled={
-                      !customInitiativeName.trim() || createInitiative.isPending || updateInteraction.isPending
-                    }
-                    onClick={() => resolveInitiativeSuggestion('custom', customInitiativeName)}
-                  >
-                    Add
-                  </Button>
-                  <Button
-                    className="flex-1"
+                    size="sm"
                     disabled={createInitiative.isPending || updateInteraction.isPending}
                     onClick={() => setNamingCustomInitiative(false)}
                   >
                     Back
                   </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    disabled={!customInitiativeName.trim() || createInitiative.isPending || updateInteraction.isPending}
+                    onClick={() => resolveInitiativeSuggestion('custom', customInitiativeName)}
+                  >
+                    Add category
+                  </Button>
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={createInitiative.isPending || updateInteraction.isPending}
+                  onClick={() => resolveInitiativeSuggestion('decline')}
+                >
+                  Not now
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={createInitiative.isPending || updateInteraction.isPending}
+                  onClick={() => setNamingCustomInitiative(true)}
+                >
+                  Rename
+                </Button>
                 <Button
                   variant="primary"
-                  block
+                  size="sm"
                   disabled={createInitiative.isPending || updateInteraction.isPending}
                   onClick={() => resolveInitiativeSuggestion('accept')}
                 >
-                  Yes, add '{pendingInitiativeSuggestion.name}'
+                  {createInitiative.isPending || updateInteraction.isPending ? 'Adding…' : 'Add and tag'}
                 </Button>
-                <div className="flex gap-2">
-                  <Button
-                    className="flex-1"
-                    disabled={createInitiative.isPending || updateInteraction.isPending}
-                    onClick={() => setNamingCustomInitiative(true)}
-                  >
-                    Rename
-                  </Button>
-                  <Button
-                    className="flex-1"
-                    disabled={createInitiative.isPending || updateInteraction.isPending}
-                    onClick={() => resolveInitiativeSuggestion('decline')}
-                  >
-                    No thanks
-                  </Button>
-                </div>
               </div>
             )}
           </Card>
@@ -657,6 +708,21 @@ export default function ChatPage() {
           against it. */}
       {!hasPending && (
         <div className="sticky bottom-0 -mx-4 bg-gradient-to-t from-bg from-70% to-transparent px-4 pt-4 pb-1">
+          {selectedInitiative && (
+            <div className="mb-2 flex">
+              <span className="flex items-center gap-1.5 rounded-full bg-accent-soft py-1 pr-1 pl-2.5 text-xs font-medium text-accent">
+                Category: {selectedInitiative.name}
+                <button
+                  type="button"
+                  onClick={() => setSelectedInitiativeId(null)}
+                  aria-label="Remove category"
+                  className="pressable flex h-5 w-5 items-center justify-center rounded-full"
+                >
+                  <X size={12} strokeWidth={2} />
+                </button>
+              </span>
+            </div>
+          )}
           {pendingLocation && (
             <div className="mb-2 flex">
               <span className="flex items-center gap-1.5 rounded-full bg-accent-soft py-1 pr-1 pl-2.5 text-xs font-medium text-accent">
@@ -694,6 +760,13 @@ export default function ChatPage() {
             onStop={stopRequest}
             isRecording={isRecording}
             onToggleRecord={isRecording ? stopRecording : startRecording}
+            isPaused={isPaused}
+            onPauseRecord={pauseRecording}
+            onResumeRecord={resumeRecording}
+            onCancelRecord={cancelRecording}
+            initiatives={initiativeList}
+            selectedInitiativeId={selectedInitiativeId}
+            onSelectInitiative={setSelectedInitiativeId}
             locationAttached={pendingLocation !== null}
             locationLoading={locationLoading}
             onToggleLocation={toggleLocation}

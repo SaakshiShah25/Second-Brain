@@ -12,10 +12,12 @@ from fastapi import APIRouter, Depends, HTTPException
 import db
 import embeddings
 import graph
+import memory_schema
 import retrieval
 import search_index
 from api.auth import get_current_user_id
-from api.schemas import AddPersonalNoteRequest, InteractionUpdate, MergeRequest, PersonUpdate
+from api.schemas import (AddPersonalNoteRequest, InteractionUpdate, KeyDateCreate, MergeRequest,
+                         PersonFactCreate, PersonUpdate)
 
 router = APIRouter()
 
@@ -82,7 +84,53 @@ def get_person(person_id: int, user_id: str = Depends(get_current_user_id)):
         raise HTTPException(404, "Person not found")
     interactions = retrieval.attach_tasks(user_id, db.get_interactions_for_person(user_id, person_id))
     secondary = db.get_secondary_interactions_for_person(user_id, person_id)
-    return {"person": person, "interactions": interactions, "mentioned_in": secondary}
+    return {"person": person, "interactions": interactions, "mentioned_in": secondary,
+            "memory": _memory_or_empty(user_id, person_id)}
+
+
+def _memory_or_empty(user_id: str, person_id: int) -> dict:
+    """Key dates, remembered details and family links - empty (not an
+    error) until schema.sql section 31 has been applied."""
+    try:
+        return graph.person_memory(user_id, person_id)
+    except Exception:
+        return {"facts": [], "history": [], "key_dates": [], "relationships": []}
+
+
+@router.post("/{person_id}/key_dates")
+def add_key_date(person_id: int, body: KeyDateCreate, user_id: str = Depends(get_current_user_id)):
+    db.get_person(user_id, person_id)  # 404-ish if it isn't theirs
+    row = graph.add_manual_key_date(user_id, person_id, body.model_dump(exclude_none=True))
+    if row is None:
+        raise HTTPException(422, "That isn't a valid date - give a month and day (e.g. 14 March) or a phrase like 'tomorrow'.")
+    return _memory_or_empty(user_id, person_id)
+
+
+@router.delete("/{person_id}/key_dates/{key_date_id}")
+def delete_key_date(person_id: int, key_date_id: int, user_id: str = Depends(get_current_user_id)):
+    if not any(k["id"] == key_date_id for k in db.get_key_dates(user_id, person_id)):
+        raise HTTPException(404, "Date not found")
+    graph.remove_key_date(user_id, key_date_id)
+    search_index.enqueue(user_id, "person", [person_id])
+    return _memory_or_empty(user_id, person_id)
+
+
+@router.post("/{person_id}/facts")
+def add_person_fact(person_id: int, body: PersonFactCreate, user_id: str = Depends(get_current_user_id)):
+    db.get_person(user_id, person_id)
+    subject, subject_name = memory_schema.clean_subject(body.subject, body.subject_name)
+    graph.add_manual_fact(user_id, person_id, memory_schema.normalise_attribute(body.attribute), body.value,
+                          subject, subject_name)
+    return _memory_or_empty(user_id, person_id)
+
+
+@router.delete("/{person_id}/facts/{fact_id}")
+def delete_person_fact(person_id: int, fact_id: int, user_id: str = Depends(get_current_user_id)):
+    if not any(f["id"] == fact_id for f in db.get_person_facts(user_id, person_id)):
+        raise HTTPException(404, "Detail not found")
+    graph.remove_fact(user_id, fact_id)
+    search_index.enqueue(user_id, "person", [person_id])
+    return _memory_or_empty(user_id, person_id)
 
 
 @router.patch("/{person_id}")
@@ -107,8 +155,10 @@ def delete_person(person_id: int, user_id: str = Depends(get_current_user_id)):
 
 @router.post("/{person_id}/merge")
 def merge_person(person_id: int, body: MergeRequest, user_id: str = Depends(get_current_user_id)):
+    # Facts and dates reference the person by foreign key and would be deleted
+    # with the merged-away row, so they move to the target FIRST.
+    graph.repoint(user_id, person_id, body.target_id)
     new_id = db.merge_persons(user_id, person_id, body.target_id)
-    graph.repoint(user_id, person_id, new_id)
     search_index.enqueue(user_id, "person", [new_id])
     search_index.enqueue(user_id, "note", [i["id"] for i in db.get_interactions_for_person(user_id, new_id)],
                          prune_after=True)

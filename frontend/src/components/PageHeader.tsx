@@ -25,7 +25,7 @@ export function ProfileButton() {
       aria-label="Settings and profile"
       // Read by Tour.tsx to spotlight this button on its Settings step.
       data-tour-nav="/settings"
-      className="pressable flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-bg-elevated text-sm font-semibold text-text-muted ring-1 ring-border"
+      className="pressable flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-brand-soft text-sm font-semibold text-brand-ink ring-1 ring-brand/40"
     >
       {initial}
     </Link>

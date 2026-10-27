@@ -1,7 +1,9 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { ArrowUp, Camera, Loader2, MapPin, Mic, Plus, Square } from 'lucide-react'
+import { ArrowUp, Camera, Check, Loader2, MapPin, Mic, Pause, Play, Plus, Sparkles, Square, Trash2 } from 'lucide-react'
 import Sheet from '../Sheet'
 import { ListGroup, ListRow, Toggle } from '../ListGroup'
+import type { Initiative } from '../../api/types'
+import { getInitiativeStyle } from '../../lib/initiativeStyle'
 
 export interface ChatInputHandle {
   focus: () => void
@@ -23,10 +25,19 @@ interface ChatInputProps {
   onStop?: () => void
   isRecording: boolean
   onToggleRecord: () => void
+  // While recording: pause/resume, and cancel (throw the recording away).
+  isPaused?: boolean
+  onPauseRecord?: () => void
+  onResumeRecord?: () => void
+  onCancelRecord?: () => void
   // Opt-in device location - undefined `onToggleLocation` hides the option.
   locationAttached?: boolean
   locationLoading?: boolean
   onToggleLocation?: () => void
+  // Category (initiative) for the next note: undefined `onSelectInitiative` hides the option.
+  initiatives?: Initiative[]
+  selectedInitiativeId?: number | null
+  onSelectInitiative?: (id: number | null) => void
   // Business-card scan trigger - undefined hides the option.
   onAttachCard?: (file: File) => void
 }
@@ -52,9 +63,16 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
     onStop,
     isRecording,
     onToggleRecord,
+    isPaused = false,
+    onPauseRecord,
+    onResumeRecord,
+    onCancelRecord,
     locationAttached = false,
     locationLoading = false,
     onToggleLocation,
+    initiatives = [],
+    selectedInitiativeId = null,
+    onSelectInitiative,
     onAttachCard,
   },
   ref,
@@ -83,15 +101,30 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
     el.style.overflowY = overflowing ? 'auto' : 'hidden'
   }, [value, isRecording])
 
+  // The clock only runs while actually recording: time spent paused isn't counted.
+  const accumulatedMs = useRef(0)
+  const runningSince = useRef<number | null>(null)
   useEffect(() => {
     if (!isRecording) {
       setElapsed(0)
+      accumulatedMs.current = 0
+      runningSince.current = null
       return
     }
-    const start = Date.now()
-    const interval = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 250)
+    if (isPaused) {
+      if (runningSince.current !== null) {
+        accumulatedMs.current += Date.now() - runningSince.current
+        runningSince.current = null
+      }
+      return
+    }
+    runningSince.current = Date.now()
+    const interval = setInterval(
+      () => setElapsed(Math.floor((accumulatedMs.current + Date.now() - (runningSince.current ?? Date.now())) / 1000)),
+      250,
+    )
     return () => clearInterval(interval)
-  }, [isRecording])
+  }, [isRecording, isPaused])
 
   // Enter inserts a newline on a phone keyboard (where there's no
   // Shift+Enter) - only a hardware keyboard's plain Enter sends.
@@ -104,7 +137,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
   }
 
   const hasText = value.trim().length > 0
-  const hasAttachments = Boolean(onAttachCard || onToggleLocation)
+  const hasAttachments = Boolean(onAttachCard || onToggleLocation || onSelectInitiative)
 
   let trailing
   if (isBusy && onStop && !isRecording) {
@@ -123,7 +156,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
       <button
         type="button"
         onClick={onToggleRecord}
-        aria-label="Stop recording"
+        aria-label="Finish recording"
         className="pressable flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-danger text-white"
       >
         <Square size={15} strokeWidth={2} fill="currentColor" />
@@ -133,6 +166,10 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
     trailing = (
       <button
         type="button"
+        // Pressing Send must not take focus from the text box: the keyboard
+        // closing / the layout changing mid-tap is what made the first press
+        // miss. The click itself still fires normally.
+        onMouseDown={(e) => e.preventDefault()}
         onClick={onSend}
         disabled={disabled}
         aria-label="Send"
@@ -158,6 +195,17 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
   return (
     <>
       <div className="flex items-end gap-2">
+        {isRecording && onCancelRecord && (
+          <button
+            type="button"
+            onClick={onCancelRecord}
+            aria-label="Cancel recording"
+            title="Cancel - discard this recording"
+            className="pressable flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-border-strong bg-bg-card text-text-muted"
+          >
+            <Trash2 size={19} strokeWidth={1.9} />
+          </button>
+        )}
         {hasAttachments && !isRecording && (
           <button
             type="button"
@@ -167,7 +215,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
             className={`pressable relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-border-strong bg-bg-card text-text-muted disabled:opacity-40`}
           >
             <Plus size={22} strokeWidth={2} />
-            {locationAttached && <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-accent" />}
+            {(locationAttached || selectedInitiativeId !== null) && <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-accent" />}
           </button>
         )}
 
@@ -178,9 +226,14 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
         >
           {isRecording ? (
             <div className="flex min-w-0 flex-1 items-center gap-2.5 px-4 py-2.5">
-              <span className="h-2 w-2 flex-shrink-0 rounded-full bg-danger" style={{ animation: 'pulse-rec 1s infinite' }} />
+              <span
+                className={`h-2 w-2 flex-shrink-0 rounded-full ${isPaused ? 'bg-text-faint' : 'bg-danger'}`}
+                style={isPaused ? undefined : { animation: 'pulse-rec 1s infinite' }}
+              />
               <span className="flex-shrink-0 text-sm font-medium tabular-nums text-text">{formatElapsed(elapsed)}</span>
-              {value ? (
+              {isPaused ? (
+                <span className="min-w-0 flex-1 truncate text-sm text-text-muted">Paused</span>
+              ) : value ? (
                 // Live browser transcript (useLiveTranscript) - shows the
                 // words landing as you speak; Whisper's final transcript
                 // replaces it when recording stops.
@@ -195,6 +248,16 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
                     />
                   ))}
                 </span>
+              )}
+              {(onPauseRecord || onResumeRecord) && (
+                <button
+                  type="button"
+                  onClick={isPaused ? onResumeRecord : onPauseRecord}
+                  aria-label={isPaused ? 'Resume recording' : 'Pause recording'}
+                  className="pressable -mr-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-bg-elevated text-text"
+                >
+                  {isPaused ? <Play size={15} strokeWidth={2.2} fill="currentColor" /> : <Pause size={15} strokeWidth={2.2} fill="currentColor" />}
+                </button>
               )}
             </div>
           ) : (
@@ -262,6 +325,44 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
               />
             )}
           </ListGroup>
+          {onSelectInitiative && (
+            <ListGroup title="Category for this note" footer="Used for the next note only. “Auto” lets Confía pick from what you write.">
+              <ListRow
+                icon={Sparkles}
+                iconColor="var(--sb-text-muted)"
+                soft
+                label="Auto"
+                detail="Confía picks the category"
+                trailing={selectedInitiativeId === null ? <Check size={18} strokeWidth={2.4} className="text-accent" /> : undefined}
+                onClick={() => {
+                  onSelectInitiative(null)
+                  setAttachOpen(false)
+                }}
+              />
+              {initiatives.map((i) => {
+                const style = getInitiativeStyle(i)
+                return (
+                  <ListRow
+                    key={i.id}
+                    icon={style?.Icon}
+                    iconColor={style?.color}
+                    soft
+                    label={i.name}
+                    trailing={selectedInitiativeId === i.id ? <Check size={18} strokeWidth={2.4} className="text-accent" /> : undefined}
+                    onClick={() => {
+                      onSelectInitiative(i.id)
+                      setAttachOpen(false)
+                    }}
+                  />
+                )
+              })}
+              {initiatives.length === 0 && (
+                <p className="px-4 py-3 text-[0.9375rem] text-text-muted">
+                  No categories yet. Add some under Notes, then Initiatives.
+                </p>
+              )}
+            </ListGroup>
+          )}
         </Sheet>
       )}
     </>

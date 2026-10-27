@@ -30,13 +30,53 @@ function useKeyboardOpen() {
       (el.tagName === 'TEXTAREA' ||
         (el.tagName === 'INPUT' && !['checkbox', 'radio', 'range', 'file', 'button', 'submit'].includes((el as HTMLInputElement).type)) ||
         el.isContentEditable)
-    const onIn = (e: FocusEvent) => isField(e.target) && setOpen(true)
-    const onOut = () => setOpen(false)
+    let pointerDown = false
+    let closeAfterPointer = false
+    let timer: number | undefined
+    const closeIfNoFieldFocused = () => {
+      if (!isField(document.activeElement)) setOpen(false)
+    }
+    const onIn = (e: FocusEvent) => {
+      if (isField(e.target)) {
+        window.clearTimeout(timer)
+        closeAfterPointer = false
+        setOpen(true)
+      }
+    }
+    // Tapping Send blurs the text box a moment BEFORE the tap completes. If the
+    // tab bar came back right then, the composer would jump up by the bar's
+    // height and the tap would land on empty space - the first press on
+    // Send did nothing. So while a finger/mouse is still down, the bar stays
+    // hidden; it returns once the press has finished (and its click has fired).
+    const onOut = () => {
+      if (pointerDown) {
+        closeAfterPointer = true
+        return
+      }
+      closeIfNoFieldFocused()
+    }
+    const onDown = () => {
+      pointerDown = true
+    }
+    const onUp = () => {
+      pointerDown = false
+      if (closeAfterPointer) {
+        closeAfterPointer = false
+        timer = window.setTimeout(closeIfNoFieldFocused, 120)
+      }
+    }
     document.addEventListener('focusin', onIn)
     document.addEventListener('focusout', onOut)
+    document.addEventListener('pointerdown', onDown, true)
+    document.addEventListener('pointerup', onUp, true)
+    document.addEventListener('pointercancel', onUp, true)
     return () => {
+      window.clearTimeout(timer)
       document.removeEventListener('focusin', onIn)
       document.removeEventListener('focusout', onOut)
+      document.removeEventListener('pointerdown', onDown, true)
+      document.removeEventListener('pointerup', onUp, true)
+      document.removeEventListener('pointercancel', onUp, true)
     }
   }, [])
   return open

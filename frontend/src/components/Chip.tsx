@@ -13,7 +13,7 @@ export default function Chip({ active = false, color, children, className = '', 
   return (
     <button
       type="button"
-      className={`pressable flex h-9 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-sm font-medium ${
+      className={`pressable flex h-9 min-w-[4.5rem] flex-shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-sm font-medium leading-none ${
         active ? 'border-accent bg-accent text-accent-contrast' : 'border-border-strong bg-bg-card text-text-muted'
       } ${className}`}
       style={style}

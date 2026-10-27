@@ -28,12 +28,13 @@ export default function GoogleAccountSettings() {
     })
   }
 
-  const featureRow = (feature: GoogleFeature, label: string, detail: string, icon: typeof CalendarDays, color: string) => {
+  const featureRow = (feature: GoogleFeature, label: string, detail: string, icon: typeof CalendarDays) => {
     const on = status.features.includes(feature)
     return (
       <ListRow
         icon={icon}
-        iconColor={color}
+        iconColor="var(--sb-text-muted)"
+        soft
         label={label}
         detail={detail}
         trailing={
@@ -82,9 +83,9 @@ export default function GoogleAccountSettings() {
         ) : (
           <>
             <ListRow leading={<GoogleIcon size={18} />} label="Google" detail={status.email ?? 'Connected'} />
-            {featureRow('calendar', 'Calendar', 'Add follow-ups as events; today’s events in your brief', CalendarDays, '#2563eb')}
-            {featureRow('drive', 'Drive', 'Bring folders into Documents', FolderOpen, '#d97706')}
-            <ListRow icon={Unplug} iconColor="#e5383b" label="Disconnect Google" danger onClick={() => setConfirming(true)} />
+            {featureRow('calendar', 'Calendar', 'Add follow-ups as events; today’s events in your brief', CalendarDays)}
+            {featureRow('drive', 'Drive', 'Bring folders into Documents', FolderOpen)}
+            <ListRow icon={Unplug} iconColor="var(--sb-danger)" soft label="Disconnect Google" danger onClick={() => setConfirming(true)} />
           </>
         )}
       </ListGroup>

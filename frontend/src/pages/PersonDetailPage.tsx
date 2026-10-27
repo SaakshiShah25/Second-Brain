@@ -20,8 +20,9 @@ import InteractionCard from '../components/InteractionCard'
 import { Input, Label, Select, Textarea } from '../components/fields'
 import { ListGroup, ListRow } from '../components/ListGroup'
 import PageHeader from '../components/PageHeader'
+import PersonMemorySection from '../components/PersonMemorySection'
 import Sheet from '../components/Sheet'
-import { friendlyDate } from '../lib/dates'
+import { friendlyDate, fullDate } from '../lib/dates'
 import { useUsageMode } from '../lib/usageMode'
 
 function QuickAction({
@@ -270,7 +271,7 @@ export default function PersonDetailPage() {
           {person.first_met_date && (
             <div className="px-4 py-3">
               <p className="mb-0.5 text-[0.8125rem] text-text-muted">First met</p>
-              <p className="text-[0.9375rem]">{friendlyDate(person.first_met_date)}</p>
+              <p className="text-[0.9375rem]">{fullDate(person.first_met_date)}</p>
             </div>
           )}
           {person.tags.length > 0 && (
@@ -284,6 +285,8 @@ export default function PersonDetailPage() {
           )}
         </section>
       )}
+
+      <PersonMemorySection personId={person.id} memory={data?.memory} />
 
       <h2 className="mb-2 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint">Personal notes</h2>
       <section className="mb-6 overflow-hidden rounded-2xl border border-border bg-bg-card">
@@ -372,19 +375,26 @@ export default function PersonDetailPage() {
         <ListGroup>
           <ListRow
             icon={GitMerge}
-            iconColor="#78716c"
+            iconColor="var(--sb-text-muted)"
+            soft
             label="Merge with another person"
             chevron
             onClick={() => setMergeOpen(true)}
           />
-          <ListRow
-            icon={Trash2}
-            iconColor="#e5383b"
-            label={`Delete ${person.name}`}
-            danger
-            onClick={() => setConfirmDialog('delete')}
-          />
         </ListGroup>
+        {/* Its own group, set apart from the everyday actions above. */}
+        <div className="mt-8">
+          <ListGroup>
+            <ListRow
+              icon={Trash2}
+              iconColor="var(--sb-danger)"
+              soft
+              label={`Delete ${person.name}`}
+              danger
+              onClick={() => setConfirmDialog('delete')}
+            />
+          </ListGroup>
+        </div>
       </div>
 
       {isEditing && form && (

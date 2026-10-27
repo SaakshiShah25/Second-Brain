@@ -38,7 +38,7 @@ from timing import step
 from api.auth import get_current_user_id
 from api.rate_limit import limiter
 from api.schemas import CandidateEnvelope, CaptureConfirmRequest, CaptureRequest, CardConfirmRequest
-from date_utils import resolve_relative_phrase
+from date_utils import resolve_relative_phrase, to_valid_time
 
 router = APIRouter()
 
@@ -63,6 +63,8 @@ def _reject_if_unsafe(text: str) -> None:
     double up on (the chat.py-mediated path) avoids re-checking."""
     result = moderation.check(text)
     if not result["safe"]:
+        if result.get("unavailable"):  # the check couldn't run: nothing is saved, try again
+            raise HTTPException(503, moderation.UNAVAILABLE_MESSAGE)
         raise HTTPException(400, "This content can't be logged - it looks unsafe or attempts to manipulate the assistant.")
 
 
@@ -185,6 +187,9 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
         "other_people": extracted.get("other_people", []),
         "opinions_expressed": extracted.get("opinions_expressed", []),
     }
+    memory = graph.memory_payload(extracted)  # kept with the note so the memory tables can be rebuilt from it
+    if memory:
+        extracted_facts["memory"] = memory
 
     # Opt-in device location (see ChatInput.tsx) - geo_address is only
     # ever populated if a GOOGLE_MAPS_API_KEY is configured; maps_url
@@ -255,6 +260,9 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
         if owner not in ("me", "them"):
             owner = "me"
         due_date = resolve_relative_phrase(raw_due_date)
+        due_time = to_valid_time(item.get("due_time")) if isinstance(item, dict) else None
+        if due_time and not due_date:
+            due_date = date.today().isoformat()  # "finish it by 7pm" with no day means today
         if raw_due_date and not due_date:
             skipped_due_dates.append({"description": task_desc, "raw_due_date": raw_due_date})
         task_person_id = _resolve_task_person(task_desc, resolved_name, person_id, linked_others, all_people)
@@ -267,10 +275,10 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
         if task_person_id is not None and task_person_id not in already_linked_ids:
             db.link_interaction_person(user_id, interaction_id, task_person_id, relation="")
             already_linked_ids.add(task_person_id)
-        task_ids.append(db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner,
+        task_ids.append(db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner, due_time=due_time,
                                        person_id=task_person_id))
         tasks_created.append({
-            "description": task_desc, "due_date": due_date, "owner": owner, "person_id": task_person_id,
+            "description": task_desc, "due_date": due_date, "due_time": due_time, "owner": owner, "person_id": task_person_id,
         })
 
     print(f"[timing] db_writes: {time.perf_counter() - _t_db0:.2f}s")
@@ -279,8 +287,21 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
     search_index.enqueue(user_id, "note", [interaction_id])
     search_index.enqueue(user_id, "task", task_ids)
     search_index.enqueue(user_id, "person", list(already_linked_ids))
-    # Graph + facts from the same extraction - deterministic, no extra LLM call.
-    graph.submit(graph.on_capture, user_id, interaction_id, interaction_date, person_id, extracted, linked_others)
+    # Details, dates and links from the same extraction - deterministic, no extra
+    # LLM call. Filed here, not in a background thread: the note is already saved,
+    # this takes a second or two, and a background job that silently dies is how
+    # a note ended up with nothing remembered from it. A failure here is logged
+    # and never loses the note (scripts/rebuild_graph.py re-files from the kept payload).
+    remembered, memory_saved = [], False
+    for attempt in range(3):  # filing is safe to repeat: anything already filed is recognised
+        try:
+            with step("memory"):
+                filed = graph.on_capture(user_id, interaction_id, interaction_date, person_id, extracted, linked_others)
+            remembered, memory_saved = filed.get("items", [])[:12], True
+            break
+        except Exception as e:
+            print(f"[warn] filing memory for note {interaction_id} failed (attempt {attempt + 1}/3): {e}")
+            time.sleep(1.0 * (attempt + 1))
 
     return {
         "status": "saved",
@@ -312,13 +333,21 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
         "maps_url": maps_url,
         "decisions": extracted.get("decisions") or [],
         "concerns": extracted.get("concerns") or [],
+        "remembered": remembered,
+        "memory_saved": memory_saved,
     }
 
 
 def _process_extracted(user_id: str, raw_text: str, extracted: dict,
-                        geo_lat: Optional[float] = None, geo_lng: Optional[float] = None) -> dict:
+                        geo_lat: Optional[float] = None, geo_lng: Optional[float] = None,
+                        forced_initiative_id: Optional[int] = None) -> dict:
     interaction_date, date_warning = _resolve_interaction_date(extracted)
     initiative_id = _resolve_initiative(user_id, extracted)
+    if forced_initiative_id is not None and db.get_initiative(user_id, forced_initiative_id):
+        # The user picked the category themselves: it wins over the model's guess,
+        # and there is nothing left to "suggest".
+        initiative_id = forced_initiative_id
+        extracted = {**extracted, "suggested_initiative": None}
 
     primary = extracted.get("primary_person")
     if primary is None:
@@ -397,7 +426,8 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
 # ---------- Endpoints ----------
 
 async def _capture_text_core(user_id: str, raw_text: str, geo_lat: Optional[float], geo_lng: Optional[float],
-                              request: Request, on_stage: Optional[Callable[[str], Awaitable[None]]] = None) -> dict:
+                              request: Request, on_stage: Optional[Callable[[str], Awaitable[None]]] = None,
+                              initiative_id: Optional[int] = None) -> dict:
     """The actual capture-text logic, factored out of capture_text() below
     so api/routers/chat.py can call it directly after ITS OWN moderation
     check without triggering a second one here - moderation.py is one
@@ -441,7 +471,8 @@ async def _capture_text_core(user_id: str, raw_text: str, geo_lat: Optional[floa
         await on_stage("saving")
     with step("process_extracted"):
         return await run_in_threadpool(
-            lambda: _process_extracted(user_id, raw_text, extracted, geo_lat=geo_lat, geo_lng=geo_lng)
+            lambda: _process_extracted(user_id, raw_text, extracted, geo_lat=geo_lat, geo_lng=geo_lng,
+                                       forced_initiative_id=initiative_id)
         )
 
 

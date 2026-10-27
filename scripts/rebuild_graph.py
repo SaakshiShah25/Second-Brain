@@ -1,8 +1,10 @@
 """
-scripts/rebuild_graph.py — Derives the knowledge graph and facts
-(organization, entity_edge, fact - schema.sql section 29) from existing
-people, notes and documents, then refreshes the search index so company
-cards are searchable. No LLM calls. Idempotent: safe to re-run.
+scripts/rebuild_graph.py — Derives the knowledge graph and the memory layer
+(organization, relationship, person_fact, key_date -
+schema.sql sections 29 and 31) from existing people, notes and documents -
+including birthdays/anniversaries saved by the older important_dates feature -
+then refreshes the search index so company and person cards are searchable.
+No LLM calls. Idempotent: safe to re-run.
 
     .venv/bin/python scripts/rebuild_graph.py              # every account
     .venv/bin/python scripts/rebuild_graph.py a@b.com ...   # just these

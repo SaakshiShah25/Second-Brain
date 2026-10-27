@@ -66,7 +66,8 @@ export default function AppLockSettings() {
       >
         <ListRow
           icon={Lock}
-          iconColor="#78716c"
+          iconColor="var(--sb-text-muted)"
+          soft
           label="App lock"
           trailing={
             <Toggle on={enabled} onChange={() => setMode(enabled ? 'turning_off' : 'setting_up')} label="App lock" />

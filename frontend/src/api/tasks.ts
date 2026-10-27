@@ -2,10 +2,24 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import type { StalePerson, TaskFilter, TaskOwner, TasksResponse } from './types'
 
-export function useTasks(filter: TaskFilter) {
+export function useTasks(filter: TaskFilter, enabled = true) {
   return useQuery({
     queryKey: ['tasks', filter],
     queryFn: () => api.get<TasksResponse>(`/api/tasks?status_filter=${filter}`),
+    enabled,
+  })
+}
+
+// Edits a task's wording and/or deadline. A field sent as null clears it.
+export function useEditTask() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ taskId, ...fields }: { taskId: number; description?: string; due_date?: string | null; due_time?: string | null }) =>
+      api.patch(`/api/tasks/${taskId}`, fields),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['agenda'] })
+    },
   })
 }
 
@@ -36,6 +50,7 @@ export function useUpdateTaskStatus() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['agenda'] })
     },
   })
 }
@@ -58,6 +73,7 @@ export function useUpdateTaskOwner() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['agenda'] })
     },
   })
 }

@@ -397,6 +397,30 @@ def _format_personal_notes(entries: list) -> str:
     return "; ".join(f"\"{e.get('note', '')}\" (noted {e.get('date') or 'unknown date'})" for e in entries if e.get("note"))
 
 
+def person_memory_text(user_id: str, person_id: int) -> str:
+    """What the memory layer holds about a person, as one prompt line:
+    remembered details, yearly dates already worked out against today, and
+    family/connections. '' until the memory tables exist or when empty."""
+    try:
+        import graph
+
+        memory = graph.person_memory(user_id, person_id)
+    except Exception:
+        return ""
+    parts = []
+    details = [f"{f['attribute']}: {f['value']}" if f["subject"] == "self" else
+               f"{f['subject']}{' ' + f['subject_name'] if f.get('subject_name') else ''} - {f['attribute']}: {f['value']}"
+               for f in memory["facts"] if f["attribute"] not in ("role", "company", "phone", "email", "trait", "personal")]
+    if details:
+        parts.append("remembered details: " + "; ".join(details))
+    if memory["key_dates"]:
+        parts.append("key dates (already worked out relative to today): " + "; ".join(k["text"] for k in memory["key_dates"]))
+    links = [f"{c['relation'] or c['rel']}: {c['name']}" for c in memory["relationships"]]
+    if links:
+        parts.append("family and connections: " + "; ".join(links))
+    return "; ".join(parts)
+
+
 def _build_person_context(person: dict) -> str:
     """Shared by synthesize_answer() and generate_briefing() - a short
     "Person: X (traits; role, company)" header line. Includes
@@ -409,11 +433,13 @@ def _build_person_context(person: dict) -> str:
     role_company = ", ".join(b for b in [person.get("role"), person.get("company")] if b)
     if role_company:
         bits.append(role_company)
+    if person.get("memory_text"):
+        bits.append(person["memory_text"])
     return f"Person: {person['name']} ({'; '.join(b for b in bits if b)})\n\n"
 
 
 def synthesize_answer(user_query: str, interactions: list, person: dict = None) -> str:
-    if not interactions:
+    if not interactions and not (person and person.get("memory_text")):
         who = f" with {person['name']}" if person else ""
         return f"I don't have any recorded interactions{who} that match this."
 

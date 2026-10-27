@@ -57,7 +57,15 @@ _OUT_OF_SCOPE_MESSAGE = (
     "recalling your own notes, contacts, and follow-ups. Try telling me about a conversation "
     "you had, or ask about someone you've talked to before."
 )
-_UNSAFE_MESSAGE = "I can't help with that request."
+
+
+def _blocked_reply(moderation_result: dict) -> dict:
+    """The reply for a message the safety check refused. Two different cases: it
+    was judged unsafe, or the check itself could not run (rate limit / outage) -
+    in which case nothing is saved or answered and the user is asked to retry."""
+    unavailable = bool(moderation_result.get("unavailable"))
+    return {"intent": "blocked", "status": "answered", "reason": "unavailable" if unavailable else "unsafe",
+            "answer": moderation.refusal(moderation_result)}
 
 
 @router.post("")
@@ -67,10 +75,14 @@ async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_c
     with step("moderation"):
         moderation_result = await run_in_threadpool(moderation.check, body.text)
     if not moderation_result["safe"]:
-        return {"intent": "blocked", "status": "answered", "reason": "unsafe", "answer": _UNSAFE_MESSAGE}
+        return _blocked_reply(moderation_result)
 
-    with step("intent_classify"):
-        detected = await run_in_threadpool(intent.classify, body.text)
+    original_question, chosen_label = _clarification_reply(body)
+    if original_question:
+        detected, body = "ask", body.model_copy(update={"text": original_question})
+    else:
+        with step("intent_classify"):
+            detected = await run_in_threadpool(intent.classify, body.text)
 
     if detected == "out_of_scope":
         print(f"[timing] chat_total: {time.perf_counter() - t_start:.2f}s")
@@ -93,25 +105,45 @@ async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_c
         # _capture_text_core's own docstring for why this can't just be a
         # bool kwarg on the route function instead.
         with step("capture_total"):
-            result = await capture_router._capture_text_core(user_id, body.text, body.geo_lat, body.geo_lng, request)
+            result = await capture_router._capture_text_core(user_id, body.text, body.geo_lat, body.geo_lng, request,
+                                                             initiative_id=body.initiative_id)
         print(f"[timing] chat_total: {time.perf_counter() - t_start:.2f}s")
         return {"intent": "capture", **result}
 
     with step("ask_total"):
-        result = await run_in_threadpool(_answer_question, user_id, body)
+        result = await run_in_threadpool(_answer_question, user_id, body, None, chosen_label)
     print(f"[timing] chat_total: {time.perf_counter() - t_start:.2f}s")
     return {"intent": "ask", **result}
 
 
-def _answer_question(user_id: str, body: ChatRequest, on_stage=None) -> dict:
+def _clarification_reply(body: ChatRequest):
+    """(original question, chosen option) when this message is a tapped
+    answer to a "which one do you mean?" question, else (None, None).
+
+    A tapped chip arrives as an ordinary one-word message ("Priya"), which on
+    its own reads as a note to log - the classifier would file it as one. The
+    chat history carries the options of the question just asked, so a reply
+    that is exactly one of them is routed back to the question it answers."""
+    history = body.history or []
+    if len(history) >= 2 and history[-1].get("role") == "assistant":
+        options = history[-1].get("options") or []
+        if body.text.strip() in options:
+            for m in reversed(history[:-1]):
+                if m.get("role") == "user" and str(m.get("content") or "").strip():
+                    return str(m["content"]), body.text.strip()
+    return None, None
+
+
+def _answer_question(user_id: str, body: ChatRequest, on_stage=None, person_label=None) -> dict:
     """Questions go to the retrieval agent (agent.py); if it fails for any
     reason (rate limit, provider hiccup, missing search index) the previous
     fixed pipeline answers instead - a question always gets an answer.
     _ask_core, not the ask() route: moderation already ran on this text."""
-    ask_router._enforce(user_id, "ai_questions_asked")
+    if not person_label:  # a tapped "which one?" answer is the same question, not a new one
+        ask_router._enforce(user_id, "ai_questions_asked")
     try:
         with step("agent"):
-            return agent.run(user_id, body.text, body.history, on_stage)
+            return agent.run(user_id, body.text, body.history, on_stage, person_label)
     except HTTPException:
         raise
     except Exception as e:
@@ -136,11 +168,15 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
         await queue.put(("stage", "moderating"))
         moderation_result = await run_in_threadpool(moderation.check, body.text)
         if not moderation_result["safe"]:
-            await queue.put(("result", {"intent": "blocked", "status": "answered", "reason": "unsafe", "answer": _UNSAFE_MESSAGE}))
+            await queue.put(("result", _blocked_reply(moderation_result)))
             return
 
-        await queue.put(("stage", "classifying"))
-        detected = await run_in_threadpool(intent.classify, body.text)
+        original_question, chosen_label = _clarification_reply(body)
+        if original_question:
+            detected, body = "ask", body.model_copy(update={"text": original_question})
+        else:
+            await queue.put(("stage", "classifying"))
+            detected = await run_in_threadpool(intent.classify, body.text)
 
         if detected == "out_of_scope":
             await queue.put((
@@ -160,7 +196,8 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
                 await queue.put(("stage", stage))
 
             result = await capture_router._capture_text_core(
-                user_id, body.text, body.geo_lat, body.geo_lng, request, on_stage=on_stage
+                user_id, body.text, body.geo_lat, body.geo_lng, request, on_stage=on_stage,
+                initiative_id=body.initiative_id,
             )
             await queue.put(("result", {"intent": "capture", **result}))
             return
@@ -171,7 +208,7 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
         def on_stage(stage: str) -> None:  # called from the agent's worker thread
             loop.call_soon_threadsafe(queue.put_nowait, ("stage", stage))
 
-        result = await run_in_threadpool(_answer_question, user_id, body, on_stage)
+        result = await run_in_threadpool(_answer_question, user_id, body, on_stage, chosen_label)
         await queue.put(("result", {"intent": "ask", **result}))
     except HTTPException as e:
         await queue.put(("error", {"detail": e.detail, "status_code": e.status_code}))

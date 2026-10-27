@@ -32,6 +32,17 @@ export function friendlyDate(iso: string | null | undefined): string {
   return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) })
 }
 
+/** The full calendar date for a due date: "Fri 30-Oct-2026". A to-do keeps its
+ * own wording ("by Friday"); this is the exact day underneath it. */
+export function fullDate(iso: string | null | undefined): string {
+  if (!iso) return 'No date'
+  const d = parseLocal(iso)
+  if (!d) return iso
+  const weekday = d.toLocaleDateString('en-GB', { weekday: 'short' })
+  const month = d.toLocaleDateString('en-GB', { month: 'short' })
+  return `${weekday} ${String(d.getDate()).padStart(2, '0')}-${month}-${d.getFullYear()}`
+}
+
 /** Section header for grouping a reverse-chronological list, Apple
  * Notes-style: Today / Yesterday / Previous 7 days / "October" /
  * "March 2025". */
@@ -58,4 +69,24 @@ export function groupBySection<T>(items: T[], getDate: (item: T) => string | nul
     else groups.push({ section, items: [item] })
   }
   return groups
+}
+
+/** "19:00" or "19:00:00" -> "7:00 PM". */
+export function timeLabel(hhmm: string | null | undefined): string {
+  if (!hhmm) return ''
+  const [h, m] = hhmm.split(':').map(Number)
+  if (Number.isNaN(h)) return hhmm
+  const d = new Date(2000, 0, 1, h, m || 0)
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
+/** A deadline as one label: "Fri 30-Oct-2026" or "Fri 30-Oct-2026, 7:00 PM". */
+export function dueLabel(iso: string | null | undefined, time?: string | null): string {
+  const day = fullDate(iso)
+  return time ? `${day}, ${timeLabel(time)}` : day
+}
+
+/** The date as YYYY-MM-DD in local time (not UTC, which can land on the day before). */
+export function isoLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }

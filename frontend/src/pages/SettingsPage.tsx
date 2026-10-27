@@ -142,7 +142,8 @@ export default function SettingsPage() {
       >
         <ListRow
           icon={Mail}
-          iconColor="#ea580c"
+          iconColor="var(--sb-text-muted)"
+          soft
           label="Morning brief by email"
           trailing={
             <Toggle
@@ -160,15 +161,15 @@ export default function SettingsPage() {
         title="Privacy"
         footer="Your notes are encrypted at rest. To power search, the daily brief and AI extraction, the app decrypts your notes and shares text with our AI providers (Groq, Cohere) for that processing only. We never sell or share your data."
       >
-        <ListRow icon={ShieldCheck} iconColor="#0d9488" label="Encrypted at rest" />
+        <ListRow icon={ShieldCheck} iconColor="var(--sb-text-muted)" soft label="Encrypted at rest" />
       </ListGroup>
 
       <ListGroup title="Help">
-        <ListRow icon={Compass} iconColor="#2563eb" label="Take the tour again" chevron onClick={() => startTour()} />
+        <ListRow icon={Compass} iconColor="var(--sb-text-muted)" soft label="Take the tour again" chevron onClick={() => startTour()} />
       </ListGroup>
 
       <ListGroup>
-        <ListRow icon={LogOut} iconColor="#78716c" label="Sign out" onClick={() => signOut()} />
+        <ListRow icon={LogOut} iconColor="var(--sb-text-muted)" soft label="Sign out" onClick={() => signOut()} />
       </ListGroup>
 
       <ListGroup
@@ -176,7 +177,8 @@ export default function SettingsPage() {
       >
         <ListRow
           icon={Trash2}
-          iconColor="#e5383b"
+          iconColor="var(--sb-danger)"
+          soft
           label={deleteAccount.isPending ? 'Deleting…' : 'Delete account'}
           danger
           disabled={deleteAccount.isPending}

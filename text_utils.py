@@ -24,12 +24,30 @@ for _cp in _HYPHEN_CODEPOINTS:
     _REPLACEMENTS[chr(_cp)] = "-"
 
 
+_MONTHS = (r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|"
+           r"Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)")
+_CLOCK = r"\d{1,2}(?::\d{2})?\s*[ap](?:m|\.m\.)(?![A-Za-z])"
+_MONTH_THEN_TIME = re.compile(rf"\b({_MONTHS}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?)\s+({_CLOCK})", re.I)
+_DAY_THEN_TIME = re.compile(rf"\b(\d{{1,2}}(?:st|nd|rd|th)?\s+{_MONTHS})\s+({_CLOCK})", re.I)
+_AM_PM = re.compile(r"\b(\d{1,2}(?::\d{2})?)\s*([ap])(?:m|\.m\.)(?![A-Za-z])", re.I)
+
+
+def tidy_dates_and_times(text: str) -> str:
+    """Standard punctuation for a date followed by a time: "by October 27 8pm"
+    becomes "by October 27, 8 PM", and "7:30pm" becomes "7:30 PM". ("October 27
+    at 8pm" keeps its "at" and just gets the PM fixed.) Models write these
+    inconsistently, so it is applied to everything they write."""
+    text = _MONTH_THEN_TIME.sub(lambda m: f"{m.group(1)}, {m.group(2)}", text)
+    text = _DAY_THEN_TIME.sub(lambda m: f"{m.group(1)}, {m.group(2)}", text)
+    return _AM_PM.sub(lambda m: f"{m.group(1)} {m.group(2).upper()}M", text)
+
+
 def normalize_text(text: str) -> str:
     if not text:
         return text
     for bad, good in _REPLACEMENTS.items():
         text = text.replace(bad, good)
-    return text
+    return tidy_dates_and_times(text)
 
 
 _STANDALONE_I = re.compile(r"\bi\b")

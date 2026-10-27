@@ -74,7 +74,8 @@ def _task_chunk(t: dict) -> dict:
     owner = "I owe this" if t.get("owner") == "me" else f"{who or 'They'} owe(s) this"
     title = f"Follow-up · {t.get('description', '')[:60]}"
     text = "\n".join(p for p in [
-        f"Follow-up ({t.get('status')}) - {owner}" + (f", due {t['due_date']}" if t.get("due_date") else ", no due date"),
+        f"Follow-up ({t.get('status')}) - {owner}" + (f", due {t['due_date']}" + (f" at {str(t['due_time'])[:5]}" if t.get("due_time") else "")
+                                               if t.get("due_date") else ", no due date"),
         t.get("description", ""),
         f"About: {who}" if who else "",
         f"From a note on {inter.get('date')}: {inter.get('summary') or ''}" if inter else "",
@@ -86,7 +87,14 @@ def _task_chunk(t: dict) -> dict:
             "meta": {"status": t.get("status"), "owner": t.get("owner")}}
 
 
-def _person_chunk(p: dict) -> dict:
+def _fact_line(f: dict) -> str:
+    who = "" if f.get("subject", "self") == "self" else \
+        f"{f['subject']}{' ' + f['subject_name'] if f.get('subject_name') else ''} - "
+    return f"{who}{f['attribute']}: {f['value']}"
+
+
+def _person_chunk(p: dict, memory: Optional[dict] = None) -> dict:
+    memory = memory or {}
     notes = "; ".join(f"{e.get('date')}: {e.get('note')}" for e in (p.get("personal_notes") or []))
     title = f"Person · {p['name']}"
     text = "\n".join(x for x in [
@@ -100,6 +108,11 @@ def _person_chunk(p: dict) -> dict:
         f"Phone: {p['phone']}" if p.get("phone") else "",
         f"Email: {p['email']}" if p.get("email") else "",
         f"First met: {p['first_met_date']}" if p.get("first_met_date") else "",
+        _join("Key dates", [k["text"] for k in memory.get("key_dates", [])]),
+        _join("Known details", [_fact_line(f) for f in memory.get("facts", [])
+                                if f["attribute"] not in ("role", "company", "phone", "email", "trait", "personal")]),
+        _join("Family and connections", [f"{c['relation'] or c['rel']}: {c['name']}"
+                                         for c in memory.get("relationships", [])]),
     ] if x)
     return {"kind": "person", "entity_id": p["id"], "title": title, "text": text,
             "item_date": p.get("first_met_date"), "person_ids": [p["id"]], "initiative_id": None,
@@ -137,6 +150,18 @@ def _organization_chunk(profile: dict) -> dict:
             "text": text, "item_date": None, "person_ids": sorted(set(ids)), "initiative_id": None, "meta": {}}
 
 
+def _memories(user_id: str, only_ids=None) -> dict:
+    """{person_id: graph.person_memory(...)} for the people whose cards are
+    being built; empty (cards fall back to the plain profile) until the
+    memory tables exist."""
+    try:
+        import graph
+
+        return graph.all_person_memory(user_id, sorted(only_ids) if only_ids is not None else None)
+    except Exception:
+        return {}
+
+
 def _build(user_id: str, wanted: Optional[dict] = None) -> list:
     """Chunks for the given {kind: {ids}} (or everything when None)."""
     def want(kind):
@@ -158,7 +183,9 @@ def _build(user_id: str, wanted: Optional[dict] = None) -> list:
     if want("task"):
         chunks += [_task_chunk(t) for t in db.get_all_tasks_with_context(user_id) if keep("task", t["id"])]
     if want("person"):
-        chunks += [_person_chunk(p) for p in db.get_all_people(user_id) if keep("person", p["id"])]
+        memories = _memories(user_id, wanted.get("person") if wanted is not None else None)
+        chunks += [_person_chunk(p, memories.get(p["id"])) for p in db.get_all_people(user_id)
+                   if keep("person", p["id"])]
     if want("document"):
         try:
             docs = db.get_documents_for_search(user_id)

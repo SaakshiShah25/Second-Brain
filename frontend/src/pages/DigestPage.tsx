@@ -9,36 +9,41 @@ import {
   CheckCircle2,
   ChevronDown,
   Mail,
+  RefreshCw,
   Sunrise,
   TriangleAlert,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { useMorningBrief, useSendBriefEmail } from '../api/brief'
+import { useMorningBrief, useRefreshBrief, useSendBriefEmail } from '../api/brief'
 import { useCalendarStatus, useStartCalendarConnect } from '../api/calendar'
 import { useGoogleStatus } from '../api/google'
 import {
   useAddTaskToCalendar,
+  useEditTask,
   useRemoveTaskFromCalendar,
   useStalePeople,
   useTasks,
   useUpdateTaskOwner,
   useUpdateTaskStatus,
 } from '../api/tasks'
-import type { Task, TaskFilter } from '../api/types'
+import type { Task } from '../api/types'
 import Avatar from '../components/Avatar'
 import Button from '../components/Button'
+import CalendarView from '../components/CalendarView'
+import ComingUp from '../components/ComingUp'
 import Chip, { ChipRow } from '../components/Chip'
 import { Input, Label } from '../components/fields'
 import PageHeader from '../components/PageHeader'
 import Segmented from '../components/Segmented'
 import Sheet from '../components/Sheet'
-import { friendlyDate } from '../lib/dates'
+import { dueLabel, isoLocal } from '../lib/dates'
 import { useUsageMode } from '../lib/usageMode'
 
 function MorningBriefCard() {
   const { data, isLoading } = useMorningBrief()
   const sendEmail = useSendBriefEmail()
+  const refresh = useRefreshBrief()
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -47,7 +52,24 @@ function MorningBriefCard() {
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-soft text-brand-ink">
           <Sunrise size={18} strokeWidth={2} />
         </span>
-        <h2 className="flex-1 text-[0.9375rem] font-semibold">Morning brief</h2>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[0.9375rem] font-semibold">Morning brief</h2>
+          {data?.generated_at && (
+            <p className="text-[0.75rem] leading-tight text-text-faint">
+              As of {new Date(data.generated_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => refresh.mutate()}
+          disabled={refresh.isPending}
+          aria-label="Rewrite the brief from what is true now"
+          title="Rewrite from what's true now"
+          className="pressable flex h-9 w-9 items-center justify-center rounded-full text-text-muted disabled:opacity-50"
+        >
+          <RefreshCw size={16} strokeWidth={2} className={refresh.isPending ? 'animate-spin' : ''} />
+        </button>
         {/* Already emailed automatically each morning (Settings >
             Notifications) - this is a manual resend. */}
         <button
@@ -80,7 +102,23 @@ function MorningBriefCard() {
               expanded ? '' : 'max-h-40 overflow-hidden'
             }`}
           >
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{data?.brief ?? ''}</ReactMarkdown>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                // "Overdue (2)" gets its own heading in the warning colour so it can't be missed.
+                h3: ({ children }) => {
+                  const overdue = /^overdue/i.test(String(children))
+                  return (
+                    <h3 className={`mt-4 mb-1.5 flex items-center gap-1.5 text-[0.9375rem] font-semibold ${overdue ? 'text-danger' : ''}`}>
+                      {overdue && <TriangleAlert size={16} strokeWidth={2.3} />}
+                      {children}
+                    </h3>
+                  )
+                },
+              }}
+            >
+              {data?.brief ?? ''}
+            </ReactMarkdown>
             {!expanded && (
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-bg-card to-transparent" />
             )}
@@ -99,16 +137,8 @@ function MorningBriefCard() {
   )
 }
 
-const FILTERS: { value: TaskFilter; label: string }[] = [
-  { value: 'open', label: 'Open' },
-  { value: 'due_soon', label: 'Due soon' },
-  { value: 'overdue', label: 'Overdue' },
-  { value: 'done', label: 'Done' },
-  { value: 'all', label: 'All' },
-]
-
 function isOverdue(task: Task): boolean {
-  return task.status === 'open' && !!task.due_date && task.due_date < new Date().toISOString().slice(0, 10)
+  return task.status === 'open' && !!task.due_date && task.due_date < isoLocal(new Date())
 }
 
 // "Unknown" is a placeholder for "a person was involved but wasn't
@@ -133,6 +163,122 @@ function taskContext(task: Task): string {
 
 type OwnerFilter = 'all' | 'me' | 'them'
 
+const PILL_OPTIONS: { value: OwnerFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'me', label: 'I owe' },
+  { value: 'them', label: 'They owe' },
+]
+
+// One small control for whose follow-ups to show.
+function OwnerPills({ value, onChange }: { value: OwnerFilter; onChange: (v: OwnerFilter) => void }) {
+  return (
+    <div role="tablist" aria-label="Whose follow-ups" className="flex rounded-full bg-bg-elevated p-0.5">
+      {PILL_OPTIONS.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="tab"
+          aria-selected={o.value === value}
+          onClick={() => onChange(o.value)}
+          className={`h-8 rounded-full px-3 text-[0.8125rem] font-medium ${
+            o.value === value ? 'bg-accent-soft text-accent ring-1 ring-accent/40' : 'text-text-muted'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function TaskRow({
+  task,
+  onToggle,
+  onOpen,
+  toggling,
+}: {
+  task: Task
+  onToggle: (task: Task) => void
+  onOpen: (task: Task) => void
+  toggling: boolean
+}) {
+  const overdue = isOverdue(task)
+  const done = task.status === 'done'
+  return (
+    <div className="flex items-start gap-3 px-4 py-3">
+      {/* Things-style round checkbox, with a generous invisible hit area around the visible 22px circle. */}
+      <button
+        type="button"
+        onClick={() => onToggle(task)}
+        disabled={toggling}
+        aria-label={done ? 'Reopen' : 'Mark done'}
+        className="-m-2 flex-shrink-0 p-2 disabled:cursor-not-allowed"
+      >
+        <span
+          className={`flex h-[1.375rem] w-[1.375rem] items-center justify-center rounded-full border-2 transition-colors ${
+            done ? 'border-success bg-success text-white' : task.owner === 'them' ? 'border-them-task' : 'border-text-faint'
+          }`}
+        >
+          {done && <Check size={13} strokeWidth={3} />}
+        </span>
+      </button>
+      <button type="button" onClick={() => onOpen(task)} className="pressable min-w-0 flex-1 text-left">
+        <span className={`line-clamp-2 text-[0.9375rem] leading-snug ${done ? 'text-text-faint line-through' : ''}`}>
+          {task.description}
+        </span>
+        <span className="mt-0.5 flex items-center gap-1.5 text-[0.8125rem] text-text-muted">
+          <span className={`truncate ${task.owner === 'them' ? 'text-them-task' : ''}`}>{taskContext(task)}</span>
+          {task.due_date && (
+            <>
+              <span className="text-text-faint">·</span>
+              <span className={`flex flex-shrink-0 items-center gap-1 whitespace-nowrap ${overdue ? 'font-medium text-danger' : ''}`}>
+                {overdue && <TriangleAlert size={12} strokeWidth={2.2} />}
+                {dueLabel(task.due_date, task.due_time)}
+              </span>
+            </>
+          )}
+          {task.calendar_event_id && <CalendarCheck size={13} strokeWidth={2} className="flex-shrink-0 text-link" />}
+        </span>
+      </button>
+    </div>
+  )
+}
+
+// A heading with its count, then its rows. Empty sections are not drawn at all.
+function TaskSection({
+  title,
+  tasks,
+  tone,
+  ...rowProps
+}: {
+  title: string
+  tasks: Task[]
+  tone?: 'danger'
+  onToggle: (task: Task) => void
+  onOpen: (task: Task) => void
+  toggling: boolean
+}) {
+  if (tasks.length === 0) return null
+  return (
+    <section className="mb-5" aria-label={title}>
+      <h3 className={`mb-2 flex items-center gap-1.5 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide ${tone === 'danger' ? 'text-danger' : 'text-text-faint'}`}>
+        {tone === 'danger' && <TriangleAlert size={14} strokeWidth={2.4} />}
+        {title}
+        <span className="font-medium normal-case tracking-normal opacity-80">· {tasks.length}</span>
+      </h3>
+      <div
+        className={`divide-y divide-border overflow-hidden rounded-2xl border bg-bg-card ${
+          tone === 'danger' ? 'border-danger/40' : 'border-border'
+        }`}
+      >
+        {tasks.map((t) => (
+          <TaskRow key={t.id} task={t} {...rowProps} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
 const STALE_PRESETS = [
   { days: 14, label: '2 weeks' },
   { days: 30, label: '1 month' },
@@ -145,12 +291,17 @@ function todayHeading() {
 }
 
 export default function DigestPage() {
-  const [filter, setFilter] = useState<TaskFilter>('open')
+  const [showCompleted, setShowCompleted] = useState(false)
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('all')
   const [threshold, setThreshold] = useState(30)
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null)
   const [scheduling, setScheduling] = useState(false)
   const [scheduleDate, setScheduleDate] = useState('')
+  const [view, setView] = useState<'list' | 'calendar'>('list')
+  const [editing, setEditing] = useState(false)
+  const [editDesc, setEditDesc] = useState('')
+  const [editDate, setEditDate] = useState('')
+  const [editTime, setEditTime] = useState('')
   const usage = useUsageMode()
   // Wording follows what the account is used for.
   const copy = {
@@ -159,11 +310,24 @@ export default function DigestPage() {
     both: { tasks: 'Follow-ups', reconnect: 'Reconnect', reconnectSub: "People you haven't talked to in a while.", schedule: 'Schedule a meeting' },
   }[usage.mode]
 
-  const { data, isLoading, error } = useTasks(filter)
-  const visibleTasks = (data?.tasks ?? []).filter(
-    (task) => filter !== 'open' || ownerFilter === 'all' || task.owner === ownerFilter,
-  )
-  const activeTask = (data?.tasks ?? []).find((t) => t.id === activeTaskId) ?? null
+  const { data, isLoading, error } = useTasks('all')
+  const allTasks = data?.tasks ?? []
+  const activeTask = allTasks.find((t) => t.id === activeTaskId) ?? null
+
+  // The list is sorted into sections by when each follow-up is due, not filtered by tabs.
+  const todayIso = isoLocal(new Date())
+  const weekEnd = isoLocal(new Date(Date.now() + 7 * 86_400_000))
+  const shown = allTasks.filter((t) => ownerFilter === 'all' || t.owner === ownerFilter)
+  const open = shown.filter((t) => t.status === 'open')
+  const byDue = (a: Task, b: Task) =>
+    (a.due_date ?? '').localeCompare(b.due_date ?? '') || (a.due_time ?? '99').localeCompare(b.due_time ?? '99')
+  const overdueTasks = open.filter((t) => t.due_date && t.due_date < todayIso).sort(byDue)
+  const todayTasks = open.filter((t) => t.due_date === todayIso).sort(byDue)
+  const weekTasks = open.filter((t) => t.due_date && t.due_date > todayIso && t.due_date <= weekEnd).sort(byDue)
+  const laterTasks = open.filter((t) => t.due_date && t.due_date > weekEnd).sort(byDue)
+  const undatedTasks = open.filter((t) => !t.due_date)
+  const doneTasks = shown.filter((t) => t.status === 'done').sort((a, b) => (b.due_date ?? '').localeCompare(a.due_date ?? ''))
+  const editTask = useEditTask()
   const updateStatus = useUpdateTaskStatus()
   const updateOwner = useUpdateTaskOwner()
   const { data: stalePeople, isLoading: staleLoading } = useStalePeople(threshold)
@@ -179,14 +343,16 @@ export default function DigestPage() {
   function openTask(task: Task) {
     setActiveTaskId(task.id)
     setScheduling(false)
+    setEditing(false)
     setScheduleDate(task.due_date ?? '')
   }
 
-  const stats: { label: string; value: number | undefined; filter: TaskFilter; tone?: string }[] = [
-    { label: 'Overdue', value: data?.counts.overdue, filter: 'overdue', tone: 'text-danger' },
-    { label: 'This week', value: data?.counts.due_soon, filter: 'due_soon' },
-    { label: 'Open', value: data?.counts.open, filter: 'open' },
-  ]
+  function startEditing(task: Task) {
+    setEditDesc(task.description)
+    setEditDate(task.due_date ?? '')
+    setEditTime((task.due_time ?? '').slice(0, 5))
+    setEditing(true)
+  }
 
   return (
     <div>
@@ -194,117 +360,86 @@ export default function DigestPage() {
 
       <MorningBriefCard />
 
-      <h2 className="mb-3 font-display text-[1.375rem] font-semibold tracking-[-0.025em]">{copy.tasks}</h2>
+      <Segmented
+        className="mb-5"
+        value={view}
+        onChange={setView}
+        options={[
+          { value: 'list', label: copy.tasks },
+          { value: 'calendar', label: 'Calendar' },
+        ]}
+      />
 
-      {/* Tappable stat tiles - each one jumps the list to that filter. */}
-      <div className="mb-4 grid grid-cols-3 gap-2.5">
-        {stats.map((s) => (
-          <button
-            key={s.label}
-            type="button"
-            onClick={() => setFilter(s.filter)}
-            className={`pressable rounded-2xl border p-3 text-left ${
-              filter === s.filter ? 'border-accent bg-accent-soft' : 'border-border bg-bg-card'
-            }`}
-          >
-            <div className={`text-2xl font-semibold tabular-nums tracking-tight ${s.value ? s.tone ?? '' : ''}`}>
-              {s.value ?? '–'}
+      {view === 'calendar' ? (
+        <>
+          <ComingUp days={30} />
+          <CalendarView
+            onOpenTask={(id) => {
+              setActiveTaskId(id)
+              setScheduling(false)
+              setEditing(false)
+            }}
+          />
+        </>
+      ) : (
+        <>
+          {/* Birthdays and anniversaries only when one is close; the full month is in the Calendar. */}
+          <ComingUp days={7} />
+
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <p className="text-[0.9375rem] text-text-muted">
+              {open.length === 0 ? 'Nothing open' : `${open.length} open`}
+              {overdueTasks.length > 0 && <span className="font-medium text-danger"> · {overdueTasks.length} overdue</span>}
+            </p>
+            <OwnerPills value={ownerFilter} onChange={setOwnerFilter} />
+          </div>
+
+          {error && <p className="text-sm text-danger">Couldn't load tasks: {String(error)}</p>}
+          {isLoading && <p className="text-sm text-text-muted">Loading…</p>}
+          {!isLoading && !error && open.length === 0 && (
+            <div className="mb-6 rounded-2xl border border-dashed border-border-strong py-8 text-center">
+              <CheckCircle2 size={28} strokeWidth={1.6} className="mx-auto mb-2 text-success" />
+              <p className="text-[0.9375rem] text-text-muted">All clear. Nothing waiting on anyone.</p>
             </div>
-            <div className="text-[0.8125rem] text-text-muted">{s.label}</div>
-          </button>
-        ))}
-      </div>
+          )}
 
-      <ChipRow className="mb-3">
-        {FILTERS.map((f) => (
-          <Chip key={f.value} active={filter === f.value} onClick={() => setFilter(f.value)}>
-            {f.label}
-            {f.value === 'done' && data?.counts.done ? (
-              <span className="text-xs opacity-60">{data.counts.done}</span>
-            ) : null}
-          </Chip>
-        ))}
-      </ChipRow>
-
-      {filter === 'open' && (
-        <Segmented
-          className="mb-4"
-          value={ownerFilter}
-          onChange={setOwnerFilter}
-          options={[
-            { value: 'all', label: 'Everyone' },
-            { value: 'me', label: 'I owe' },
-            { value: 'them', label: 'They owe' },
-          ]}
-        />
-      )}
-
-      {error && <p className="text-sm text-danger">Couldn't load tasks: {String(error)}</p>}
-      {isLoading && <p className="text-sm text-text-muted">Loading…</p>}
-      {!isLoading && visibleTasks.length === 0 && (
-        <div className="mb-6 rounded-2xl border border-dashed border-border-strong py-8 text-center">
-          <CheckCircle2 size={28} strokeWidth={1.6} className="mx-auto mb-2 text-success" />
-          <p className="text-[0.9375rem] text-text-muted">
-            {filter === 'open' || filter === 'overdue' || filter === 'due_soon' ? 'All clear here.' : 'Nothing here.'}
-          </p>
-        </div>
-      )}
-
-      {visibleTasks.length > 0 && (
-        <div className="mb-4 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
-          {visibleTasks.map((task) => {
-            const overdue = isOverdue(task)
-            const done = task.status === 'done'
+          {(() => {
+            const rowProps = {
+              onToggle: (t: Task) => updateStatus.mutate({ taskId: t.id, status: t.status === 'done' ? 'open' : 'done' }),
+              onOpen: openTask,
+              toggling: updateStatus.isPending,
+            }
             return (
-              <div key={task.id} className="flex items-start gap-3 px-4 py-3">
-                {/* Things-style round checkbox, with a generous invisible
-                    hit area around the visible 22px circle. */}
-                <button
-                  type="button"
-                  onClick={() => updateStatus.mutate({ taskId: task.id, status: done ? 'open' : 'done' })}
-                  disabled={updateStatus.isPending}
-                  aria-label={done ? 'Reopen' : 'Mark done'}
-                  className="-m-2 flex-shrink-0 p-2 disabled:cursor-not-allowed"
-                >
-                  <span
-                    className={`flex h-[1.375rem] w-[1.375rem] items-center justify-center rounded-full border-2 transition-colors ${
-                      done
-                        ? 'border-success bg-success text-white'
-                        : task.owner === 'them'
-                          ? 'border-them-task'
-                          : 'border-text-faint'
-                    }`}
-                  >
-                    {done && <Check size={13} strokeWidth={3} />}
-                  </span>
-                </button>
-                <button type="button" onClick={() => openTask(task)} className="pressable min-w-0 flex-1 text-left">
-                  <span className={`line-clamp-2 text-[0.9375rem] leading-snug ${done ? 'text-text-faint line-through' : ''}`}>
-                    {task.description}
-                  </span>
-                  <span className="mt-0.5 flex items-center gap-1.5 text-[0.8125rem] text-text-muted">
-                    <span className={`truncate ${task.owner === 'them' ? 'text-them-task' : ''}`}>{taskContext(task)}</span>
-                    {task.due_date && (
-                      <>
-                        <span className="text-text-faint">·</span>
-                        <span
-                          className={`flex flex-shrink-0 items-center gap-1 whitespace-nowrap ${
-                            overdue ? 'font-medium text-danger' : ''
-                          }`}
-                        >
-                          {overdue && <TriangleAlert size={12} strokeWidth={2.2} />}
-                          {friendlyDate(task.due_date)}
-                        </span>
-                      </>
+              <>
+                <TaskSection title="Overdue" tone="danger" tasks={overdueTasks} {...rowProps} />
+                <TaskSection title="Today" tasks={todayTasks} {...rowProps} />
+                <TaskSection title="Next 7 days" tasks={weekTasks} {...rowProps} />
+                <TaskSection title="Later" tasks={laterTasks} {...rowProps} />
+                <TaskSection title="No date" tasks={undatedTasks} {...rowProps} />
+                {doneTasks.length > 0 && (
+                  <section className="mb-5" aria-label="Completed">
+                    <button
+                      type="button"
+                      onClick={() => setShowCompleted((v) => !v)}
+                      aria-expanded={showCompleted}
+                      className="pressable mb-2 flex items-center gap-1.5 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint"
+                    >
+                      Completed
+                      <span className="font-medium normal-case tracking-normal opacity-80">· {doneTasks.length}</span>
+                      <ChevronDown size={15} strokeWidth={2.2} className={showCompleted ? 'rotate-180' : ''} />
+                    </button>
+                    {showCompleted && (
+                      <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
+                        {doneTasks.slice(0, 30).map((t) => (
+                          <TaskRow key={t.id} task={t} {...rowProps} />
+                        ))}
+                      </div>
                     )}
-                    {task.calendar_event_id && <CalendarCheck size={13} strokeWidth={2} className="flex-shrink-0 text-link" />}
-                  </span>
-                </button>
-              </div>
+                  </section>
+                )}
+              </>
             )
-          })}
-        </div>
-      )}
+          })()}
 
       {google?.configured && calendarStatus && !calendarStatus.connected && (
         <div className="mb-8 rounded-2xl border border-border bg-bg-card p-4">
@@ -371,6 +506,9 @@ export default function DigestPage() {
         </div>
       )}
 
+        </>
+      )}
+
       {activeTask && (
         <Sheet onClose={() => setActiveTaskId(null)}>
           <p className="mb-1 text-[0.8125rem] font-medium uppercase tracking-wide text-text-faint">Follow-up</p>
@@ -378,8 +516,57 @@ export default function DigestPage() {
           <p className="mb-5 text-[0.9375rem] text-text-muted">
             {taskContext(activeTask)}
             {activeTask.due_date &&
-              ` · ${isOverdue(activeTask) ? 'overdue, was due' : 'due'} ${friendlyDate(activeTask.due_date)}`}
+              ` · ${isOverdue(activeTask) ? 'overdue, was due' : 'due'} ${dueLabel(activeTask.due_date, activeTask.due_time)}`}
           </p>
+
+          {editing ? (
+            <div className="mb-4 rounded-2xl bg-bg-elevated p-3.5">
+              <Label>What needs doing</Label>
+              <Input value={editDesc} onChange={(e) => setEditDesc(e.target.value)} />
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Due date</Label>
+                  <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+                </div>
+                <div>
+                  <Label>Time (optional)</Label>
+                  <Input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} disabled={!editDate} />
+                </div>
+              </div>
+              {editTask.isError && (
+                <p className="mt-2 text-[0.8125rem] text-danger">
+                  {editTask.error instanceof Error ? editTask.error.message : "Couldn't save that - please try again."}
+                </p>
+              )}
+              <div className="mt-3 flex gap-2">
+                <Button className="flex-1" onClick={() => setEditing(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  className="flex-1"
+                  disabled={editTask.isPending || !editDesc.trim()}
+                  onClick={() =>
+                    editTask.mutate(
+                      {
+                        taskId: activeTask.id,
+                        description: editDesc.trim(),
+                        due_date: editDate || null,
+                        due_time: editDate && editTime ? editTime : null,
+                      },
+                      { onSuccess: () => setEditing(false) },
+                    )
+                  }
+                >
+                  {editTask.isPending ? 'Saving…' : 'Save'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" onClick={() => startEditing(activeTask)} className="pressable mb-4 text-[0.9375rem] font-medium text-link">
+              Edit wording or deadline
+            </button>
+          )}
 
           <div className="flex flex-col gap-2">
             <Button
@@ -429,7 +616,7 @@ export default function DigestPage() {
                 // The meeting can land on any date up to the due date
                 // (e.g. due by the 24th, meet on the 21st).
                 <div className="mt-2 rounded-2xl bg-bg-elevated p-3.5">
-                  <Label>Meeting date (due {friendlyDate(activeTask.due_date)})</Label>
+                  <Label>Meeting date (due {dueLabel(activeTask.due_date, activeTask.due_time)})</Label>
                   <Input type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} />
                   <div className="mt-3 flex gap-2">
                     <Button className="flex-1" onClick={() => setScheduling(false)}>

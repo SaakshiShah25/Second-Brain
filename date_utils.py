@@ -138,3 +138,30 @@ def resolve_relative_phrase(phrase, reference_date: date = None) -> Optional[str
         return (reference_date + timedelta(weeks=int(m.group(1)))).isoformat()
 
     return None
+
+
+_TIME_24 = re.compile(r"^\s*([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?\s*$")
+_TIME_12 = re.compile(r"^\s*(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*([ap])\.?m\.?\s*$", re.I)
+
+
+def to_valid_time(value) -> Optional[str]:
+    """'19:00', '7pm', '7:30 PM', '19:30:00' -> 'HH:MM' (24-hour), else None.
+    Anything that is not clearly a clock time (e.g. 'evening', 'EOD') is dropped,
+    never guessed, so a deadline only ever carries a time the note really stated."""
+    if not value or not isinstance(value, str):
+        return None
+    text = value.strip().lower()
+    if text in ("noon", "midday"):
+        return "12:00"
+    if text == "midnight":
+        return "00:00"
+    m = _TIME_24.match(text)
+    if m:
+        return f"{int(m.group(1)):02d}:{m.group(2)}"
+    m = _TIME_12.match(text)
+    if m:
+        hour, minute = int(m.group(1)) % 12, int(m.group(2) or 0)
+        if m.group(3).lower() == "p":
+            hour += 12
+        return f"{hour:02d}:{minute:02d}"
+    return None

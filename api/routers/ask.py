@@ -18,6 +18,7 @@ import entitlements
 import moderation
 import person_match
 import retrieval
+import search_index
 from api.auth import get_current_user_id
 from api.schemas import AskConfirmRequest, AskRequest
 
@@ -41,7 +42,12 @@ def _enforce(user_id: str, resource: str):
 
 def _proceed_with_retrieval(user_id: str, query: str, parsed: dict, person: Optional[dict]) -> str:
     if person:
+        # What the memory layer holds (birthday, likes, family) travels with
+        # the person, so it answers even when there are no notes about them.
+        person = {**person, "memory_text": retrieval.person_memory_text(user_id, person["id"])}
         interactions = retrieval.get_all_interactions_for_person(user_id, person["id"])
+        if not interactions and person["memory_text"]:
+            return retrieval.synthesize_answer(query, [], person)
         if not interactions:
             return f"I don't have any interactions recorded for {person['name']} yet."
         selected = retrieval.select_by_scope(
@@ -53,8 +59,19 @@ def _proceed_with_retrieval(user_id: str, query: str, parsed: dict, person: Opti
     semantic_query = parsed.get("semantic_query") or query
     query_embedding = embeddings.compute_embedding(semantic_query, input_type="search_query")
     if query_embedding is None:
-        return ("I couldn't resolve a specific person from your question, and "
-                "semantic search isn't available right now.")
+        # The embedding service (Cohere) could not be reached or is rate limited, so
+        # "search by meaning" is out for this question. Words still work: the search
+        # index scores by keywords on its own when it has no vector.
+        try:
+            hits = search_index.search(user_id, semantic_query, kinds=["note"], k=5)
+        except Exception:
+            hits = []
+        if not hits:
+            return ("I couldn't search your notes by meaning just now - the search service didn't respond "
+                    "(it may be rate limited), and a word search found nothing. Please try again in a minute.")
+        selected = db.get_interactions_by_ids(user_id, [h["entity_id"] for h in hits])
+        selected = retrieval.attach_tasks(user_id, selected)
+        return retrieval.synthesize_answer(query, selected, None)
     matches = db.search_interactions_by_embedding(user_id, query_embedding, top_k=5)
     if not matches:
         return "I couldn't find anything matching that."
@@ -108,6 +125,8 @@ def ask(body: AskRequest, user_id: str = Depends(get_current_user_id)):
     # _ask_core directly and has already run its own before getting here.
     result = moderation.check(body.query)
     if not result["safe"]:
+        if result.get("unavailable"):
+            raise HTTPException(503, moderation.UNAVAILABLE_MESSAGE)
         raise HTTPException(400, "I can't help with that request.")
     return _ask_core(user_id, body)
 

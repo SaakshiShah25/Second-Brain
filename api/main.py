@@ -27,7 +27,7 @@ import voice
 from llm_client import get_client as get_llm_client
 from api.auth import get_current_user_id
 from api.rate_limit import limiter
-from api.routers import ask, brief, calendar, capture, chat, documents, google, initiatives, notes, people, settings, tasks
+from api.routers import agenda, ask, brief, calendar, capture, chat, documents, google, initiatives, notes, people, settings, tasks
 
 app = FastAPI(title="MyConfía API")
 
@@ -44,8 +44,8 @@ app = FastAPI(title="MyConfía API")
 # points (chat.py, capture.py's voice/card endpoints) carry a tighter,
 # explicit @limiter.limit(...) since those are what actually cost money
 # against Groq/Cohere's shared, rate-limited free-tier quota - including
-# the one moderation.py fails OPEN under quota pressure (see its own
-# docstring), so protecting that quota is itself a safety measure, not
+# the safety check (moderation.py refuses to wave a message through when it
+# cannot run), so protecting that quota is itself a safety measure, not
 # just a cost one.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -93,6 +93,7 @@ app.include_router(capture.router, prefix="/api/capture", tags=["capture"])
 app.include_router(ask.router, prefix="/api/ask", tags=["ask"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(calendar.router, prefix="/api/calendar", tags=["calendar"])
+app.include_router(agenda.router, prefix="/api/agenda", tags=["agenda"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(brief.router, prefix="/api/brief", tags=["brief"])
 app.include_router(initiatives.router, prefix="/api/initiatives", tags=["initiatives"])
