@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Check, Compass, LogOut, Mail, Moon, ShieldCheck, Sun, Trash2, Type } from 'lucide-react'
+import { Activity, Check, Compass, Download, LogOut, Mail, Moon, ShieldCheck, Sun, Trash2, Type } from 'lucide-react'
+import { useIsAdmin } from '../api/admin'
+import { fetchBlob } from '../api/client'
 import { useDeleteAccount, useSettings, useUpdateSettings } from '../api/settings'
 import type { FontSize, Theme } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
@@ -29,6 +31,25 @@ export default function SettingsPage() {
   const { user, signOut } = useAuth()
   const { startTour } = useTour()
   const deleteAccount = useDeleteAccount()
+  const isAdmin = useIsAdmin().data?.admin
+  const [exporting, setExporting] = useState(false)
+
+  async function downloadData() {
+    setExporting(true)
+    try {
+      const blob = await fetchBlob('/api/settings/export')
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `myconfia-export-${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      window.alert("Couldn't prepare your data - please try again.")
+    } finally {
+      setExporting(false)
+    }
+  }
   const navigate = useNavigate()
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const initial = (user?.email?.[0] ?? '?').toUpperCase()
@@ -159,7 +180,30 @@ export default function SettingsPage() {
         footer="Your notes are encrypted at rest. To power search, the daily brief and AI extraction, the app decrypts your notes and shares text with our AI providers (Groq, Cohere) for that processing only. We never sell or share your data."
       >
         <ListRow icon={ShieldCheck} iconColor="var(--sb-text-muted)" soft label="Encrypted at rest" />
+        <ListRow
+          icon={Download}
+          iconColor="var(--sb-text-muted)"
+          soft
+          label={exporting ? 'Preparing…' : 'Download my data'}
+          detail="Every note, task and initiative, as a file"
+          disabled={exporting}
+          onClick={downloadData}
+        />
       </ListGroup>
+
+      {isAdmin && (
+        <ListGroup title="Admin">
+          <ListRow
+            icon={Activity}
+            iconColor="var(--sb-text-muted)"
+            soft
+            label="Usage, limits & errors"
+            detail="AI budget left, per-user usage, recent errors"
+            chevron
+            onClick={() => navigate('/admin')}
+          />
+        </ListGroup>
+      )}
 
       <ListGroup title="Help">
         <ListRow icon={Compass} iconColor="var(--sb-text-muted)" soft label="Take the tour again" chevron onClick={() => startTour()} />

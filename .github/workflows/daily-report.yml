@@ -1,0 +1,25 @@
+# Emails the admin (ALERT_EMAIL on the backend) a summary of the last 24
+# hours: active users, captures/questions per user, AI budget used and what
+# is left, limits hit, and every error with its reference code. Also deletes
+# observability events older than 30 days. See api/routers/admin.py.
+#
+# Uses the same repo secrets as morning-brief.yml: RENDER_API_URL, CRON_SECRET.
+name: Daily report
+
+on:
+  schedule:
+    - cron: '30 15 * * *' # 21:00 IST
+  workflow_dispatch: {}
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send the daily report
+        run: |
+          response=$(curl -s -w '\n%{http_code}' --max-time 120 -X POST "${{ secrets.RENDER_API_URL }}/api/admin/daily-report" \
+            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}")
+          status="${response##*$'\n'}"
+          echo "HTTP status: $status"
+          echo "${response%$'\n'*}"
+          [ "$status" = "200" ] || exit 1

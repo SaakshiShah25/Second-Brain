@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Circle, CircleCheck } from 'lucide-react'
 import { useAgenda } from '../api/agenda'
+import InitiativeTag from './InitiativeTag'
 import type { AgendaTask } from '../api/types'
 import { fullDate, isoLocal, timeLabel } from '../lib/dates'
 
@@ -33,17 +34,25 @@ function TaskRow({ task, onOpen }: { task: AgendaTask; onOpen: (id: number) => v
         <span className={`block text-[0.9375rem] leading-snug ${done ? 'text-text-faint line-through' : ''}`}>
           {task.description}
         </span>
-        <span className="mt-0.5 block text-[0.8125rem] text-text-muted">
-          {task.due_time ? <span className="font-medium text-text">{timeLabel(task.due_time)}</span> : 'Any time'}
-          {task.owner === 'them' && <> · Waiting on someone else</>}
-          {task.owner !== 'them' && task.initiative && <> · {task.initiative}</>}
+        <span className="mt-1 flex items-center gap-1.5 text-[0.8125rem] text-text-muted">
+          <InitiativeTag initiative={task.initiative ? { name: task.initiative } : null} />
+          {task.due_time ? <span className="flex-shrink-0 font-medium text-text">{timeLabel(task.due_time)}</span> : <span className="flex-shrink-0">Any time</span>}
+          {task.owner === 'them' && <span className="flex-shrink-0 text-them-task">· Waiting</span>}
         </span>
       </span>
     </button>
   )
 }
 
-export default function CalendarView({ onOpenTask }: { onOpenTask: (taskId: number) => void }) {
+// `initiative`: undefined = every task, null = only tasks with no
+// initiative, a name = only that initiative's tasks.
+export default function CalendarView({
+  onOpenTask,
+  initiative,
+}: {
+  onOpenTask: (taskId: number) => void
+  initiative?: string | null
+}) {
   const today = useMemo(() => new Date(), [])
   const [month, setMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
   const [selected, setSelected] = useState(() => isoLocal(today))
@@ -53,6 +62,7 @@ export default function CalendarView({ onOpenTask }: { onOpenTask: (taskId: numb
   const byDay = useMemo(() => {
     const map = new Map<string, AgendaTask[]>()
     for (const t of data?.tasks ?? []) {
+      if (initiative !== undefined && t.initiative !== initiative) continue
       const list = map.get(t.due_date) ?? map.set(t.due_date, []).get(t.due_date)!
       list.push(t)
     }
@@ -61,7 +71,7 @@ export default function CalendarView({ onOpenTask }: { onOpenTask: (taskId: numb
       list.sort((a, b) => Number(a.due_time === null) - Number(b.due_time === null) || (a.due_time ?? '').localeCompare(b.due_time ?? ''))
     }
     return map
-  }, [data])
+  }, [data, initiative])
 
   const todayIso = isoLocal(today)
   const dayData = byDay.get(selected)

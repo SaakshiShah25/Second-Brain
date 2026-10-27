@@ -41,3 +41,23 @@ services:
         sync: false
       - key: ENCRYPTION_KEY
         sync: false
+      # Production hardening (see api/main.py, api/auth.py):
+      # APP_ENV=production drops the localhost CORS origins.
+      - key: APP_ENV
+        value: production
+      # Invite-only: comma-separated emails, or "@domain.com" for a whole
+      # domain. Everyone else gets a "not on the list yet" screen.
+      - key: ALLOWED_EMAILS
+        sync: false
+      # Error tracking (Sentry free plan) - leave unset to turn it off.
+      - key: SENTRY_DSN
+        sync: false
+      # Gemini is only used as a fallback with GEMINI_FALLBACK=on AND a
+      # paid key - its free tier may use content for training.
+      - key: GEMINI_FALLBACK
+        value: "off"
+      # Observability (observability.py, api/routers/admin.py): every alert
+      # (errors, AI budget at 80% / used up, users hitting caps, uninvited
+      # sign-ins) and the daily report go here. Also the admin page's login.
+      - key: ALERT_EMAIL
+        value: sanket3shah@gmail.com

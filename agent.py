@@ -21,6 +21,7 @@ found inside it, same stance as retrieval.synthesize_answer.
 
 import json
 import re
+import contextvars
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from typing import Callable, Optional
@@ -228,6 +229,16 @@ def _assistant_msg(msg) -> dict:
     return out
 
 
+_REF = re.compile(r"\[?\b(?:note|task|person|document|organization):\d+\]?(?:,\s*)?")
+
+
+def _strip_refs(answer: str) -> str:
+    """The writer is told not to, but sometimes still writes "(task:17, due
+    Oct 28)" - drop the internal ref (sources are shown as chips anyway)."""
+    answer = _REF.sub("", answer)
+    return re.sub(r"\(\s*\)", "", answer).replace(" ,", ",").replace("  ", " ")
+
+
 def run(user_id: str, question: str, history: list, on_stage: Optional[Callable[[str], None]] = None) -> dict:
     """Answers `question`. Returns the chat result dict:
     {"status": "answered", "answer", "sources"}."""
@@ -295,7 +306,9 @@ def run(user_id: str, question: str, history: list, on_stage: Optional[Callable[
                 break  # nothing new to look up - answer with what we have
             with ThreadPoolExecutor(max_workers=4) as pool:
                 found = dict(zip([id(c) for c, _ in fresh],
-                                 pool.map(lambda ca: rt.call(ca[0].function.name, ca[1]), fresh)))
+                                 # copy_context: the lookups stay attributed to this user/request
+                                 pool.map(lambda ca: contextvars.copy_context().run(rt.call, ca[0].function.name, ca[1]),
+                                          fresh)))
             for c, a in calls:
                 result = found.get(id(c), {"note": "already run - see the earlier result"})
                 messages.append({"role": "tool", "tool_call_id": c.id, "content": _compact(result)})
@@ -320,6 +333,6 @@ def run(user_id: str, question: str, history: list, on_stage: Optional[Callable[
     used = [rt.sources[r] for r in (out.get("sources") or []) if r in rt.sources]
     return {
         "status": "answered",
-        "answer": text_utils.normalize_text(out.get("answer") or "I couldn't put an answer together - try rephrasing."),
+        "answer": _strip_refs(text_utils.normalize_text(out.get("answer") or "I couldn't put an answer together - try rephrasing.")),
         "sources": used[:8],
     }

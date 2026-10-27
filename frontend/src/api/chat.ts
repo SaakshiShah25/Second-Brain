@@ -34,6 +34,7 @@ export interface ChatBody {
 export function useChat() {
   const invalidate = useInvalidateOnCapture()
   return useMutation({
+    meta: { handlesOwnErrors: true }, // the chat screen shows these failures itself
     mutationFn: ({
       body,
       signal,

@@ -7,6 +7,7 @@ import DigestPage from './pages/DigestPage'
 import ChatPage from './pages/ChatPage'
 import NotesPage from './pages/NotesPage'
 import SettingsPage from './pages/SettingsPage'
+import AdminPage from './pages/AdminPage'
 import AccountDeletionInfoPage from './pages/AccountDeletionInfoPage'
 import PublicPrivacyPage from './pages/PublicPrivacyPage'
 import { ChatSessionProvider } from './chat/ChatSessionContext'
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="/notes" element={<NotesPage />} />
           <Route path="/digest" element={<DigestPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/admin" element={<AdminPage />} />
         </Route>
       </Route>
     </Routes>

@@ -29,6 +29,7 @@ for the open product-decision this was left at).
 from datetime import date
 
 import db
+import observability
 
 # Monthly caps for free-tier accounts. A resource name not listed here
 # has no cap at all (e.g. reading your own notes/tasks is never
@@ -93,6 +94,9 @@ def check_and_increment(user_id: str, resource: str) -> None:
     Supabase hiccup or a not-yet-migrated database should degrade to
     "temporarily unmetered", never to "the entire app 500s on every
     capture/ask call"."""
+    # Every metered action is also an analytics event (observability.py):
+    # the admin page counts captures/questions per user from these.
+    observability.record("usage", resource, user_id=user_id)
     try:
         if get_tier(user_id) == "premium":
             return
@@ -102,6 +106,13 @@ def check_and_increment(user_id: str, resource: str) -> None:
         period = _current_period()
         current = db.get_usage_count(user_id, resource, period)
         if current >= limit:
+            observability.record("limit", "user_monthly_cap", user_id=user_id, detail={"resource": resource, "limit": limit})
+            observability.alert(
+                f"cap:{user_id}:{resource}:{period}",
+                f"A user hit their monthly {resource} cap",
+                f"User: {user_id}\nResource: {resource}\nCap: {limit}/month (entitlements.FREE_LIMITS)\n"
+                "They now see an upgrade/limit message for this action until next month.",
+            )
             raise LimitExceeded(resource, limit)
         db.increment_usage(user_id, resource, period)
     except LimitExceeded:

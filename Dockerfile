@@ -14,4 +14,6 @@ COPY . .
 
 # Render injects $PORT at runtime - the app must bind to it, not a
 # hardcoded port. Shell form so $PORT expands.
-CMD uvicorn api.main:app --host 0.0.0.0 --port $PORT
+# --proxy-headers: trust X-Forwarded-For from Render's proxy so the client IP
+# (used for rate limits on requests without a token) is the real caller.
+CMD uvicorn api.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips "*"

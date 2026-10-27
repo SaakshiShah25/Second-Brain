@@ -10,6 +10,7 @@ from datetime import date
 from typing import Awaitable, Callable, Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
+from groq import RateLimitError
 from starlette.concurrency import run_in_threadpool
 
 import db
@@ -17,6 +18,7 @@ import embeddings
 import entitlements
 import extraction
 import google_maps
+import llm_budget
 import moderation
 import search_index
 import voice
@@ -235,6 +237,8 @@ async def _capture_text_core(user_id: str, raw_text: str, geo_lat: Optional[floa
     try:
         with step("extraction"):
             extracted = await run_in_threadpool(extraction.extract_info, raw_text, None, initiative_names)
+    except RateLimitError:
+        raise HTTPException(429, llm_budget.BUSY_MESSAGE)
     except Exception as e:
         raise HTTPException(500, f"Extraction failed: {e}")
     # Extraction (the LLM call above) is the slow part of a capture - if the
@@ -292,6 +296,8 @@ async def capture_voice(
     initiative_names = [i["name"] for i in initiatives]
     try:
         extracted = extraction.extract_info(text, None, initiative_names)
+    except RateLimitError:
+        raise HTTPException(429, llm_budget.BUSY_MESSAGE)
     except Exception as e:
         raise HTTPException(500, f"Extraction failed: {e}")
 

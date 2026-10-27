@@ -47,11 +47,13 @@ class NotConfiguredError(Exception):
 
 def _get_config():
     api_key = os.environ.get("RESEND_API_KEY")
-    from_addr = os.environ.get("RESEND_FROM_EMAIL")
-    if not api_key or not from_addr:
-        raise NotConfiguredError(
-            "RESEND_API_KEY/RESEND_FROM_EMAIL aren't both set - see email_client.py's docstring."
-        )
+    # Without a verified domain, Resend's shared test sender still delivers -
+    # but only to the address the Resend account is registered under. That's
+    # enough for admin alerts (observability.py); user-facing brief emails
+    # need RESEND_FROM_EMAIL on a verified domain.
+    from_addr = os.environ.get("RESEND_FROM_EMAIL") or "MyConfía <onboarding@resend.dev>"
+    if not api_key:
+        raise NotConfiguredError("RESEND_API_KEY isn't set - see email_client.py's docstring.")
     return api_key, from_addr
 
 

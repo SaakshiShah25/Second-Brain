@@ -22,11 +22,14 @@ import json
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from groq import RateLimitError
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 import agent
 import intent
+import llm_budget
+import observability
 import moderation
 from timing import step
 from api.auth import get_current_user_id
@@ -87,7 +90,10 @@ async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_c
         return {"intent": "capture", **result}
 
     with step("ask_total"):
-        result = await run_in_threadpool(_answer_question, user_id, body)
+        try:
+            result = await run_in_threadpool(_answer_question, user_id, body)
+        except RateLimitError:
+            raise HTTPException(429, llm_budget.BUSY_MESSAGE)
     print(f"[timing] chat_total: {time.perf_counter() - t_start:.2f}s")
     return {"intent": "ask", **result}
 
@@ -121,14 +127,20 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
     with that endpoint's loop draining the queue, so stage events reach the
     client as they happen rather than all at once after the fact. Always
     finishes by pushing exactly one ("result", ...) or ("error", ...)."""
+    stage = {"name": "moderating"}  # the step in progress - an error message says where it broke
+
+    async def push_stage(name: str) -> None:
+        stage["name"] = name
+        await queue.put(("stage", name))
+
     try:
-        await queue.put(("stage", "moderating"))
+        await push_stage("moderating")
         moderation_result = await run_in_threadpool(moderation.check, body.text)
         if not moderation_result["safe"]:
             await queue.put(("result", _blocked_reply(moderation_result)))
             return
 
-        await queue.put(("stage", "classifying"))
+        await push_stage("classifying")
         detected = await run_in_threadpool(intent.classify, body.text)
 
         if detected == "out_of_scope":
@@ -139,8 +151,7 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
             return
 
         if detected == "capture":
-            async def on_stage(stage: str) -> None:
-                await queue.put(("stage", stage))
+            on_stage = push_stage
 
             result = await capture_router._capture_text_core(
                 user_id, body.text, body.geo_lat, body.geo_lng, request, on_stage=on_stage,
@@ -149,18 +160,53 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
             await queue.put(("result", {"intent": "capture", **result}))
             return
 
-        await queue.put(("stage", "thinking"))
+        await push_stage("thinking")
         loop = asyncio.get_running_loop()
 
-        def on_stage(stage: str) -> None:  # called from the agent's worker thread
-            loop.call_soon_threadsafe(queue.put_nowait, ("stage", stage))
+        def on_stage(name: str) -> None:  # called from the agent's worker thread
+            stage["name"] = name
+            loop.call_soon_threadsafe(queue.put_nowait, ("stage", name))
 
         result = await run_in_threadpool(_answer_question, user_id, body, on_stage)
         await queue.put(("result", {"intent": "ask", **result}))
     except HTTPException as e:
-        await queue.put(("error", {"detail": e.detail, "status_code": e.status_code}))
+        if e.status_code >= 500 and e.status_code != 503:
+            await queue.put(("error", _failure(stage["name"], e, str(e.detail), e.status_code)))
+        else:
+            if e.status_code in (429, 503):
+                observability.record("limit", "ai_unavailable", status=e.status_code, detail={"stage": stage["name"]})
+            await queue.put(("error", {"detail": e.detail, "status_code": e.status_code}))
+    except RateLimitError:
+        observability.record("limit", "ai_unavailable", status=429, detail={"stage": stage["name"]})
+        await queue.put(("error", {"detail": llm_budget.BUSY_MESSAGE, "status_code": 429}))
     except Exception as e:
-        await queue.put(("error", {"detail": str(e), "status_code": 500}))
+        await queue.put(("error", _failure(stage["name"], e, None, 500)))
+
+
+# Where a chat request was when it failed, in the user's words.
+_STAGE_WHERE = {
+    "moderating": "checking your message",
+    "classifying": "working out what your message is",
+    "extracting": "reading your note",
+    "saving": "saving your note",
+    "thinking": "looking through your notes",
+    "planning": "looking through your notes",
+    "searching": "searching your notes",
+    "reading_notes": "reading the relevant notes",
+    "checking_tasks": "checking your tasks",
+    "writing": "writing the answer",
+}
+
+
+def _failure(stage_name: str, exc, message, status: int) -> dict:
+    where = _STAGE_WHERE.get(stage_name, "processing your message")
+    error_id = observability.error(f"chat: {where}", exc, message=message, status=status)
+    return {
+        "detail": f"Something went wrong while {where}. We've been alerted (reference {error_id}) - "
+                  "your text is back in the box if you want to try again.",
+        "status_code": status,
+        "error_id": error_id,
+    }
 
 
 async def _chat_stream_body(body: ChatRequest, request: Request, user_id: str):

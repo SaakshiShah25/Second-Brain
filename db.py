@@ -85,6 +85,7 @@ _ENCRYPTED_TEXT_FIELDS = {
     "task": ["description"],
     "search_chunk": ["title", "text"],
     "daily_brief": ["brief"],
+    "initiative_digest": ["digest"],
 }
 _ENCRYPTED_JSON_FIELDS = {
     "interaction": ["sentiment", "topics", "extracted_facts", "decisions", "concerns"],
@@ -359,12 +360,29 @@ def get_initiatives(user_id: str) -> list:
     on first read if none exist yet - same create-default-on-first-read
     shape as get_user_preference(), so this works for the existing
     account and any future signup with no separate seed step needed."""
-    resp = get_client().table("initiative").select("*").eq("user_id", user_id).order("created_at").execute()
+    query = lambda: get_client().table("initiative").select("*").eq("user_id", user_id)
+    try:
+        resp = query().order("position", nullsfirst=False).order("created_at").execute()
+    except Exception:
+        resp = query().order("created_at").execute()  # no `position` column until schema.sql section 34
     if resp.data:
         return resp.data
     rows = [{"user_id": user_id, "name": name} for name in DEFAULT_INITIATIVES]
     resp = get_client().table("initiative").insert(rows).execute()
     return resp.data
+
+
+def reorder_initiatives(user_id: str, ids: list) -> bool:
+    """Saves the user's order (ids first to last). False when the
+    `position` column isn't there yet (schema.sql section 34)."""
+    try:
+        for position, initiative_id in enumerate(ids):
+            (get_client().table("initiative").update({"position": position})
+             .eq("id", initiative_id).eq("user_id", user_id).execute())
+    except Exception as e:
+        print(f"[warn] couldn't save initiative order (run schema.sql section 34?): {e}")
+        return False
+    return True
 
 
 def get_initiative(user_id: str, initiative_id: int):
@@ -546,6 +564,64 @@ def save_daily_brief(user_id: str, brief_date: str, fingerprint: str, brief: str
         on_conflict="user_id,brief_date",
     ).execute()
 
+
+
+# ---------- Initiative digest cache (schema.sql section 33) ----------
+
+def get_initiative_digest(user_id: str, initiative_id: int):
+    """The stored digest row for one initiative (0 = Others), or None."""
+    rows = (
+        get_client().table("initiative_digest").select("*")
+        .eq("user_id", user_id).eq("initiative_id", initiative_id).limit(1).execute().data
+    )
+    return _decrypt_row("initiative_digest", rows[0]) if rows else None
+
+
+def save_initiative_digest(user_id: str, initiative_id: int, fingerprint: str, digest: str, written_at: str) -> None:
+    row = {"user_id": user_id, "initiative_id": initiative_id, "fingerprint": fingerprint,
+           "digest": digest, "created_at": written_at}
+    get_client().table("initiative_digest").upsert(
+        _encrypt_fields("initiative_digest", row),
+        on_conflict="user_id,initiative_id",
+    ).execute()
+
+
+# ---------- Observability events (schema.sql section 35, observability.py) ----------
+
+def insert_app_events(rows: list) -> None:
+    for start in range(0, len(rows), 500):
+        get_client().table("app_event").insert(rows[start:start + 500]).execute()
+
+
+def get_app_events(since_iso: str) -> list:
+    """Every event since `since_iso`, oldest first, paged past PostgREST's
+    1,000-row default cap."""
+    out, start = [], 0
+    while True:
+        page = (
+            get_client().table("app_event").select("*")
+            .gte("created_at", since_iso).order("created_at").range(start, start + 999).execute().data
+        )
+        out += page
+        if len(page) < 1000:
+            return out
+        start += 1000
+
+
+def delete_app_events_before(before_iso: str) -> None:
+    get_client().table("app_event").delete().lt("created_at", before_iso).execute()
+
+
+def get_all_user_emails() -> dict:
+    """{user_id: email} for every account - the admin page labels usage with it."""
+    users, page = {}, 1
+    while True:
+        batch = get_client().auth.admin.list_users(page=page, per_page=1000)
+        for u in batch:
+            users[u.id] = u.email
+        if len(batch) < 1000:
+            return users
+        page += 1
 
 if __name__ == "__main__":
     # Quick connectivity check: confirms env vars are set and the tables

@@ -18,6 +18,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Header, HTTPException
 
 import db
+import observability
 import email_client
 import morning_brief
 from api.auth import get_current_user_id
@@ -67,5 +68,6 @@ def send_daily_emails(x_cron_secret: str = Header(None)):
             email_client.send_markdown_email(to_email, subject, brief)
             results.append({"user_id": user_id, "ok": True})
         except Exception as e:
+            observability.error("morning brief email (daily job)", e, extra={"user": user_id})
             results.append({"user_id": user_id, "ok": False, "error": str(e)})
     return {"sent": results}

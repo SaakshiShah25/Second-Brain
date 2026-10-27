@@ -14,7 +14,7 @@ const tabs: { to: string; label: string; icon: LucideIcon; end: boolean; pill: s
 // Screens pushed on top of a tab (Settings) hide the tab bar, like a
 // native navigation stack - they have their own back button instead
 // (PageHeader's backTo).
-const TABLESS = [/^\/settings$/]
+const TABLESS = [/^\/settings$/, /^\/admin$/]
 
 // While the on-screen keyboard is up, the tab bar would ride on top of
 // it and eat a chunk of the little space left - native apps hide it, so

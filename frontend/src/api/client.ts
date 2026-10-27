@@ -2,11 +2,34 @@ import { supabase } from '../lib/supabase'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
+export const INVITE_ONLY_EVENT = 'confia:invite-only'
+
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  // Reference code the backend logged this failure under (observability.py) -
+  // already part of `message`, kept separately for anything that wants it.
+  errorId?: string
+  constructor(status: number, message: string, errorId?: string) {
     super(message)
     this.status = status
+    this.errorId = errorId
+  }
+  // So `String(error)` / template strings show the readable message alone.
+  toString() {
+    return this.message
+  }
+}
+
+// fetch() itself failing means the request never reached the server.
+const UNREACHABLE =
+  "Couldn't reach MyConfía - check your internet connection. If you're online, the server may be starting up; try again in a minute."
+
+async function send(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init)
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') throw err
+    throw new ApiError(0, UNREACHABLE)
   }
 }
 
@@ -16,7 +39,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     data: { session },
   } = await supabase.auth.getSession()
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await send(`${BASE_URL}${path}`, {
     ...options,
     headers: {
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
@@ -27,13 +50,18 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     let detail = res.statusText
+    let errorId: string | undefined
     try {
       const body = await res.json()
-      detail = body.detail ?? detail
+      detail = typeof body.detail === 'string' ? body.detail : detail
+      errorId = body.error_id
     } catch {
       // response body wasn't JSON - fall back to statusText
     }
-    throw new ApiError(res.status, detail)
+    // An account that isn't on the invite list (api/auth.py) - RequireAuth
+    // swaps the whole app for a "not invited yet" screen.
+    if (res.status === 403 && detail === 'invite_only') window.dispatchEvent(new Event(INVITE_ONLY_EVENT))
+    throw new ApiError(res.status, detail, errorId)
   }
 
   if (res.status === 204) return undefined as T
@@ -57,7 +85,7 @@ export async function postStream<T>(
     data: { session },
   } = await supabase.auth.getSession()
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await send(`${BASE_URL}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -71,10 +99,11 @@ export async function postStream<T>(
     let detail = res.statusText
     try {
       const errBody = await res.json()
-      detail = errBody.detail ?? detail
+      detail = typeof errBody.detail === 'string' ? errBody.detail : detail
     } catch {
       // response body wasn't JSON - fall back to statusText
     }
+    if (res.status === 403 && detail === 'invite_only') window.dispatchEvent(new Event(INVITE_ONLY_EVENT))
     throw new ApiError(res.status, detail)
   }
 
@@ -82,7 +111,7 @@ export async function postStream<T>(
   const decoder = new TextDecoder()
   let buffer = ''
   let result: T | undefined
-  let error: { detail: string; status_code: number } | undefined
+  let error: { detail: string; status_code: number; error_id?: string } | undefined
 
   while (true) {
     const { done, value } = await reader.read()
@@ -106,7 +135,7 @@ export async function postStream<T>(
     }
   }
 
-  if (error) throw new ApiError(error.status_code, error.detail)
+  if (error) throw new ApiError(error.status_code, error.detail, error.error_id)
   if (result === undefined) throw new ApiError(0, 'Stream ended with no result')
   return result
 }
@@ -118,7 +147,7 @@ export async function fetchBlob(path: string, init: RequestInit = {}): Promise<B
   const {
     data: { session },
   } = await supabase.auth.getSession()
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await send(`${BASE_URL}${path}`, {
     ...init,
     headers: {
       ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
@@ -144,5 +173,7 @@ export const api = {
   postStream,
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
+  put: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 }

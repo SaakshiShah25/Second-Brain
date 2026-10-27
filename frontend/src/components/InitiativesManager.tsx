@@ -1,6 +1,12 @@
 import { useState } from 'react'
-import { Check, Plus, Trash2, X } from 'lucide-react'
-import { useCreateInitiative, useDeleteInitiative, useInitiatives, useUpdateInitiative } from '../api/initiatives'
+import { Check, ChevronDown, ChevronUp, Plus, Trash2, X } from 'lucide-react'
+import {
+  useCreateInitiative,
+  useDeleteInitiative,
+  useInitiatives,
+  useReorderInitiatives,
+  useUpdateInitiative,
+} from '../api/initiatives'
 import { getInitiativeStyle, PICKABLE_INITIATIVE_COLORS } from '../lib/initiativeStyle'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
@@ -53,6 +59,7 @@ export default function InitiativesManager() {
   const createInitiative = useCreateInitiative()
   const updateInitiative = useUpdateInitiative()
   const deleteInitiative = useDeleteInitiative()
+  const reorder = useReorderInitiatives()
 
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState<string | null>(null)
@@ -67,6 +74,13 @@ export default function InitiativesManager() {
     setRenameColor(currentColor)
   }
 
+  function moveInitiative(from: number, to: number) {
+    if (!initiatives) return
+    const ids = initiatives.map((x) => x.id)
+    ;[ids[from], ids[to]] = [ids[to], ids[from]]
+    reorder.mutate(ids)
+  }
+
   function saveRename(id: number) {
     const name = renameDraft.trim()
     if (name) updateInitiative.mutate({ id, fields: { name, color: renameColor } })
@@ -76,11 +90,11 @@ export default function InitiativesManager() {
   return (
     <div>
       <p className="mb-3 px-1 text-[0.9375rem] leading-relaxed text-text-muted">
-        Your own categories — Job, Fitness, Personal, anything. New notes are sorted into them automatically.
+        Your own categories — Job, Fitness, Personal, anything. New notes are sorted into them automatically. Use the arrows to put them in the order you like.
       </p>
 
       <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card empty:hidden">
-        {initiatives?.map((i) => {
+        {initiatives?.map((i, index) => {
           const catStyle = getInitiativeStyle(i)
           return (
             <div key={i.id} className="px-4 py-2.5">
@@ -121,6 +135,25 @@ export default function InitiativesManager() {
                   >
                     {i.name}
                   </button>
+                  {/* Move up / down - the chip row and Notes follow this order. */}
+                  <div className="flex flex-shrink-0 items-center">
+                    {([-1, 1] as const).map((step) => {
+                      const target = index + step
+                      const Icon = step < 0 ? ChevronUp : ChevronDown
+                      return (
+                        <button
+                          key={step}
+                          type="button"
+                          disabled={target < 0 || target >= initiatives.length}
+                          onClick={() => moveInitiative(index, target)}
+                          aria-label={`Move ${i.name} ${step < 0 ? 'up' : 'down'}`}
+                          className="pressable flex h-10 w-9 items-center justify-center rounded-full text-text-muted disabled:opacity-25"
+                        >
+                          <Icon size={18} strokeWidth={2} />
+                        </button>
+                      )
+                    })}
+                  </div>
                   <button
                     type="button"
                     onClick={() => setConfirmDeleteId(i.id)}

@@ -1,9 +1,14 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   ArrowLeftRight,
+  CalendarDays,
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
+  List,
+  NotebookText,
   Mail,
   RefreshCw,
   Sunrise,
@@ -17,10 +22,14 @@ import type { Task } from '../api/types'
 import Button from '../components/Button'
 import CalendarView from '../components/CalendarView'
 import { Input, Label } from '../components/fields'
+import InitiativeBar from '../components/InitiativeBar'
+import InitiativeTag from '../components/InitiativeTag'
 import PageHeader from '../components/PageHeader'
-import Segmented from '../components/Segmented'
 import Sheet from '../components/Sheet'
+import { useInitiatives } from '../api/initiatives'
+import { useNotes } from '../api/notes'
 import { dueLabel, isoLocal } from '../lib/dates'
+import { matchesInitiative, useInitiativeFilter } from '../lib/initiativeFilter'
 import { useUsageMode } from '../lib/usageMode'
 
 function MorningBriefCard() {
@@ -196,11 +205,12 @@ function TaskRow({
         <span className={`line-clamp-2 text-[0.9375rem] leading-snug ${done ? 'text-text-faint line-through' : ''}`}>
           {task.description}
         </span>
-        <span className="mt-0.5 flex items-center gap-1.5 text-[0.8125rem] text-text-muted">
-          <span className={`truncate ${task.owner === 'them' ? 'text-them-task' : ''}`}>{taskContext(task)}</span>
+        <span className="mt-1 flex items-center gap-1.5 text-[0.8125rem] text-text-muted">
+          <InitiativeTag initiative={task.interaction?.initiative} />
+          {task.owner === 'them' && <span className="flex-shrink-0 text-them-task">Waiting</span>}
           {task.due_date && (
             <>
-              <span className="text-text-faint">·</span>
+              {task.owner === 'them' && <span className="text-text-faint">·</span>}
               <span className={`flex flex-shrink-0 items-center gap-1 whitespace-nowrap ${overdue ? 'font-medium text-danger' : ''}`}>
                 {overdue && <TriangleAlert size={12} strokeWidth={2.2} />}
                 {dueLabel(task.due_date, task.due_time)}
@@ -276,7 +286,24 @@ export default function DigestPage() {
   // The list is sorted into sections by when each task is due, not filtered by tabs.
   const todayIso = isoLocal(new Date())
   const weekEnd = isoLocal(new Date(Date.now() + 7 * 86_400_000))
-  const shown = allTasks.filter((t) => ownerFilter === 'all' || t.owner === ownerFilter)
+  const [initiativeFilter] = useInitiativeFilter()
+  const { data: initiatives } = useInitiatives()
+  const { data: notes } = useNotes()
+  const inFocus = allTasks.filter((t) => matchesInitiative(initiativeFilter, t.interaction?.initiative?.id ?? null))
+  const shown = inFocus.filter((t) => ownerFilter === 'all' || t.owner === ownerFilter)
+  // Open tasks per initiative, for the chip counts.
+  const openCounts = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const t of allTasks) {
+      if (t.status !== 'open') continue
+      const key = t.interaction?.initiative?.id ?? -1
+      map.set(key, (map.get(key) ?? 0) + 1)
+    }
+    return map
+  }, [allTasks])
+  const focusName =
+    initiativeFilter === null ? null : initiativeFilter === -1 ? 'Others' : initiatives?.find((i) => i.id === initiativeFilter)?.name
+  const focusNotes = (notes ?? []).filter((n) => matchesInitiative(initiativeFilter, n.initiative_id)).length
   const open = shown.filter((t) => t.status === 'open')
   const byDue = (a: Task, b: Task) =>
     (a.due_date ?? '').localeCompare(b.due_date ?? '') || (a.due_time ?? '99').localeCompare(b.due_time ?? '99')
@@ -308,18 +335,23 @@ export default function DigestPage() {
 
       <MorningBriefCard />
 
-      <Segmented
-        className="mb-5"
-        value={view}
-        onChange={setView}
-        options={[
-          { value: 'list', label: copy.tasks },
-          { value: 'calendar', label: 'Calendar' },
-        ]}
-      />
+      <div className="mb-3 flex items-center justify-between px-1">
+        <h2 className="text-lg font-semibold tracking-tight">{copy.tasks}</h2>
+        <button
+          type="button"
+          onClick={() => setView(view === 'list' ? 'calendar' : 'list')}
+          className="pressable flex h-9 items-center gap-1.5 rounded-full bg-bg-elevated px-3 text-[0.8125rem] font-medium text-text-muted"
+        >
+          {view === 'list' ? <CalendarDays size={15} strokeWidth={2} /> : <List size={15} strokeWidth={2} />}
+          {view === 'list' ? 'Calendar' : 'List'}
+        </button>
+      </div>
+
+      <InitiativeBar counts={openCounts} className="mb-4" />
 
       {view === 'calendar' ? (
         <CalendarView
+          initiative={initiativeFilter === null ? undefined : initiativeFilter === -1 ? null : focusName ?? undefined}
           onOpenTask={(id) => {
             setActiveTaskId(id)
             setEditing(false)
@@ -340,7 +372,9 @@ export default function DigestPage() {
           {!isLoading && !error && open.length === 0 && (
             <div className="mb-6 rounded-2xl border border-dashed border-border-strong py-8 text-center">
               <CheckCircle2 size={28} strokeWidth={1.6} className="mx-auto mb-2 text-success" />
-              <p className="text-[0.9375rem] text-text-muted">All clear. Nothing waiting on anyone.</p>
+              <p className="text-[0.9375rem] text-text-muted">
+                {focusName ? `Nothing open in ${focusName}.` : 'All clear. Nothing waiting on anyone.'}
+              </p>
             </div>
           )}
 
@@ -377,6 +411,18 @@ export default function DigestPage() {
                       </div>
                     )}
                   </section>
+                )}
+                {focusName && focusNotes > 0 && (
+                  <Link
+                    to="/notes"
+                    className="pressable mb-5 flex items-center gap-2.5 rounded-xl bg-bg-elevated px-3.5 py-2.5 text-[0.9375rem]"
+                  >
+                    <NotebookText size={17} strokeWidth={2} className="flex-shrink-0 text-accent" />
+                    <span className="min-w-0 flex-1 truncate">
+                      {focusNotes} {focusNotes === 1 ? 'note' : 'notes'} in {focusName}
+                    </span>
+                    <ChevronRight size={17} strokeWidth={2} className="flex-shrink-0 text-text-faint" />
+                  </Link>
                 )}
               </>
             )

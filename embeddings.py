@@ -25,6 +25,7 @@ comparable to the old ones).
 """
 
 import os
+import time
 
 import requests
 
@@ -52,6 +53,25 @@ def compute_embedding(text: str, input_type: str = "search_document"):
     return _compute_embedding(text, input_type)
 
 
+def _track(name: str, resp=None, exc=None, started=None, count=1) -> None:
+    """Records a Cohere call (observability.py): ok, a 429 (trial key
+    limits), or another failure - the latter two show on the admin page."""
+    import observability
+
+    ms = (time.time() - started) * 1000 if started else None
+    status = getattr(getattr(exc, "response", None), "status_code", None) if exc is not None else getattr(resp, "status_code", 200)
+    if exc is None:
+        observability.record("cohere", name, status=status, duration_ms=ms, detail={"texts": count})
+    elif status == 429:
+        observability.record("limit", "cohere_rate_limit", status=429, detail={"call": name})
+        observability.alert("cohere429", "Cohere limit hit",
+                            f"Cohere refused a {name} call with 429 (trial key: 1,000 calls/month, "
+                            "rerank 10/min). Search falls back to keyword-only until it recovers.")
+    else:
+        observability.record("cohere", name, status=status or 0, duration_ms=ms,
+                             detail={"error": type(exc).__name__})
+
+
 def _compute_embedding(text: str, input_type: str = "search_document"):
     """Returns a list[float] (1024-dim), or None if the embedding API
     isn't reachable/configured (e.g. COHERE_API_KEY not set, or a
@@ -72,6 +92,7 @@ def _compute_embedding(text: str, input_type: str = "search_document"):
         print("[warn] COHERE_API_KEY not set. Continuing without semantic embeddings.")
         return None
 
+    started = time.time()
     try:
         resp = requests.post(
             EMBED_URL,
@@ -85,8 +106,10 @@ def _compute_embedding(text: str, input_type: str = "search_document"):
             timeout=15,
         )
         resp.raise_for_status()
+        _track("embed", resp, started=started)
         return resp.json()["embeddings"]["float"][0]
     except Exception as e:
+        _track("embed", exc=e, started=started)
         print(f"[warn] Embedding request failed ({e}). Continuing without semantic embeddings.")
         return None
 
@@ -106,6 +129,7 @@ def compute_embeddings(texts: list, input_type: str = "search_document") -> list
         return out
     for start in range(0, len(texts), 96):
         batch = texts[start:start + 96]
+        started = time.time()
         try:
             resp = requests.post(
                 EMBED_URL,
@@ -114,8 +138,10 @@ def compute_embeddings(texts: list, input_type: str = "search_document") -> list
                 timeout=60,
             )
             resp.raise_for_status()
+            _track("embed_batch", resp, started=started, count=len(batch))
             out[start:start + len(batch)] = resp.json()["embeddings"]["float"]
         except Exception as e:
+            _track("embed_batch", exc=e, started=started, count=len(batch))
             print(f"[warn] Batch embedding failed ({e}); those chunks will be keyword-searchable only.")
     return out
 
@@ -135,8 +161,12 @@ def rerank(query: str, documents: list, top_n: int) -> list:
     if _rerank_day["day"] != today:
         _rerank_day.update(day=today, count=0)
     if _rerank_day["count"] >= int(os.environ.get("COHERE_RERANK_DAILY_CAP", "25")):
+        import observability
+
+        observability.record("limit", "cohere_rerank_daily_cap", detail={"cap": _rerank_day["count"]})
         return []  # daily cap reached (trial keys: 1,000 calls/month) - hybrid order is used instead
     _rerank_day["count"] += 1
+    started = time.time()
     try:
         resp = requests.post(
             RERANK_URL,
@@ -145,7 +175,9 @@ def rerank(query: str, documents: list, top_n: int) -> list:
             timeout=15,
         )
         resp.raise_for_status()
+        _track("rerank", resp, started=started, count=len(documents))
         return [(r["index"], r["relevance_score"]) for r in resp.json()["results"]]
     except Exception as e:
+        _track("rerank", exc=e, started=started, count=len(documents))
         print(f"[warn] Rerank failed ({e}); using hybrid order.")
         return []

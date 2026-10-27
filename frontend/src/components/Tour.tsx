@@ -64,14 +64,14 @@ const STEPS: Step[] = [
   {
     icon: NotebookText,
     title: 'Notes',
-    description: 'Every note lands here, sorted by date and searchable — a meeting, a thought, an idea.',
+    description: 'Every note lands here as a few short points, with its tasks ready to tick off.',
     path: '/notes',
   },
   {
     icon: ListTree,
     title: 'Initiatives',
-    description: 'Your own categories — Job, Fitness, Personal, anything — that notes get sorted into automatically.',
-    path: '/notes?tab=initiatives',
+    description: 'Your own categories — Job, Fitness, Personal, anything. Notes are sorted into them automatically; tap one at the top of Today or Notes to see just its tasks and notes.',
+    path: '/notes',
   },
   {
     icon: SettingsIcon,

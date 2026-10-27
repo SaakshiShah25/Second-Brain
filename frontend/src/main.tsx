@@ -1,9 +1,11 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './auth/AuthContext'
 import App from './App'
+import { installErrorReporting } from './lib/errorReporting'
+import { toast } from './components/Toast'
 import './styles/index.css'
 
 // Render's free tier spins the backend down after ~15 min idle, and the
@@ -19,7 +21,20 @@ import './styles/index.css'
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 fetch(`${API_BASE_URL}/api/health`).catch(() => {})
 
-const queryClient = new QueryClient()
+installErrorReporting()
+
+// A save that fails in the background (ticking a task, renaming an
+// initiative...) used to just roll back silently. Any mutation that doesn't
+// handle its own errors now says what went wrong - the backend's message
+// names the part that failed and carries a reference code.
+const queryClient = new QueryClient({
+  mutationCache: new MutationCache({
+    onError: (error, _vars, _ctx, mutation) => {
+      if (mutation.options.onError || mutation.meta?.handlesOwnErrors) return
+      toast(`Couldn't save that: ${error instanceof Error ? error.message : String(error)}`, 7000)
+    },
+  }),
+})
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
