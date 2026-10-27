@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
-import type { StalePerson, TaskFilter, TaskOwner, TasksResponse } from './types'
+import type { TaskFilter, TaskOwner, TasksResponse } from './types'
 
 export function useTasks(filter: TaskFilter, enabled = true) {
   return useQuery({
@@ -75,35 +75,5 @@ export function useUpdateTaskOwner() {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['agenda'] })
     },
-  })
-}
-
-export function useStalePeople(thresholdDays: number) {
-  return useQuery({
-    queryKey: ['people', 'stale', thresholdDays],
-    queryFn: () => api.get<StalePerson[]>(`/api/people/stale?threshold_days=${thresholdDays}`),
-  })
-}
-
-// eventDate lets the actual meeting land on a different day than the
-// task's due_date (e.g. "schedule a meeting with X, due by the 24th" ->
-// the meeting itself goes on the calendar for the 21st) - omitted, it
-// falls back to the due date server-side (the original behavior).
-export function useAddTaskToCalendar() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ taskId, eventDate }: { taskId: number; eventDate?: string }) =>
-      api.post<{ calendar_event_id: string; html_link: string | null }>(`/api/tasks/${taskId}/calendar`, {
-        event_date: eventDate ?? null,
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
-  })
-}
-
-export function useRemoveTaskFromCalendar() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (taskId: number) => api.delete(`/api/tasks/${taskId}/calendar`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
   })
 }

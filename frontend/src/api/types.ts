@@ -1,41 +1,4 @@
-// Mirrors api/schemas.py + the response shapes verified live against the
-// Phase 1 API (see the plan/README for the endpoint list these map to).
-
-export interface PersonalNoteEntry {
-  date: string
-  note: string
-}
-
-export interface Person {
-  id: number
-  name: string
-  aliases: string[]
-  description: string
-  // Personal/non-professional details (family, hobbies, interests) - a
-  // dated timeline, not a single blob, so a point-in-time fact (a
-  // pregnancy) can be told apart from a permanent one (hometown) and
-  // judged for staleness later. Kept separate from `description` so
-  // briefings can draw on them without mixing personal and professional
-  // traits together.
-  personal_notes: PersonalNoteEntry[]
-  role: string
-  company: string
-  tags: string[]
-  first_met_date: string | null
-  created_at: string
-  phone: string
-  email: string
-}
-
-export interface StalePerson extends Person {
-  last_interaction_date: string
-  days_ago: number
-}
-
-export interface CompanyGroup {
-  company: string
-  people: { id: number; name: string; role: string }[]
-}
+// Mirrors api/schemas.py + the response shapes of the FastAPI backend.
 
 export type TaskOwner = 'me' | 'them'
 
@@ -48,21 +11,12 @@ export interface Task {
   status: 'open' | 'done'
   owner: TaskOwner
   created_at: string
-  calendar_event_id: string | null
   interaction?: {
     id: number
     date: string | null
     summary: string | null
-    person: { id: number; name: string } | null
     initiative: { id: number; name: string } | null
   } | null
-  // Who this SPECIFIC task is about, when that's someone other than the
-  // interaction's primary person (e.g. a note involving two people, where
-  // this follow-up is for the secondary one) - null means "use the
-  // interaction's primary person" (interaction.person above), the
-  // pre-existing default. Prefer this field over interaction.person when
-  // both are present.
-  person?: { id: number; name: string } | null
 }
 
 export interface TaskCounts {
@@ -79,11 +33,6 @@ export interface TasksResponse {
 
 export type TaskFilter = 'overdue' | 'due_soon' | 'open' | 'done' | 'all'
 
-export interface SentimentEntry {
-  topic: string
-  sentiment: string
-}
-
 // ---------- Initiatives (user-managed note categories) ----------
 
 export interface Initiative {
@@ -95,23 +44,13 @@ export interface Initiative {
 
 export interface Interaction {
   id: number
-  person_id: number | null // null for a standalone note not about any specific person
   initiative_id: number | null // which user-managed initiative this note belongs to, if any - null = Uncategorized
-  // Only present on GET /api/notes' joined response (not on a person's
-  // own interaction list, which is inherently already scoped to them).
-  person?: { id: number; name: string } | null
   initiative?: { id: number; name: string; color: string | null } | null
   raw_text: string
   date: string | null
   location: string | null
-  appearance: string
   summary: string
-  sentiment: SentimentEntry[]
   topics: string[]
-  extracted_facts: {
-    other_people?: { name: string; relation: string }[]
-    opinions_expressed?: string[]
-  }
   created_at: string
   tasks?: Task[]
   // Opt-in device location captured at logging time (see ChatInput.tsx) -
@@ -124,112 +63,8 @@ export interface Interaction {
   concerns: string[]
 }
 
-export interface SecondaryMention {
-  relation: string
-  interaction: {
-    id: number
-    date: string | null
-    summary: string | null
-    raw_text?: string
-    location?: string | null
-    appearance?: string
-    // null when the primary note itself was person-less (a personal
-    // task/reminder that merely named this person in passing, not an
-    // interaction with anyone) - this person is still "mentioned in" it,
-    // there's just no primary person to attribute the note to.
-    person: { id: number; name: string } | null
-  }
-}
-
-// What the memory layer holds about a person (schema.sql section 31).
-export interface PersonFact {
-  id: number
-  attribute: string
-  value: string
-  subject: string // self | spouse | child | parent | sibling | pet | other
-  subject_name: string | null
-  confidence: string // stated | likely
-  is_sensitive: boolean
-  since: string | null
-  until: string | null
-  source: string | null // interaction | manual | backfill
-}
-
-export interface KeyDate {
-  id: number
-  date_type: 'birthday' | 'anniversary' | 'custom'
-  label: string | null
-  subject: string
-  subject_name: string | null
-  month: number
-  day: number | null
-  year: number | null
-  source: string | null
-  days_until: number | null
-  text: string // e.g. "Birthday: 14 March (in 12 days)"
-}
-
-export interface PersonLink {
-  rel: string
-  relation: string | null // what the other person is to this one: sibling, parent, spouse...
-  direction: string
-  type: string
-  id: number
-  name: string
-  label: string | null
-}
-
-export interface PersonMemory {
-  facts: PersonFact[]
-  history: PersonFact[]
-  key_dates: KeyDate[]
-  relationships: PersonLink[]
-}
-
-export interface PersonDetailResponse {
-  person: Person
-  interactions: Interaction[]
-  mentioned_in: SecondaryMention[]
-  memory?: PersonMemory
-}
-
-export interface Candidate {
-  person: Person
-  score: number
-}
-
-export interface ExtractedPrimaryPerson {
-  name: string
-  description?: string
-  personal_notes?: string
-  role?: string
-  company?: string
-  phone?: string
-  email?: string
-  aliases?: string[]
-}
-
-export interface ExtractedNote {
-  primary_person: ExtractedPrimaryPerson | null // null = a standalone note, no person involved at all
-  initiative?: string | null // the initiative name the LLM classified this note into, or null
-  other_people?: { name: string; relation: string }[]
-  date_mentioned: string | null
-  location: string | null
-  appearance_this_meeting?: string
-  summary: string
-  sentiments?: SentimentEntry[]
-  topics?: string[]
-  opinions_expressed?: string[]
-  concerns?: string[]
-  decisions?: string[]
-  follow_ups?: { description: string; due_date: string | null; owner?: TaskOwner }[]
-}
-
 export interface CaptureSavedResult {
   status: 'saved'
-  person_id: number | null
-  resolved_name: string | null
-  created_new: boolean
   interaction_id: number
   initiative_id: number | null
   // Only ever set when initiative_id is null - a proposed name for a new
@@ -248,123 +83,31 @@ export interface CaptureSavedResult {
   maps_url: string | null
   decisions: string[]
   concerns: string[]
-  // Details, dates and links filed from this note, e.g. "Priya: Birthday · 14 March".
-  remembered?: string[]
-  // false when the note saved but its details could not be filed (retry with scripts/rebuild_graph.py).
-  memory_saved?: boolean
 }
 
-export interface CaptureConfirmRequiredResult {
-  status: 'confirm_required'
-  extracted: ExtractedNote
-  raw_text: string
-  interaction_date: string
-  date_warning: string | null
-  initiative_id: number | null
-  candidates: Candidate[]
-  geo_lat: number | null
-  geo_lng: number | null
-}
-
-export type CaptureResult = CaptureSavedResult | CaptureConfirmRequiredResult
-
-export interface CardFields {
-  name: string
-  role: string
-  company: string
-  phone: string
-  email: string
-}
+export type CaptureResult = CaptureSavedResult
 
 // One item the answer relied on (agent.py) - shown as a tappable chip.
 export interface AnswerSource {
   ref: string
-  kind: 'note' | 'task' | 'person' | 'document'
+  kind: 'note' | 'task'
   id: number
   title: string
   date: string | null
-  person_id: number | null
 }
 
 export interface AskAnsweredResult {
   status: 'answered'
   answer: string
   sources?: AnswerSource[]
-  // Files the agent found along the way - rendered as a DocumentResultCard.
-  documents?: DocumentSearchResult | null
 }
 
-// The agent needs one detail before it can answer ("Which Priya?") - the
-// options are real matches, sent back as the user's next message.
-export interface AskClarifyResult {
-  status: 'clarify'
-  answer: string
-  options: string[]
-}
-
-export interface AskConfirmRequiredResult {
-  status: 'confirm_required'
-  query: string
-  parsed: Record<string, unknown>
-  candidates: Candidate[]
-}
-
-export type AskResult = AskAnsweredResult | AskConfirmRequiredResult | AskClarifyResult
+export type AskResult = AskAnsweredResult
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
-  // Present on an assistant message that answered a "pull my documents"
-  // request - rendered as a DocumentResultCard instead of plain text.
-  documents?: DocumentSearchResult
   sources?: AnswerSource[]
-  options?: string[]
-}
-
-// ---------- Documents (document organizer) ----------
-
-export interface DocumentItem {
-  id: number
-  title: string
-  description: string | null
-  category: string
-  tags: string[] | null
-  owner: string | null
-  person_id: number | null
-  initiative_id: number | null
-  file_name: string
-  mime_type: string
-  size_bytes: number
-  issue_date: string | null
-  expiry_date: string | null
-  source: string
-  created_at: string
-  has_thumbnail: boolean
-  // Set for documents synced from a Google Drive folder (source 'gdrive').
-  drive_url: string | null
-  drive_folder_id: number | null
-}
-
-export interface DocumentMatch extends DocumentItem {
-  score: number
-}
-
-export interface DocumentSearchGroup {
-  label: string
-  matches: DocumentMatch[]
-  best: number | null
-}
-
-export interface DocumentSearchResult {
-  groups: DocumentSearchGroup[]
-  total_documents: number
-  query?: string
-}
-
-export interface ChatDocumentsResult extends DocumentSearchResult {
-  intent: 'documents'
-  status: 'answered'
-  query: string
 }
 
 // ---------- Unified chat (single thread, no mode tabs) ----------
@@ -382,7 +125,7 @@ export interface ChatBlockedResult {
   reason: 'unsafe' | 'out_of_scope' | 'unavailable'
   answer: string
 }
-export type ChatResult = ChatCaptureResult | ChatAskResult | ChatBlockedResult | ChatDocumentsResult
+export type ChatResult = ChatCaptureResult | ChatAskResult | ChatBlockedResult
 
 // ---------- Settings (theme, font size, Terms of Service) ----------
 
@@ -412,7 +155,7 @@ export interface MorningBrief {
   generated_at?: string | null
 }
 
-// ---------- Calendar (api/routers/agenda.py)
+// ---------- Calendar (api/routers/agenda.py) ----------
 export interface AgendaTask {
   id: number
   description: string
@@ -420,25 +163,11 @@ export interface AgendaTask {
   due_time: string | null // HH:MM
   status: 'open' | 'done'
   owner: TaskOwner
-  person: { id: number; name: string } | null
   initiative: string | null
-}
-
-// A birthday/anniversary/other yearly date falling on one specific day.
-export interface AgendaEvent {
-  date: string
-  key_date_id: number
-  person_id: number
-  person: string
-  date_type: 'birthday' | 'anniversary' | 'custom'
-  title: string // "Priya's birthday (turns 36)"
-  age?: number
-  days_until?: number
 }
 
 export interface Agenda {
   start: string
   end: string
   tasks: AgendaTask[]
-  events: AgendaEvent[]
 }

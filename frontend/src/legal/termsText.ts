@@ -16,7 +16,7 @@ By creating an account or using MyConfía ("the App"), you agree to these Terms 
 
 ## 2. What the App Does
 
-MyConfía lets you log notes about your conversations and contacts - by typing, speaking, or scanning a business card - and later ask questions about what you've recorded. To do this, the App sends the text you enter (and transcripts of any voice recordings) to third-party AI services for processing, and stores your notes, contacts, and account data with a third-party database provider. These are named specifically in the Privacy section below.
+MyConfía lets you log notes and tasks - by typing or speaking - and later ask questions about what you've recorded. To do this, the App sends the text you enter (and transcripts of any voice recordings) to third-party AI services for processing, and stores your notes, tasks, and account data with a third-party database provider. These are named specifically in the Privacy section below.
 
 ## 3. Your Account
 
@@ -24,7 +24,7 @@ You're responsible for keeping your login credentials secure and for all activit
 
 ## 4. Your Content
 
-You retain ownership of the notes, contact details, and other content you enter into the App ("Your Content"). You're solely responsible for Your Content, including making sure you have the right to record and store information about the people you log - for example, being mindful of your own local privacy obligations when noting personal details about someone else.
+You retain ownership of the notes, tasks, and other content you enter into the App ("Your Content"). You're solely responsible for Your Content, including making sure you have the right to record and store information about the people you log - for example, being mindful of your own local privacy obligations when noting personal details about someone else.
 
 You grant us a limited license to process, store, and transmit Your Content solely to provide the App's features to you (extracting structured info, answering your questions, generating briefings, and similar). We don't use Your Content to train AI models or share it for advertising.
 
@@ -40,7 +40,7 @@ Each operates under its own terms and privacy policy, which we encourage you to 
 
 ## 6. Privacy
 
-We collect the account information you provide at signup (email), the content you choose to log (notes, transcribed voice recordings, scanned business card details), and, only if you explicitly opt in per note, your device's approximate location. We use this solely to operate the App's features for you - not for advertising, and not sold to third parties.
+We collect the account information you provide at signup (email), the content you choose to log (notes, tasks, transcribed voice recordings), and, only if you explicitly opt in per note, your device's approximate location. We use this solely to operate the App's features for you - not for advertising, and not sold to third parties.
 
 **Please don't log anything you wouldn't want shared with our AI providers.** As described in Section 5, the content you enter is sent to Groq and Cohere to extract information, answer your questions, and power search - this is necessary for the App to work, and applies to everything you log, not just what you mark as sensitive. Avoid entering things like government ID numbers, passwords, financial account details, or other highly sensitive information you wouldn't want processed by a third-party AI service.
 

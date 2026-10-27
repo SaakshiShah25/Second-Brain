@@ -29,7 +29,7 @@ export default defineConfig({
       manifest: {
         name: 'MyConfía',
         short_name: 'MyConfía',
-        description: 'Your personal space for people, conversations, and follow-ups',
+        description: 'Your notes, tasks and morning brief in one place',
         theme_color: '#fdfbf7',
         background_color: '#fdfbf7',
         display: 'standalone',

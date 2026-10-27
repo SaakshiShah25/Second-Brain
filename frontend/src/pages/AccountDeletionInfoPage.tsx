@@ -19,7 +19,7 @@ export default function AccountDeletionInfoPage() {
       <h1 className="mb-4 text-2xl font-bold tracking-tight">Delete your account and data</h1>
 
       <p className="mb-3 text-[15px] leading-relaxed text-text-muted">
-        You can permanently delete your MyConfía account and everything tied to it - every note, contact, and
+        You can permanently delete your MyConfía account and everything tied to it - every note and
         task - at any time, whether or not you still have the app installed.
       </p>
 
@@ -42,8 +42,7 @@ export default function AccountDeletionInfoPage() {
 
       <h2 className="mb-2 mt-6 text-sm font-semibold text-text-muted">What gets deleted</h2>
       <p className="mb-3 text-[15px] leading-relaxed text-text-muted">
-        Your login, every note and contact you've logged, all tasks and follow-ups, calendar sync
-        credentials, and your app preferences. This is permanent and can't be reversed.
+        Your login, every note you've logged, all tasks, and your app preferences. This is permanent and can't be reversed.
       </p>
 
       <Link to="/login" className="mt-8 text-sm text-link underline">

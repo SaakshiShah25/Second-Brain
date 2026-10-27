@@ -1,22 +1,18 @@
 """
-api/routers/tasks.py — REST equivalent of views/digest_view.py's task
-section. Same filter semantics (Overdue/Due soon/Open/Done/All), just
-wrapped as endpoints instead of Streamlit widgets. The "relationships
-gone quiet" half of the Digest page lives in people.py instead, since it
-belongs with the other /api/people/* routes.
+api/routers/tasks.py — The Today page's task data: list with the
+Overdue / Due soon / Open / Done / All filters, and edit a task (status,
+owner, wording, deadline).
 """
 
 from datetime import date, timedelta
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
 import date_utils
 import db
 import search_index
-import google_calendar
 from api.auth import get_current_user_id
-from api.schemas import ScheduleCalendarRequest, TaskStatusUpdate
+from api.schemas import TaskStatusUpdate
 
 router = APIRouter()
 
@@ -93,41 +89,4 @@ def update_task(task_id: int, body: TaskStatusUpdate, user_id: str = Depends(get
                 raise HTTPException(503, "Task times aren't available yet - run schema.sql section 32 first.")
             raise
     search_index.enqueue(user_id, "task", [task_id])
-    return {"ok": True}
-
-
-@router.post("/{task_id}/calendar")
-def add_task_to_calendar(
-    task_id: int, body: Optional[ScheduleCalendarRequest] = None, user_id: str = Depends(get_current_user_id)
-):
-    task = db.get_task(user_id, task_id)
-    if not task:
-        raise HTTPException(404, "Task not found")
-    event_date = body.event_date if body else None
-    if not event_date and not task.get("due_date"):
-        raise HTTPException(400, "This task has no due date - nothing to put on a calendar.")
-
-    try:
-        result = google_calendar.create_event(user_id, task, event_date=event_date)
-    except google_calendar.NotConnectedError:
-        raise HTTPException(409, "Google Calendar isn't connected yet.")
-    except Exception as e:
-        raise HTTPException(502, f"Couldn't create the calendar event: {e}")
-
-    db.set_task_calendar_event(user_id, task_id, result["calendar_event_id"])
-    return result
-
-
-@router.delete("/{task_id}/calendar")
-def remove_task_from_calendar(task_id: int, user_id: str = Depends(get_current_user_id)):
-    task = db.get_task(user_id, task_id)
-    if not task:
-        raise HTTPException(404, "Task not found")
-    event_id = task.get("calendar_event_id")
-    if event_id:
-        try:
-            google_calendar.delete_event(user_id, event_id)
-        except google_calendar.NotConnectedError:
-            pass  # already disconnected - nothing to clean up on Google's side
-    db.set_task_calendar_event(user_id, task_id, None)
     return {"ok": True}

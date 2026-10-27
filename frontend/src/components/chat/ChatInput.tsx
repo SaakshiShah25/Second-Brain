@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { ArrowUp, Camera, Check, Loader2, MapPin, Mic, Pause, Play, Plus, Sparkles, Square, Trash2 } from 'lucide-react'
+import { ArrowUp, Check, Loader2, MapPin, Mic, Pause, Play, Plus, Sparkles, Square, Trash2 } from 'lucide-react'
 import Sheet from '../Sheet'
 import { ListGroup, ListRow, Toggle } from '../ListGroup'
 import type { Initiative } from '../../api/types'
@@ -7,7 +7,6 @@ import { getInitiativeStyle } from '../../lib/initiativeStyle'
 
 export interface ChatInputHandle {
   focus: () => void
-  openCardPicker: () => void
 }
 
 // Kept as a JS constant, not just a max-h class, so the auto-resize
@@ -38,8 +37,6 @@ interface ChatInputProps {
   initiatives?: Initiative[]
   selectedInitiativeId?: number | null
   onSelectInitiative?: (id: number | null) => void
-  // Business-card scan trigger - undefined hides the option.
-  onAttachCard?: (file: File) => void
 }
 
 function formatElapsed(s: number) {
@@ -73,18 +70,15 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
     initiatives = [],
     selectedInitiativeId = null,
     onSelectInitiative,
-    onAttachCard,
   },
   ref,
 ) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const cardInputRef = useRef<HTMLInputElement>(null)
   const [elapsed, setElapsed] = useState(0)
   const [attachOpen, setAttachOpen] = useState(false)
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
-    openCardPicker: () => cardInputRef.current?.click(),
   }))
 
   // Auto-resize to content, capped at MAX_HEIGHT. useLayoutEffect (not
@@ -137,7 +131,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
   }
 
   const hasText = value.trim().length > 0
-  const hasAttachments = Boolean(onAttachCard || onToggleLocation || onSelectInitiative)
+  const hasAttachments = Boolean(onToggleLocation || onSelectInitiative)
 
   let trailing
   if (isBusy && onStop && !isRecording) {
@@ -279,36 +273,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
         {trailing}
       </div>
 
-      {onAttachCard && (
-        <input
-          ref={cardInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) onAttachCard(file)
-            e.target.value = ''
-          }}
-        />
-      )}
-
       {attachOpen && (
         <Sheet onClose={() => setAttachOpen(false)} title="Add to this note">
           <ListGroup>
-            {onAttachCard && (
-              <ListRow
-                icon={Camera}
-                label="Scan a business card"
-                detail="Take a photo - name, role and company are filled in for you."
-                chevron
-                onClick={() => {
-                  setAttachOpen(false)
-                  cardInputRef.current?.click()
-                }}
-              />
-            )}
             {onToggleLocation && (
               <ListRow
                 icon={MapPin}

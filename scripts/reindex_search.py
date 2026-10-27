@@ -16,9 +16,25 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from seed_demo_data import find_user_id  # noqa: E402  (also loads .env)
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv()
+
 import db  # noqa: E402
 import search_index  # noqa: E402
+
+
+def find_user_id(email: str) -> str:
+    page = 1
+    while True:
+        users = db.get_client().auth.admin.list_users(page=page, per_page=200)
+        if not users:
+            break
+        for u in users:
+            if (u.email or "").lower() == email.lower():
+                return u.id
+        page += 1
+    raise SystemExit(f"No auth user with email {email} - create it first.")
 
 
 def all_user_ids() -> list:

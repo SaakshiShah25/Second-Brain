@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { FolderOpen, Home, NotebookText, Sun, Users, type LucideIcon } from 'lucide-react'
+import { Home, NotebookText, Sun, type LucideIcon } from 'lucide-react'
 import Toaster from './Toast'
-import GoogleReturnHandler from './google/GoogleReturnHandler'
 
 // Each tab has its own hue (index.css --sb-fun-*), shown when it's the
 // active tab - full class strings so Tailwind can see them.
@@ -10,14 +9,12 @@ const tabs: { to: string; label: string; icon: LucideIcon; end: boolean; pill: s
   { to: '/', label: 'Home', icon: Home, end: true, pill: 'bg-fun-orange/15 text-fun-orange', text: 'text-fun-orange' },
   { to: '/digest', label: 'Today', icon: Sun, end: false, pill: 'bg-fun-sun/15 text-fun-sun', text: 'text-fun-sun' },
   { to: '/notes', label: 'Notes', icon: NotebookText, end: false, pill: 'bg-fun-sky/15 text-fun-sky', text: 'text-fun-sky' },
-  { to: '/documents', label: 'Docs', icon: FolderOpen, end: false, pill: 'bg-fun-teal/15 text-fun-teal', text: 'text-fun-teal' },
-  { to: '/people', label: 'People', icon: Users, end: false, pill: 'bg-fun-pink/15 text-fun-pink', text: 'text-fun-pink' },
 ]
 
-// Screens pushed on top of a tab (a person's profile, Settings) hide the
-// tab bar, like a native navigation stack - they have their own back
-// button instead (PageHeader's backTo).
-const TABLESS = [/^\/people\/[^/]+$/, /^\/settings$/]
+// Screens pushed on top of a tab (Settings) hide the tab bar, like a
+// native navigation stack - they have their own back button instead
+// (PageHeader's backTo).
+const TABLESS = [/^\/settings$/]
 
 // While the on-screen keyboard is up, the tab bar would ride on top of
 // it and eat a chunk of the little space left - native apps hide it, so
@@ -106,7 +103,6 @@ export default function Layout() {
         </main>
 
         <Toaster />
-        <GoogleReturnHandler />
 
         {showTabs && (
           <nav className="pb-safe flex-shrink-0 border-t border-border bg-bg/90 backdrop-blur-xl">

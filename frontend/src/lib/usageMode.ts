@@ -5,7 +5,7 @@ import type { UsageMode } from '../api/types'
 // What the account is used for - Work, Personal or Both (Settings >
 // "Using MyConfía for", first asked in UsageModeSheet). It only changes
 // which features and wording the app LEADS with; it never hides or
-// alters stored data (a contact's saved company still shows in Personal
+// alters stored data (a note's category still shows in Personal
 // mode, for instance).
 
 export const USAGE_MODE_OPTIONS: { value: UsageMode; label: string; icon: LucideIcon; description: string }[] = [

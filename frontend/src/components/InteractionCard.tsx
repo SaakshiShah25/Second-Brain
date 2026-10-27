@@ -1,8 +1,7 @@
 import { useState, type FormEvent } from 'react'
-import { CheckCircle2, ListChecks, MapPin, Pencil, Trash2, TriangleAlert, User } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { CheckCircle2, ListChecks, MapPin, Pencil, Trash2, TriangleAlert } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
-import { useDeleteInteraction, useUpdateInteraction } from '../api/people'
+import { useDeleteInteraction, useUpdateInteraction } from '../api/notes'
 import type { Interaction } from '../api/types'
 import { dueLabel, friendlyDate } from '../lib/dates'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
@@ -30,8 +29,7 @@ function Section({ icon: Icon, title, items }: { icon: typeof CheckCircle2; titl
   )
 }
 
-// A note as a preview card (category + date, a 3-line summary, who it's
-// about) - tapping opens the whole note in a bottom sheet, where Edit and
+// A note as a preview card (category + date, a 3-line summary) - tapping opens the whole note in a bottom sheet, where Edit and
 // Delete live. Replaces the old collapsed one-line disclosure row, which
 // showed so little that every note looked the same until expanded.
 export default function InteractionCard({ interaction }: { interaction: Interaction }) {
@@ -44,17 +42,11 @@ export default function InteractionCard({ interaction }: { interaction: Interact
   // call, so it's not a duplicate network request.
   const { data: initiatives } = useInitiatives()
 
-  // `interaction.person`/`interaction.initiative` are only present when
-  // rendered from the Notes page (GET /api/notes' joined select) -
-  // PersonDetailPage's own list doesn't include them, so the person /
-  // category context simply doesn't render there.
-  const showNoteContext = interaction.person !== undefined
-  const initiativeStyle = showNoteContext ? getInitiativeStyle(interaction.initiative) : null
+  const initiativeStyle = getInitiativeStyle(interaction.initiative)
 
   const [form, setForm] = useState({
     date: interaction.date ?? '',
     location: interaction.location ?? '',
-    appearance: interaction.appearance ?? '',
     summary: interaction.summary ?? '',
     raw_text: interaction.raw_text ?? '',
     decisions: (interaction.decisions ?? []).join('\n'),
@@ -98,10 +90,10 @@ export default function InteractionCard({ interaction }: { interaction: Interact
               <initiativeStyle.Icon size={13} strokeWidth={2.2} className="flex-shrink-0" />
               <span className="truncate">{interaction.initiative.name}</span>
             </span>
-          ) : showNoteContext ? (
+          ) : (
             <span className="font-medium text-text-faint">Others</span>
-          ) : null}
-          {showNoteContext && <span className="text-text-faint">·</span>}
+          )}
+          <span className="text-text-faint">·</span>
           <span className="flex-shrink-0 text-text-faint">{friendlyDate(interaction.date)}</span>
           {openTasks > 0 && (
             <span className="ml-auto flex flex-shrink-0 items-center gap-1 rounded-full bg-bg-elevated px-2 py-0.5 text-xs font-medium text-text-muted">
@@ -112,12 +104,6 @@ export default function InteractionCard({ interaction }: { interaction: Interact
         <p className="line-clamp-3 text-[0.9375rem] leading-snug text-text">
           {interaction.summary || interaction.raw_text || '(no summary)'}
         </p>
-        {showNoteContext && (
-          <p className="mt-2 flex items-center gap-1.5 text-[0.8125rem] text-text-muted">
-            <User size={13} strokeWidth={2} />
-            {interaction.person ? interaction.person.name : 'Personal'}
-          </p>
-        )}
       </button>
 
       {open && (
@@ -144,25 +130,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
                 {interaction.summary || '(no summary)'}
               </p>
 
-              {showNoteContext && (
-                <div className="mt-3">
-                  {interaction.person ? (
-                    <Link
-                      to={`/people/${interaction.person.id}`}
-                      onClick={close}
-                      className="inline-flex items-center gap-1.5 text-[0.9375rem] font-medium text-link"
-                    >
-                      <User size={15} strokeWidth={2} /> {interaction.person.name}
-                    </Link>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 text-[0.9375rem] text-text-muted">
-                      <User size={15} strokeWidth={2} /> Personal note
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {(interaction.location || interaction.maps_url || interaction.appearance) && (
+              {(interaction.location || interaction.maps_url) && (
                 <div className="mt-4 flex flex-col gap-1 text-sm text-text-muted">
                   {interaction.location && (
                     <p className="flex items-center gap-1">
@@ -182,7 +150,6 @@ export default function InteractionCard({ interaction }: { interaction: Interact
                         `${interaction.geo_lat?.toFixed(5)}, ${interaction.geo_lng?.toFixed(5)}`}
                     </a>
                   )}
-                  {interaction.appearance && <p>Appearance: {interaction.appearance}</p>}
                 </div>
               )}
 
@@ -191,7 +158,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
               {interaction.tasks && interaction.tasks.length > 0 && (
                 <div className="mt-5">
                   <p className="mb-1.5 flex items-center gap-1.5 text-[0.8125rem] font-medium uppercase tracking-wide text-text-faint">
-                    <ListChecks size={14} strokeWidth={2} /> Follow-ups
+                    <ListChecks size={14} strokeWidth={2} /> Tasks
                   </p>
                   <ul className="flex flex-col gap-2">
                     {interaction.tasks.map((t) => (
@@ -204,7 +171,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
                         <span className={t.status === 'done' ? 'text-text-faint line-through' : ''}>
                           {t.description}
                           <span className="block text-[0.8125rem] text-text-muted">
-                            {t.owner === 'them' ? 'They owe this' : 'You owe this'}
+                            {t.owner === 'them' ? 'Someone else owes this' : 'You owe this'}
                             {t.due_date ? ` · due ${dueLabel(t.due_date, t.due_time)}` : ''}
                           </span>
                         </span>
@@ -229,9 +196,6 @@ export default function InteractionCard({ interaction }: { interaction: Interact
                 <Button className="flex-1" onClick={() => setEditing(true)}>
                   <Pencil size={16} strokeWidth={2} /> Edit
                 </Button>
-                {/* "Delete", not "Delete interaction" - this card renders
-                    every kind of note, including standalone ones with no
-                    person involved at all. */}
                 <Button variant="danger" className="flex-1" onClick={() => setConfirmDelete(true)}>
                   <Trash2 size={16} strokeWidth={2} /> Delete
                 </Button>
@@ -248,29 +212,23 @@ export default function InteractionCard({ interaction }: { interaction: Interact
                 <Label>Date</Label>
                 <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
               </div>
-              {showNoteContext && (
-                <div>
-                  <Label>Initiative</Label>
-                  <Select
-                    value={form.initiative_id ?? ''}
-                    onChange={(e) => setForm({ ...form, initiative_id: e.target.value ? Number(e.target.value) : null })}
-                  >
-                    <option value="">Others</option>
-                    {initiatives?.map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.name}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              )}
+              <div>
+                <Label>Initiative</Label>
+                <Select
+                  value={form.initiative_id ?? ''}
+                  onChange={(e) => setForm({ ...form, initiative_id: e.target.value ? Number(e.target.value) : null })}
+                >
+                  <option value="">Others</option>
+                  {initiatives?.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
               <div>
                 <Label>Location</Label>
                 <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
-              </div>
-              <div>
-                <Label>Appearance that day</Label>
-                <Textarea rows={2} value={form.appearance} onChange={(e) => setForm({ ...form, appearance: e.target.value })} />
               </div>
               <div>
                 <Label>Decisions (one per line)</Label>
@@ -300,7 +258,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
       {confirmDelete && (
         <ConfirmDialog
           title="Delete this note?"
-          message="This also deletes its follow-up tasks. This cannot be undone."
+          message="This also deletes its tasks. This cannot be undone."
           confirmLabel="Delete note"
           busy={deleteInteraction.isPending}
           busyLabel="Deleting…"

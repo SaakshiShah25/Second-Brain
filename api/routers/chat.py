@@ -1,28 +1,20 @@
 """
 api/routers/chat.py — Unified chat endpoint: one message thread instead of
 separate "Log a note" / "Ask a question" tabs. Every message passes
-through two gates before reaching capture.py/ask.py:
+through two gates before reaching capture / the retrieval agent:
 
-  1. moderation.py - a dedicated Llama Guard safety check. Blocks abusive/
-     illegal/harmful content outright, before it can be logged as a "note"
-     or answered as a "question" - safety is checked first and separately
+  1. moderation.py - a dedicated safety check. Blocks abusive/illegal/
+     harmful content outright, before it can be logged as a "note" or
+     answered as a "question" - safety is checked first and separately
      from scope, since a harmful request phrased as a first-person
      statement needs to be caught the same as one phrased as a question.
-  2. intent.py - classifies what's left as "capture" (a note to log),
-     "ask" (a question about the user's own data), "documents" (pull up
-     stored files - see documents.py), or "out_of_scope" (a
-     general-purpose request this product isn't built to handle - a joke,
-     a story, code, trivia). Only capture/ask reach the existing
-     capture.py/ask.py route functions - this file is only a routing
+  2. intent.py - classifies what's left as "capture" (a note or to-do to
+     log), "ask" (a question about the user's own notes/tasks), or
+     "out_of_scope" (a general-purpose request this product isn't built
+     to handle - a joke, a story, code, trivia). Only capture/ask reach
+     the existing capture / agent code - this file is only a routing
      layer in front, none of the underlying extraction/retrieval logic is
      duplicated or changed.
-
-Business-card scanning stays a separate explicit action (POST
-/api/capture/card), triggered by an attach/camera icon rather than typed
-text to classify - it has no intent to classify (a scanned card is
-always a capture), but it still goes through moderation.py itself,
-directly in api/routers/capture.py, since the same safety gate has to
-apply no matter which entry point text/OCR'd text comes in through.
 """
 
 import asyncio
@@ -34,7 +26,6 @@ from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 import agent
-import documents
 import intent
 import moderation
 from timing import step
@@ -42,20 +33,14 @@ from api.auth import get_current_user_id
 from api.rate_limit import limiter
 from api.routers import ask as ask_router
 from api.routers import capture as capture_router
-from api.schemas import (
-    AskConfirmRequest,
-    AskRequest,
-    CaptureConfirmRequest,
-    ChatConfirmRequest,
-    ChatRequest,
-)
+from api.schemas import AskRequest, ChatRequest
 
 router = APIRouter()
 
 _OUT_OF_SCOPE_MESSAGE = (
     "That's not something I can help with here - I'm built specifically for logging and "
-    "recalling your own notes, contacts, and follow-ups. Try telling me about a conversation "
-    "you had, or ask about someone you've talked to before."
+    "recalling your own notes and tasks. Try jotting something down, or ask about something "
+    "you've already logged."
 )
 
 
@@ -77,12 +62,8 @@ async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_c
     if not moderation_result["safe"]:
         return _blocked_reply(moderation_result)
 
-    original_question, chosen_label = _clarification_reply(body)
-    if original_question:
-        detected, body = "ask", body.model_copy(update={"text": original_question})
-    else:
-        with step("intent_classify"):
-            detected = await run_in_threadpool(intent.classify, body.text)
+    with step("intent_classify"):
+        detected = await run_in_threadpool(intent.classify, body.text)
 
     if detected == "out_of_scope":
         print(f"[timing] chat_total: {time.perf_counter() - t_start:.2f}s")
@@ -92,11 +73,6 @@ async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_c
             "reason": "out_of_scope",
             "answer": _OUT_OF_SCOPE_MESSAGE,
         }
-
-    if detected == "documents":
-        result = await run_in_threadpool(documents.search, user_id, body.text)
-        print(f"[timing] chat_total: {time.perf_counter() - t_start:.2f}s")
-        return {"intent": "documents", "status": "answered", "query": body.text, **result}
 
     if detected == "capture":
         # Calls the core function directly, not the capture_text ROUTE -
@@ -111,39 +87,20 @@ async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_c
         return {"intent": "capture", **result}
 
     with step("ask_total"):
-        result = await run_in_threadpool(_answer_question, user_id, body, None, chosen_label)
+        result = await run_in_threadpool(_answer_question, user_id, body)
     print(f"[timing] chat_total: {time.perf_counter() - t_start:.2f}s")
     return {"intent": "ask", **result}
 
 
-def _clarification_reply(body: ChatRequest):
-    """(original question, chosen option) when this message is a tapped
-    answer to a "which one do you mean?" question, else (None, None).
-
-    A tapped chip arrives as an ordinary one-word message ("Priya"), which on
-    its own reads as a note to log - the classifier would file it as one. The
-    chat history carries the options of the question just asked, so a reply
-    that is exactly one of them is routed back to the question it answers."""
-    history = body.history or []
-    if len(history) >= 2 and history[-1].get("role") == "assistant":
-        options = history[-1].get("options") or []
-        if body.text.strip() in options:
-            for m in reversed(history[:-1]):
-                if m.get("role") == "user" and str(m.get("content") or "").strip():
-                    return str(m["content"]), body.text.strip()
-    return None, None
-
-
-def _answer_question(user_id: str, body: ChatRequest, on_stage=None, person_label=None) -> dict:
+def _answer_question(user_id: str, body: ChatRequest, on_stage=None) -> dict:
     """Questions go to the retrieval agent (agent.py); if it fails for any
     reason (rate limit, provider hiccup, missing search index) the previous
     fixed pipeline answers instead - a question always gets an answer.
     _ask_core, not the ask() route: moderation already ran on this text."""
-    if not person_label:  # a tapped "which one?" answer is the same question, not a new one
-        ask_router._enforce(user_id, "ai_questions_asked")
+    ask_router._enforce(user_id, "ai_questions_asked")
     try:
         with step("agent"):
-            return agent.run(user_id, body.text, body.history, on_stage, person_label)
+            return agent.run(user_id, body.text, body.history, on_stage)
     except HTTPException:
         raise
     except Exception as e:
@@ -171,24 +128,14 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
             await queue.put(("result", _blocked_reply(moderation_result)))
             return
 
-        original_question, chosen_label = _clarification_reply(body)
-        if original_question:
-            detected, body = "ask", body.model_copy(update={"text": original_question})
-        else:
-            await queue.put(("stage", "classifying"))
-            detected = await run_in_threadpool(intent.classify, body.text)
+        await queue.put(("stage", "classifying"))
+        detected = await run_in_threadpool(intent.classify, body.text)
 
         if detected == "out_of_scope":
             await queue.put((
                 "result",
                 {"intent": "blocked", "status": "answered", "reason": "out_of_scope", "answer": _OUT_OF_SCOPE_MESSAGE},
             ))
-            return
-
-        if detected == "documents":
-            await queue.put(("stage", "finding_documents"))
-            result = await run_in_threadpool(documents.search, user_id, body.text)
-            await queue.put(("result", {"intent": "documents", "status": "answered", "query": body.text, **result}))
             return
 
         if detected == "capture":
@@ -208,7 +155,7 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
         def on_stage(stage: str) -> None:  # called from the agent's worker thread
             loop.call_soon_threadsafe(queue.put_nowait, ("stage", stage))
 
-        result = await run_in_threadpool(_answer_question, user_id, body, on_stage, chosen_label)
+        result = await run_in_threadpool(_answer_question, user_id, body, on_stage)
         await queue.put(("result", {"intent": "ask", **result}))
     except HTTPException as e:
         await queue.put(("error", {"detail": e.detail, "status_code": e.status_code}))
@@ -250,27 +197,3 @@ async def chat_stream(body: ChatRequest, request: Request, user_id: str = Depend
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-@router.post("/confirm")
-def chat_confirm(body: ChatConfirmRequest, user_id: str = Depends(get_current_user_id)):
-    if body.intent == "capture":
-        if body.extracted is None or body.raw_text is None or body.interaction_date is None:
-            raise HTTPException(400, "Missing capture fields for a capture-intent confirm")
-        result = capture_router.capture_confirm(
-            CaptureConfirmRequest(
-                extracted=body.extracted, raw_text=body.raw_text, interaction_date=body.interaction_date,
-                date_warning=body.date_warning, candidates=body.candidates, choice=body.choice,
-                initiative_id=body.initiative_id, geo_lat=body.geo_lat, geo_lng=body.geo_lng,
-            ),
-            user_id,
-        )
-        return {"intent": "capture", **result}
-
-    if body.query is None or body.parsed is None:
-        raise HTTPException(400, "Missing ask fields for an ask-intent confirm")
-    result = ask_router.ask_confirm(
-        AskConfirmRequest(query=body.query, parsed=body.parsed, candidates=body.candidates, choice=body.choice),
-        user_id,
-    )
-    return {"intent": "ask", **result}

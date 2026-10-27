@@ -26,12 +26,6 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
-      - key: GOOGLE_CLIENT_ID
-        sync: false
-      - key: GOOGLE_CLIENT_SECRET
-        sync: false
-      - key: GOOGLE_OAUTH_REDIRECT_URI
-        sync: false
       - key: GOOGLE_MAPS_API_KEY
         sync: false
       # Daily brief email, sent via Resend's HTTP API (email_client.py) -

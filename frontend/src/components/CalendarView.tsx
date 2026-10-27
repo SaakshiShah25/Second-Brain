@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Cake, CalendarHeart, ChevronLeft, ChevronRight, Circle, CircleCheck } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Circle, CircleCheck } from 'lucide-react'
 import { useAgenda } from '../api/agenda'
-import type { AgendaEvent, AgendaTask } from '../api/types'
+import type { AgendaTask } from '../api/types'
 import { fullDate, isoLocal, timeLabel } from '../lib/dates'
 
-// A month grid: a dot under a day for each follow-up due that day (teal-orange)
-// and for each birthday/anniversary (amber). Tap a day to see its list below.
-// Monday is the first column.
+// A month grid: a dot under a day for each task due that day. Tap a day to see
+// its list below. Monday is the first column.
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -36,23 +35,11 @@ function TaskRow({ task, onOpen }: { task: AgendaTask; onOpen: (id: number) => v
         </span>
         <span className="mt-0.5 block text-[0.8125rem] text-text-muted">
           {task.due_time ? <span className="font-medium text-text">{timeLabel(task.due_time)}</span> : 'Any time'}
-          {task.person && <> · {task.owner === 'me' ? 'For' : ''} {task.person.name}{task.owner === 'them' ? ' owes you' : ''}</>}
-          {!task.person && task.initiative && <> · {task.initiative}</>}
+          {task.owner === 'them' && <> · Waiting on someone else</>}
+          {task.owner !== 'them' && task.initiative && <> · {task.initiative}</>}
         </span>
       </span>
     </button>
-  )
-}
-
-function EventRow({ event }: { event: AgendaEvent }) {
-  const Icon = event.date_type === 'birthday' ? Cake : CalendarHeart
-  return (
-    <div className="flex items-start gap-3 px-4 py-3">
-      <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center text-brand-ink">
-        <Icon size={18} strokeWidth={1.8} />
-      </span>
-      <span className="min-w-0 flex-1 text-[0.9375rem] leading-snug">{event.title}</span>
-    </div>
   )
 }
 
@@ -64,13 +51,14 @@ export default function CalendarView({ onOpenTask }: { onOpenTask: (taskId: numb
   const { data, isLoading, error } = useAgenda(isoLocal(days[0]), isoLocal(days[41]))
 
   const byDay = useMemo(() => {
-    const map = new Map<string, { tasks: AgendaTask[]; events: AgendaEvent[] }>()
-    const slot = (d: string) => map.get(d) ?? map.set(d, { tasks: [], events: [] }).get(d)!
-    for (const t of data?.tasks ?? []) slot(t.due_date).tasks.push(t)
-    for (const e of data?.events ?? []) slot(e.date).events.push(e)
-    // Within a day: timed follow-ups in clock order, then the ones with no time.
-    for (const day of map.values()) {
-      day.tasks.sort((a, b) => Number(a.due_time === null) - Number(b.due_time === null) || (a.due_time ?? '').localeCompare(b.due_time ?? ''))
+    const map = new Map<string, AgendaTask[]>()
+    for (const t of data?.tasks ?? []) {
+      const list = map.get(t.due_date) ?? map.set(t.due_date, []).get(t.due_date)!
+      list.push(t)
+    }
+    // Within a day: timed tasks in clock order, then the ones with no time.
+    for (const list of map.values()) {
+      list.sort((a, b) => Number(a.due_time === null) - Number(b.due_time === null) || (a.due_time ?? '').localeCompare(b.due_time ?? ''))
     }
     return map
   }, [data])
@@ -117,9 +105,7 @@ export default function CalendarView({ onOpenTask }: { onOpenTask: (taskId: numb
           {days.map((d) => {
             const iso = isoLocal(d)
             const inMonth = d.getMonth() === month.getMonth()
-            const info = byDay.get(iso)
-            const taskCount = info?.tasks.length ?? 0
-            const eventCount = info?.events.length ?? 0
+            const taskCount = byDay.get(iso)?.length ?? 0
             const isSelected = iso === selected
             const isToday = iso === todayIso
             return (
@@ -127,7 +113,7 @@ export default function CalendarView({ onOpenTask }: { onOpenTask: (taskId: numb
                 key={iso}
                 type="button"
                 onClick={() => setSelected(iso)}
-                aria-label={`${fullDate(iso)}${taskCount ? `, ${taskCount} due` : ''}${eventCount ? `, ${eventCount} event${eventCount > 1 ? 's' : ''}` : ''}`}
+                aria-label={`${fullDate(iso)}${taskCount ? `, ${taskCount} due` : ''}`}
                 aria-pressed={isSelected}
                 className={`pressable flex h-12 flex-col items-center justify-center gap-1 rounded-xl text-[0.9375rem] ${
                   isSelected ? 'bg-accent text-accent-contrast' : isToday ? 'ring-1 ring-accent' : ''
@@ -136,16 +122,14 @@ export default function CalendarView({ onOpenTask }: { onOpenTask: (taskId: numb
                 <span className={isToday && !isSelected ? 'font-semibold text-accent' : ''}>{d.getDate()}</span>
                 <span className="flex h-1.5 items-center gap-0.5">
                   {taskCount > 0 && <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? 'bg-accent-contrast' : 'bg-accent'}`} />}
-                  {eventCount > 0 && <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? 'bg-accent-contrast' : 'bg-brand'}`} />}
                 </span>
               </button>
             )
           })}
         </div>
       </div>
-      <p className="mt-2 flex items-center gap-4 px-1 text-[0.75rem] text-text-faint">
-        <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-accent" /> follow-ups due</span>
-        <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-brand" /> birthdays &amp; anniversaries</span>
+      <p className="mt-2 flex items-center gap-1.5 px-1 text-[0.75rem] text-text-faint">
+        <span className="h-1.5 w-1.5 rounded-full bg-accent" /> tasks due
       </p>
 
       <h3 className="mt-5 mb-2 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint">
@@ -161,10 +145,7 @@ export default function CalendarView({ onOpenTask }: { onOpenTask: (taskId: numb
       )}
       {dayData && (
         <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
-          {dayData.events.map((e) => (
-            <EventRow key={`e${e.key_date_id}`} event={e} />
-          ))}
-          {dayData.tasks.map((t) => (
+          {dayData.map((t) => (
             <TaskRow key={`t${t.id}`} task={t} onOpen={onOpenTask} />
           ))}
         </div>

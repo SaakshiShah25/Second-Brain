@@ -1,7 +1,7 @@
 """
 db.py — Supabase (Postgres + pgvector) storage layer for the "MyConfía" prototype.
 
-Replaces the earlier local-SQLite version. Structured data (Person, Interaction,
+Replaces the earlier local-SQLite version. Structured data (Interaction,
 Task) lives in Postgres tables; embeddings live in a real pgvector `vector`
 column with a cosine-similarity ANN index - not a JSON list stuffed into a
 text column. Supabase's free tier includes Postgres + pgvector, so this is
@@ -16,13 +16,13 @@ Setup:
         export SUPABASE_URL="https://xxxx.supabase.co"
         export SUPABASE_KEY="your_service_role_key"      # see README for why service_role
 
-Note: jsonb columns (aliases, tags, sentiment, topics, extracted_facts) are
+Note: jsonb columns (sentiment, topics, extracted_facts) are
 sent/received as native Python lists/dicts here - the supabase-py client
 handles JSON (de)serialization automatically, so there's no more manual
 json.dumps/json.loads anywhere in this file (unlike the old SQLite version).
 
-Multi-user note: every function below that touches person/interaction/task/
-interaction_person takes an explicit `user_id` and either filters by it
+Multi-user note: every function below that touches interaction/task
+takes an explicit `user_id` and either filters by it
 (reads/updates/deletes - this is the ownership check: a mismatched id
 simply matches 0 rows) or sets it (creates). db.py always uses the
 service_role key (see get_client()), which bypasses Postgres RLS entirely -
@@ -45,7 +45,7 @@ import crypto_utils
 # One Supabase client PER THREAD, not one for the whole process. The client
 # keeps a single HTTP/2 connection open, and that connection is not safe to
 # share between threads. This app is heavily threaded (the request thread-pool,
-# the search-index worker, the graph pool, the agent's parallel tools), and a
+# the search-index worker, the agent's parallel tools), and a
 # measured 8-thread read test through one shared client failed ~11% of calls
 # with "ReadError: Resource temporarily unavailable" - the cause of notes whose
 # details were only partly saved. Each thread making its own client removes the
@@ -72,32 +72,22 @@ def get_client() -> Client:
 #
 # Content fields get encrypted before every insert/update and decrypted
 # after every select, centralized here at the row boundary rather than at
-# each of the 20+ individual call sites below - so every caller above
-# db.py (retrieval.py, extraction.py, morning_brief.py, google_calendar.py,
-# every api/routers/*.py) keeps seeing plain Python strings, unchanged.
+# each of the individual call sites below - so every caller above
+# db.py (retrieval.py, extraction.py, morning_brief.py, every
+# api/routers/*.py) keeps seeing plain Python strings, unchanged.
 #
-# Deliberately NOT encrypted: person.name/aliases/role/company/phone/
-# email/tags, initiative.name - these are used for real server-side
-# matching (candidate resolution, ilike company grouping, alias lookup);
-# encrypting them would break that matching, and they're materially less
-# sensitive than the actual note content.
+# Deliberately NOT encrypted: initiative.name - it is used for real
+# server-side matching; encrypting it would break that matching, and it
+# is materially less sensitive than the actual note content.
 
 _ENCRYPTED_TEXT_FIELDS = {
-    "person": ["description"],
     "interaction": ["raw_text", "summary", "location", "appearance", "geo_address"],
     "task": ["description"],
-    "google_credentials": ["access_token", "refresh_token"],
-    "document": ["title", "description", "owner", "file_name", "extracted_text"],
     "search_chunk": ["title", "text"],
-    "relationship": ["label"],
-    "person_fact": ["value", "subject_name"],
-    "key_date": ["label", "subject_name"],
     "daily_brief": ["brief"],
 }
 _ENCRYPTED_JSON_FIELDS = {
-    "person": ["personal_notes"],
     "interaction": ["sentiment", "topics", "extracted_facts", "decisions", "concerns"],
-    "document": ["tags"],
 }
 
 
@@ -118,10 +108,8 @@ def _encrypt_fields(table: str, fields: dict) -> dict:
 
 def _decrypt_row(table: str, row: Optional[dict]) -> Optional[dict]:
     """Decrypts a row IN PLACE and returns it. Also walks one level into
-    any embedded-select joins (get_all_tasks_with_context's nested
-    interaction/person, get_all_interactions_with_context's person/
-    initiative, etc.) since PostgREST inlines those as nested dicts on
-    the same row."""
+    the embedded interaction of a task (get_all_tasks_with_context) since
+    PostgREST inlines joins as nested dicts on the same row."""
     if row is None:
         return row
     for key in _ENCRYPTED_TEXT_FIELDS.get(table, []):
@@ -130,8 +118,6 @@ def _decrypt_row(table: str, row: Optional[dict]) -> Optional[dict]:
     for key in _ENCRYPTED_JSON_FIELDS.get(table, []):
         if row.get(key) is not None:
             row[key] = crypto_utils.decrypt_json(row[key])
-    if isinstance(row.get("person"), dict):
-        _decrypt_row("person", row["person"])
     if isinstance(row.get("interaction"), dict):
         _decrypt_row("interaction", row["interaction"])
     return row
@@ -141,146 +127,14 @@ def _decrypt_rows(table: str, rows: list) -> list:
     return [_decrypt_row(table, r) for r in rows]
 
 
-# ---------- Person helpers ----------
-
-def get_all_people(user_id: str):
-    resp = get_client().table("person").select("*").eq("user_id", user_id).execute()
-    return _decrypt_rows("person", resp.data)
-
-
-def get_people_by_company(user_id: str, company: str):
-    """Everyone at a company, matched on graph.org_key - case, punctuation
-    and legal suffixes folded, so "Northwind", "northwind" and "Northwind
-    Pvt Ltd" are the same company (an exact ilike match split them)."""
-    from graph import org_key  # local import: graph imports this module
-
-    key = org_key(company)
-    return [p for p in get_all_people(user_id) if key and org_key(p.get("company") or "") == key]
-
-
-def create_person(user_id: str, name, description="", role="", company="", phone="", email="",
-                   aliases=None, tags=None, first_met_date=None, personal_notes=None):
-    """`personal_notes` is a list of {"date": ..., "note": ...} entries (a
-    dated timeline, not a text blob - see schema.sql section 16). Callers
-    building the first entry from a freshly-captured note should pass
-    e.g. [{"date": interaction_date, "note": text}]."""
-    resp = get_client().table("person").insert(_encrypt_fields("person", {
-        "user_id": user_id,
-        "name": name,
-        "aliases": aliases or [],
-        "description": description,
-        "role": role,
-        "company": company,
-        "phone": phone,
-        "email": email,
-        "tags": tags or [],
-        "first_met_date": first_met_date,
-        "personal_notes": personal_notes or [],
-    })).execute()
-    return resp.data[0]["id"]
-
-
-def update_person_description(user_id: str, person_id, new_description):
-    """Passive enrichment: append new observations rather than overwrite."""
-    client = get_client()
-    row = (
-        client.table("person").select("description")
-        .eq("id", person_id).eq("user_id", user_id).single().execute()
-    )
-    existing = crypto_utils.decrypt((row.data or {}).get("description")) or ""
-    merged = (existing + "\n" + new_description).strip() if existing else new_description
-    client.table("person").update(_encrypt_fields("person", {"description": merged})).eq("id", person_id).eq("user_id", user_id).execute()
-
-
-def update_person_personal_notes(user_id: str, person_id, new_note, entry_date):
-    """Appends one dated entry to the personal-notes timeline (jsonb list
-    of {"date", "note"}) rather than overwriting - kept as a separate
-    column from `description` so briefings can draw on personal details
-    without them polluting the professional field. Unlike the old
-    text-append convention, each entry keeps its own date so staleness
-    (e.g. a pregnancy mentioned 6 months ago) can be judged later instead
-    of silently merging into one undated paragraph."""
-    client = get_client()
-    row = (
-        client.table("person").select("personal_notes")
-        .eq("id", person_id).eq("user_id", user_id).single().execute()
-    )
-    existing = crypto_utils.decrypt_json((row.data or {}).get("personal_notes")) or []
-    updated = existing + [{"date": entry_date, "note": new_note}]
-    client.table("person").update(_encrypt_fields("person", {"personal_notes": updated})).eq("id", person_id).eq("user_id", user_id).execute()
-
-
-def delete_person_personal_note(user_id: str, person_id, entry_index: int):
-    """Removes one entry from the personal-notes timeline by its current
-    position - lets the user drop a note that's become stale/wrong (e.g.
-    tied to a job they've since left) rather than leaving it dated-and-
-    misleading forever."""
-    client = get_client()
-    row = (
-        client.table("person").select("personal_notes")
-        .eq("id", person_id).eq("user_id", user_id).single().execute()
-    )
-    existing = crypto_utils.decrypt_json((row.data or {}).get("personal_notes")) or []
-    if 0 <= entry_index < len(existing):
-        updated = existing[:entry_index] + existing[entry_index + 1:]
-        client.table("person").update(_encrypt_fields("person", {"personal_notes": updated})).eq("id", person_id).eq("user_id", user_id).execute()
-
-
-def update_person_role_company(user_id: str, person_id, role=None, company=None):
-    """
-    Overwrite role/company with the latest mentioned value (people change jobs;
-    unlike description, this shouldn't just keep accumulating text).
-    Only touches fields where a non-empty new value was actually provided.
-    """
-    update_fields = {}
-    if role:
-        update_fields["role"] = role
-    if company:
-        update_fields["company"] = company
-    if update_fields:
-        get_client().table("person").update(update_fields).eq("id", person_id).eq("user_id", user_id).execute()
-
-
-def add_alias(user_id: str, person_id, alias):
-    client = get_client()
-    row = client.table("person").select("aliases").eq("id", person_id).eq("user_id", user_id).single().execute()
-    aliases = (row.data or {}).get("aliases") or []
-    if alias not in aliases:
-        aliases.append(alias)
-        client.table("person").update({"aliases": aliases}).eq("id", person_id).eq("user_id", user_id).execute()
-
-
-def get_people_with_last_interaction(user_id: str):
-    """
-    Every person plus their most recent PRIMARY interaction date (secondary
-    "mentioned in" appearances - see interaction_person - don't count as
-    "you talked to them"), as [{**person, "last_interaction_date": str|None}].
-    None means never met yet, not neglected. Computed client-side over
-    get_all_people()/get_all_interactions() rather than a SQL aggregation -
-    consistent with how person_match.score_candidates() already does its
-    matching client-side; fine at personal-app scale. Used by the Digest
-    page to flag relationships that have gone quiet.
-    """
-    people = get_all_people(user_id)
-    interactions = get_all_interactions(user_id)
-    latest = {}
-    for i in interactions:
-        pid = i.get("person_id")
-        d = i.get("date")
-        if d and (pid not in latest or d > latest[pid]):
-            latest[pid] = d
-    return [{**p, "last_interaction_date": latest.get(p["id"])} for p in people]
-
-
 # ---------- Interaction helpers ----------
 
-def create_interaction(user_id: str, person_id=None, raw_text="", date=None, location=None, appearance="",
+def create_interaction(user_id: str, raw_text="", date=None, location=None, appearance="",
                         summary="", sentiment=None, topics=None, extracted_facts=None,
                         embedding=None, geo_lat=None, geo_lng=None, geo_address=None, maps_url=None,
                         decisions=None, concerns=None, initiative_id=None):
     resp = get_client().table("interaction").insert(_encrypt_fields("interaction", {
         "user_id": user_id,
-        "person_id": person_id,                 # None for a standalone note not about any specific person
         "raw_text": raw_text,
         "date": date,
         "location": location,
@@ -303,35 +157,19 @@ def create_interaction(user_id: str, person_id=None, raw_text="", date=None, loc
     return resp.data[0]["id"]
 
 
-def get_interactions_for_person(user_id: str, person_id):
-    resp = (
-        get_client().table("interaction")
-        .select("*")
-        .eq("person_id", person_id)
-        .eq("user_id", user_id)
-        .order("date")
-        .execute()
-    )
-    return _decrypt_rows("interaction", resp.data)
-
-
 def get_all_interactions(user_id: str):
     resp = get_client().table("interaction").select("*").eq("user_id", user_id).execute()
     return _decrypt_rows("interaction", resp.data)
 
 
 def get_all_interactions_with_context(user_id: str):
-    """Every interaction for this user - person-linked or standalone -
-    joined with its person's id/name (null for a standalone note) and its
-    initiative's id/name/color (null for Uncategorized), via a PostgREST
-    embedded select on the existing FK constraints (same pattern
-    get_all_tasks_with_context already uses for its person join). This is
-    the Notes page's data source - the one place a person-less note is
-    guaranteed to be visible, since it can't appear on any person's own
-    timeline. Ordered newest-first."""
+    """Every interaction for this user -
+    joined with its initiative's id/name/color (null for Uncategorized),
+    via a PostgREST embedded select on the existing FK constraint. This is
+    the Notes page's data source. Ordered newest-first."""
     resp = (
         get_client().table("interaction")
-        .select("*, person(id, name), initiative(id, name, color)")
+        .select("*, initiative(id, name, color)")
         .eq("user_id", user_id)
         .order("date", desc=True, nullsfirst=False)
         .execute()
@@ -349,7 +187,7 @@ def get_interactions_by_ids(user_id: str, ids: list):
     return _decrypt_rows("interaction", resp.data)
 
 
-def search_interactions_by_embedding(user_id: str, query_embedding, top_k=5, person_id=None):
+def search_interactions_by_embedding(user_id: str, query_embedding, top_k=5):
     """
     Real vector similarity search, via the `match_interactions` Postgres
     function defined in schema.sql. That function uses pgvector's cosine
@@ -357,13 +195,13 @@ def search_interactions_by_embedding(user_id: str, query_embedding, top_k=5, per
     column - this is an actual vector-DB query executed inside Postgres,
     not a Python loop computing similarity over rows pulled into memory.
 
-    Returns a list of dicts: [{id, person_id, raw_text, date, summary, similarity}, ...]
+    Returns a list of dicts: [{id, raw_text, date, summary, similarity}, ...]
     ordered by similarity descending (closest matches first).
     """
     resp = get_client().rpc("match_interactions", {
         "query_embedding": query_embedding,
         "match_count": top_k,
-        "filter_person_id": person_id,
+        "filter_person_id": None,
         "filter_user_id": user_id,
     }).execute()
     return _decrypt_rows("interaction", resp.data)
@@ -371,16 +209,13 @@ def search_interactions_by_embedding(user_id: str, query_embedding, top_k=5, per
 
 # ---------- Task helpers ----------
 
-def create_task(user_id: str, interaction_id, description, due_date=None, owner="me", person_id=None, due_time=None):
+def create_task(user_id: str, interaction_id, description, due_date=None, owner="me", due_time=None):
     row = {
         "user_id": user_id,
         "interaction_id": interaction_id,
         "description": description,
         "due_date": due_date,
         "owner": owner,          # 'me' or 'them' - see extraction.py's follow_ups[].owner
-        "person_id": person_id,  # who this SPECIFIC task is about, if not the interaction's primary
-                                  # person - None means "use the interaction's primary person" (the
-                                  # common case), see api/routers/capture.py's _resolve_task_person
     }
     if due_time:  # only sent when there is one: the column exists once schema.sql section 32 has run
         row["due_time"] = due_time
@@ -397,39 +232,25 @@ def create_task(user_id: str, interaction_id, description, due_date=None, owner=
 
 def get_tasks_for_interactions(user_id: str, interaction_ids: list):
     """Fetch all task rows tied to any of the given interaction ids -
-    used by retrieval.py to surface follow-ups alongside the interactions
-    they came from."""
+    used by retrieval.py and agent.py to surface tasks alongside the
+    notes they came from."""
     if not interaction_ids:
         return []
     resp = get_client().table("task").select("*").in_("interaction_id", interaction_ids).eq("user_id", user_id).execute()
     return _decrypt_rows("task", resp.data)
 
 
-def get_tasks_for_person(user_id: str, person_id: int):
-    """Convenience wrapper: every task tied to any interaction with this
-    person, regardless of which specific interaction it came from."""
-    interactions = get_interactions_for_person(user_id, person_id)
-    return get_tasks_for_interactions(user_id, [i["id"] for i in interactions])
-
-
 def get_all_tasks_with_context(user_id: str, status: str = None):
     """
-    Fetches every task joined with its interaction's date/summary/person/
-    initiative AND the task's own directly-linked person (task.person_id -
-    who this SPECIFIC follow-up is about, when that's someone other than
-    the interaction's primary person; null when it isn't, meaning "use the
-    interaction's primary person" as before) - used by the Tasks dashboard
-    so it can show who each follow-up is really about without a separate
-    round-trip per task. The interaction's initiative is included too, so
-    a task from a person-less note (e.g. "enroll in Zumba class") can show
-    "Fitness" instead of a misleading "Unknown" - there's no person to
-    show because there genuinely isn't one, not because of missing data.
+    Fetches every task joined with its note's date/summary/initiative - used
+    by the Today page and the agenda so each task can show which category it
+    belongs to without a separate round-trip per task.
     Optional `status` filter ('open'/'done'); None returns all statuses.
     Ordered by due_date (nulls last).
     """
     query = (
         get_client().table("task")
-        .select("*, interaction(id, date, summary, person(id, name), initiative(id, name)), person(id, name)")
+        .select("*, interaction(id, date, summary, initiative(id, name))")
         .eq("user_id", user_id)
     )
     if status:
@@ -454,169 +275,16 @@ def update_task_owner(user_id: str, task_id: int, owner: str):
 
 
 def get_task(user_id: str, task_id: int):
-    """Single task joined with its interaction's person name AND its own
-    directly-linked person (see get_all_tasks_with_context) - used by
-    google_calendar.create_event() to build a human-readable event
-    summary (e.g. "Rohan: send updated document"), preferring the task's
-    own person over the interaction's primary one when both exist."""
-    resp = (
-        get_client().table("task")
-        .select("*, interaction(id, person(id, name)), person(id, name)")
-        .eq("id", task_id).eq("user_id", user_id).single().execute()
-    )
+    """Single task by id (None-safe via .single() raising if absent)."""
+    resp = get_client().table("task").select("*").eq("id", task_id).eq("user_id", user_id).single().execute()
     return _decrypt_row("task", resp.data)
-
-
-def set_task_calendar_event(user_id: str, task_id: int, calendar_event_id):
-    """calendar_event_id=None clears it (used when removing a task from
-    Google Calendar)."""
-    get_client().table("task").update({"calendar_event_id": calendar_event_id}).eq("id", task_id).eq("user_id", user_id).execute()
-
-
-# ---------- Google Calendar credentials (per-user OAuth tokens) ----------
-
-def get_google_credentials(user_id: str):
-    resp = get_client().table("google_credentials").select("*").eq("user_id", user_id).execute()
-    return _decrypt_row("google_credentials", resp.data[0]) if resp.data else None
-
-
-def upsert_google_credentials(user_id: str, access_token: str, refresh_token: str, expires_at: str, scope: str,
-                              google_email: Optional[str] = None):
-    row = {
-        "user_id": user_id,
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "expires_at": expires_at,
-        "scope": scope,
-    }
-    try:
-        get_client().table("google_credentials").upsert(
-            _encrypt_fields("google_credentials", {**row, "google_email": google_email})).execute()
-    except Exception as e:
-        # google_email arrived with schema.sql section 27 - keep connecting
-        # (just without the account label) on a database that predates it.
-        if "google_email" not in str(e):
-            raise
-        get_client().table("google_credentials").upsert(_encrypt_fields("google_credentials", row)).execute()
-
-
-def update_google_access_token(user_id: str, access_token: str, expires_at: str):
-    """Called after a refresh - refresh_token itself doesn't change."""
-    get_client().table("google_credentials").update(_encrypt_fields("google_credentials", {
-        "access_token": access_token,
-        "expires_at": expires_at,
-    })).eq("user_id", user_id).execute()
-
-
-def delete_google_credentials(user_id: str):
-    get_client().table("google_credentials").delete().eq("user_id", user_id).execute()
-
-
-# ---------- OAuth state nonces (bridges the authenticated-API / ----------
-# ---------- unauthenticated-redirect gap in the Calendar connect flow) --
-
-def create_oauth_state(state: str, user_id: str):
-    get_client().table("oauth_state").insert({"state": state, "user_id": user_id}).execute()
-
-
-def consume_oauth_state(state: str):
-    """Looks up + deletes the nonce in one round trip (single-use).
-    Returns the user_id it belonged to, or None if the nonce doesn't
-    exist (already used, never existed - e.g. a forged callback) or is
-    older than 10 minutes (treated as expired)."""
-    resp = get_client().table("oauth_state").select("user_id, created_at").eq("state", state).execute()
-    if not resp.data:
-        return None
-    get_client().table("oauth_state").delete().eq("state", state).execute()
-    row = resp.data[0]
-    created_at = datetime.fromisoformat(row["created_at"])
-    if datetime.now(timezone.utc) - created_at > timedelta(minutes=10):
-        return None
-    return row["user_id"]
-
-
-# ---------- Person management (editing/merging) ----------
-
-def get_person(user_id: str, person_id: int):
-    resp = get_client().table("person").select("*").eq("id", person_id).eq("user_id", user_id).single().execute()
-    return _decrypt_row("person", resp.data)
-
-
-def update_person(user_id: str, person_id: int, **fields):
-    """
-    Explicit overwrite of the given person fields. Unlike
-    update_person_description() (which APPENDS, for passive enrichment from
-    new notes), this REPLACES the given fields outright - used by the
-    People page's edit form, where the user is deliberately correcting a
-    stored value rather than adding an observation.
-    """
-    if fields:
-        get_client().table("person").update(_encrypt_fields("person", fields)).eq("id", person_id).eq("user_id", user_id).execute()
-
-
-def delete_person(user_id: str, person_id: int):
-    """Deletes a Person row. interaction rows (and, transitively, their
-    task rows) cascade-delete per the ON DELETE CASCADE constraints in
-    schema.sql."""
-    get_client().table("person").delete().eq("id", person_id).eq("user_id", user_id).execute()
-
-
-def merge_persons(user_id: str, source_id: int, target_id: int):
-    """
-    Merges `source_id` into `target_id`: reassigns all of source's
-    interactions to target, unions aliases/tags, appends source's
-    description onto target's (same append convention as
-    update_person_description), keeps target's role/company unless empty
-    (falling back to source's), keeps the earlier first_met_date, then
-    deletes the source row. Returns target_id.
-    """
-    source = get_person(user_id, source_id)
-    target = get_person(user_id, target_id)
-    if not source or not target:
-        raise ValueError("Both source and target people must exist to merge.")
-
-    (
-        get_client().table("interaction").update({"person_id": target_id})
-        .eq("person_id", source_id).eq("user_id", user_id).execute()
-    )
-
-    merged_aliases = list(dict.fromkeys(
-        (target.get("aliases") or []) + [source["name"]] + (source.get("aliases") or [])
-    ))
-    merged_tags = list(dict.fromkeys((target.get("tags") or []) + (source.get("tags") or [])))
-
-    merged_description = target.get("description") or ""
-    if source.get("description"):
-        merged_description = (
-            (merged_description + "\n" + source["description"]).strip()
-            if merged_description else source["description"]
-        )
-
-    merged_role = target.get("role") or source.get("role") or ""
-    merged_company = target.get("company") or source.get("company") or ""
-
-    dates = [d for d in [target.get("first_met_date"), source.get("first_met_date")] if d]
-    merged_first_met = min(dates) if dates else None
-
-    update_person(
-        user_id,
-        target_id,
-        aliases=merged_aliases,
-        tags=merged_tags,
-        description=merged_description,
-        role=merged_role,
-        company=merged_company,
-        first_met_date=merged_first_met,
-    )
-    delete_person(user_id, source_id)
-    return target_id
 
 
 # ---------- Interaction management (editing) ----------
 
 def update_interaction(user_id: str, interaction_id: int, **fields):
     """Explicit overwrite of the given interaction fields - used by the
-    People page's per-interaction edit form to correct a mistake."""
+    Notes page's edit form to correct a mistake."""
     if fields:
         get_client().table("interaction").update(_encrypt_fields("interaction", fields)).eq("id", interaction_id).eq("user_id", user_id).execute()
 
@@ -625,46 +293,6 @@ def delete_interaction(user_id: str, interaction_id: int):
     """Deletes an Interaction row. Its task rows cascade-delete per the
     ON DELETE CASCADE constraint in schema.sql."""
     get_client().table("interaction").delete().eq("id", interaction_id).eq("user_id", user_id).execute()
-
-
-# ---------- Secondary-person links (other_people) ----------
-
-def link_interaction_person(user_id: str, interaction_id: int, person_id: int, relation: str = ""):
-    """Links a person mentioned in a note besides its primary person (e.g.
-    "Rhea, Priya's sister") to that interaction - see
-    capture.py's resolve_and_link_other_people()."""
-    get_client().table("interaction_person").insert({
-        "user_id": user_id,
-        "interaction_id": interaction_id,
-        "person_id": person_id,
-        "relation": relation,
-    }).execute()
-
-
-def get_secondary_interactions_for_person(user_id: str, person_id: int):
-    """
-    Fetches interactions where this person was mentioned as a SECONDARY
-    person (linked via interaction_person), not the interaction's primary
-    person - e.g. "Rhea" showing up as "Priya's sister" in a note primarily
-    about Priya. Each row includes the relation text plus the primary
-    interaction's own data and the primary person's name (via a nested
-    embedded select), so callers can distinguish "you talked to them
-    directly" from "they were mentioned".
-    """
-    resp = (
-        get_client().table("interaction_person")
-        .select(
-            "relation, interaction(id, date, created_at, summary, raw_text, "
-            "location, appearance, sentiment, topics, extracted_facts, person(id, name))"
-        )
-        .eq("person_id", person_id)
-        .eq("user_id", user_id)
-        .execute()
-    )
-    for row in resp.data:
-        _decrypt_row("interaction", row.get("interaction"))
-    return resp.data
-
 
 
 # ---------- User preferences (theme, font size, Terms acceptance) ----------
@@ -690,7 +318,7 @@ def update_user_preference(user_id: str, **fields) -> dict:
 
 def get_user_email(user_id: str) -> str:
     """Looks up the account's login email via the Auth admin API (not
-    stored redundantly in `person`/`user_preference`) - used by
+    stored redundantly in `user_preference`) - used by
     morning_brief.py to know where to send the daily brief."""
     user = get_client().auth.admin.get_user_by_id(user_id)
     return user.user.email
@@ -700,9 +328,8 @@ def delete_account(user_id: str) -> None:
     """Permanently deletes the account and every row of their data - the
     Play Store's required "delete my account and data" action (see
     api/routers/settings.py's DELETE /account). Only needs to delete the
-    auth.users row itself: every app table (person, interaction, task,
-    interaction_person, google_credentials, oauth_state, user_preference,
-    initiative) declares its user_id column `references auth.users(id)
+    auth.users row itself: every app table (interaction, task,
+    user_preference, initiative, ...) declares its user_id column `references auth.users(id)
     on delete cascade` in schema.sql, so Postgres cascades the rest for
     free - no per-table cleanup to keep in sync here as new tables are
     added. Uses the Auth admin API (same service-role client as
@@ -748,8 +375,8 @@ def get_initiative(user_id: str, initiative_id: int):
     lookup, or a bad id) rather than raising - this isn't a hard
     dependency of the capture flow, just extra display info, so a miss
     here shouldn't fail the whole request the way it would for a
-    person/task lookup. `.single()` raises on zero rows (same convention
-    as get_person/get_task elsewhere in this file), so that's caught here
+    task lookup. `.single()` raises on zero rows (same convention
+    as get_task elsewhere in this file), so that's caught here
     specifically instead of switching query styles just for this one
     optional lookup."""
     try:
@@ -790,8 +417,7 @@ def delete_initiative(user_id: str, initiative_id: int) -> None:
 
 def get_initiative_by_name(user_id: str, name: str):
     """Case-insensitive exact-name lookup (ilike with no wildcards
-    behaves as case-insensitive equality - same trick
-    get_people_by_company already uses) - used by capture.py to resolve
+    behaves as case-insensitive equality) - used by capture.py to resolve
     extraction.py's classified initiative name back to an id. Returns
     None if there's no match."""
     resp = get_client().table("initiative").select("*").eq("user_id", user_id).ilike("name", name).execute()
@@ -851,131 +477,7 @@ def increment_usage(user_id: str, resource: str, period: str) -> int:
     return resp.data
 
 
-if __name__ == "__main__":
-    # Quick connectivity check: confirms env vars are set and the tables
-    # from schema.sql exist.
-    client = get_client()
-    resp = client.table("person").select("id").limit(1).execute()
-    print("Connected to Supabase successfully. `person` table is reachable.")
-
-
-# ---------- Documents (schema.sql section 26, documents.py) ----------
-#
-# Same row-boundary encryption as every other table (see the
-# _ENCRYPTED_*_FIELDS maps above). The list query deliberately leaves out
-# the heavy columns (embedding, extracted_text) - the Docs screen never
-# needs them; search fetches embeddings separately.
-
-_DOCUMENT_LIST_COLUMNS = (
-    "id, title, description, category, tags, owner, person_id, initiative_id, file_name, "
-    "mime_type, size_bytes, thumb_path, issue_date, expiry_date, source, created_at, "
-    "drive_file_id, drive_folder_id"
-)
-
-
-def create_document(user_id: str, **fields) -> dict:
-    resp = get_client().table("document").insert(_encrypt_fields("document", {"user_id": user_id, **fields})).execute()
-    return _decrypt_row("document", resp.data[0])
-
-
-def get_documents(user_id: str) -> list:
-    resp = (
-        get_client().table("document").select(_DOCUMENT_LIST_COLUMNS)
-        .eq("user_id", user_id).eq("hidden", False).order("created_at", desc=True).execute()
-    )
-    return _decrypt_rows("document", resp.data)
-
-
-def get_document(user_id: str, document_id: int, include_private: bool = False):
-    """include_private adds storage paths, extracted text and embedding -
-    for the backend's own use (serving the file, search), never returned
-    to the client as-is."""
-    cols = "*" if include_private else _DOCUMENT_LIST_COLUMNS
-    resp = get_client().table("document").select(cols).eq("id", document_id).eq("user_id", user_id).execute()
-    return _decrypt_row("document", resp.data[0]) if resp.data else None
-
-
-def get_documents_for_search(user_id: str) -> list:
-    resp = (
-        get_client().table("document")
-        .select(_DOCUMENT_LIST_COLUMNS + ", extracted_text, embedding")
-        .eq("user_id", user_id).eq("hidden", False).execute()
-    )
-    return _decrypt_rows("document", resp.data)
-
-
-def update_document(user_id: str, document_id: int, **fields) -> dict:
-    resp = (
-        get_client().table("document").update(_encrypt_fields("document", fields))
-        .eq("id", document_id).eq("user_id", user_id).execute()
-    )
-    return _decrypt_row("document", resp.data[0]) if resp.data else None
-
-
-def delete_document(user_id: str, document_id: int) -> None:
-    get_client().table("document").delete().eq("id", document_id).eq("user_id", user_id).execute()
-
-
-def get_drive_documents(user_id: str, drive_folder_id: int) -> list:
-    """Every row synced from one Drive folder, hidden ones included (the
-    sync needs those to know not to re-import them)."""
-    resp = (
-        get_client().table("document")
-        .select("id, drive_file_id, drive_modified_time, thumb_path, hidden")
-        .eq("user_id", user_id).eq("drive_folder_id", drive_folder_id).execute()
-    )
-    return resp.data
-
-
-def get_document_by_drive_id(user_id: str, drive_file_id: str):
-    resp = (
-        get_client().table("document").select("id, drive_folder_id, hidden")
-        .eq("user_id", user_id).eq("drive_file_id", drive_file_id).execute()
-    )
-    return resp.data[0] if resp.data else None
-
-
-# ---------- Google Drive folders (schema.sql section 27, google_drive.py) ----------
-
-def get_drive_folders(user_id: str) -> list:
-    return (
-        get_client().table("drive_folder").select("*").eq("user_id", user_id)
-        .order("created_at").execute().data
-    )
-
-
-def get_drive_folder(user_id: str, folder_row_id: int):
-    resp = get_client().table("drive_folder").select("*").eq("id", folder_row_id).eq("user_id", user_id).execute()
-    return resp.data[0] if resp.data else None
-
-
-def create_drive_folder(user_id: str, folder_id: str, name: str) -> dict:
-    resp = get_client().table("drive_folder").upsert(
-        {"user_id": user_id, "folder_id": folder_id, "name": name}, on_conflict="user_id,folder_id"
-    ).execute()
-    return resp.data[0]
-
-
-def update_drive_folder(user_id: str, folder_row_id: int, **fields) -> None:
-    get_client().table("drive_folder").update(fields).eq("id", folder_row_id).eq("user_id", user_id).execute()
-
-
-def delete_drive_folder(user_id: str, folder_row_id: int) -> None:
-    """Its documents go with it (ON DELETE CASCADE on document.drive_folder_id)."""
-    get_client().table("drive_folder").delete().eq("id", folder_row_id).eq("user_id", user_id).execute()
-
-
 # ---------- Unified search index (schema.sql section 28, search_index.py) ----------
-
-def get_interaction_links(user_id: str) -> list:
-    """Every secondary-mention link (interaction_person) for this user -
-    lets the indexer tag a note with everyone it mentions, not just its
-    primary person."""
-    return (
-        get_client().table("interaction_person").select("interaction_id, person_id")
-        .eq("user_id", user_id).execute().data
-    )
-
 
 def upsert_search_chunks(user_id: str, rows: list) -> None:
     if not rows:
@@ -996,7 +498,7 @@ def get_search_chunk_keys(user_id: str) -> list:
     return get_client().table("search_chunk").select("kind, entity_id").eq("user_id", user_id).execute().data
 
 
-def get_search_chunks(user_id: str, kinds=None, person_id=None, initiative_id=None,
+def get_search_chunks(user_id: str, kinds=None, initiative_id=None,
                       date_from=None, date_to=None) -> list:
     """All chunks matching the filters, decrypted, WITHOUT embeddings -
     the keyword (BM25) side of hybrid search scores these in Python."""
@@ -1005,8 +507,6 @@ def get_search_chunks(user_id: str, kinds=None, person_id=None, initiative_id=No
          .eq("user_id", user_id))
     if kinds:
         q = q.in_("kind", list(kinds))
-    if person_id is not None:
-        q = q.contains("person_ids", [person_id])
     if initiative_id is not None:
         q = q.eq("initiative_id", initiative_id)
     if date_from:
@@ -1016,119 +516,13 @@ def get_search_chunks(user_id: str, kinds=None, person_id=None, initiative_id=No
     return _decrypt_rows("search_chunk", q.execute().data)
 
 
-def match_search_chunks(user_id: str, query_embedding, k: int = 40, kinds=None, person_id=None,
+def match_search_chunks(user_id: str, query_embedding, k: int = 40, kinds=None,
                         initiative_id=None, date_from=None, date_to=None) -> list:
     return get_client().rpc("match_search_chunks", {
         "query_embedding": query_embedding, "filter_user_id": user_id, "match_count": k,
-        "filter_kinds": list(kinds) if kinds else None, "filter_person_id": person_id,
+        "filter_kinds": list(kinds) if kinds else None, "filter_person_id": None,
         "filter_initiative_id": initiative_id, "date_from": date_from, "date_to": date_to,
     }).execute().data
-
-
-# ---------- Knowledge graph + memory (schema.sql sections 29 and 31, graph.py) ----------
-
-def get_organizations(user_id: str) -> list:
-    return get_client().table("organization").select("*").eq("user_id", user_id).order("name").execute().data
-
-
-def upsert_organization(user_id: str, name: str, name_key: str) -> dict:
-    resp = get_client().table("organization").upsert(
-        {"user_id": user_id, "name": name, "name_key": name_key}, on_conflict="user_id,name_key",
-        ignore_duplicates=True).execute()
-    if resp.data:
-        return resp.data[0]
-    return get_client().table("organization").select("*").eq("user_id", user_id).eq("name_key", name_key) \
-        .execute().data[0]
-
-
-def delete_organizations(user_id: str, ids: list) -> None:
-    if ids:
-        get_client().table("organization").delete().eq("user_id", user_id).in_("id", list(ids)).execute()
-
-
-def _now_iso() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat()
-
-
-# ---- relationship (schema.sql section 31; was entity_edge)
-
-def get_relationships(user_id: str, entity_type: str = None, entity_id: int = None, rel: str = None) -> list:
-    """Relationships touching an entity (either direction), or all of a user's."""
-    q = get_client().table("relationship").select("*").eq("user_id", user_id)
-    if rel:
-        q = q.eq("rel", rel)
-    rows = q.execute().data
-    if entity_type is not None:
-        rows = [r for r in rows if (r["src_type"] == entity_type and r["src_id"] == entity_id)
-                or (r["dst_type"] == entity_type and r["dst_id"] == entity_id)]
-    return _decrypt_rows("relationship", rows)
-
-
-def upsert_relationship(user_id: str, **fields) -> None:
-    get_client().table("relationship").upsert(
-        _encrypt_fields("relationship", {"user_id": user_id, **fields}),
-        on_conflict="user_id,src_type,src_id,rel,dst_type,dst_id").execute()
-
-
-def update_relationship(user_id: str, relationship_id: int, **fields) -> None:
-    get_client().table("relationship").update(_encrypt_fields("relationship", {**fields, "updated_at": _now_iso()})) \
-        .eq("id", relationship_id).eq("user_id", user_id).execute()
-
-
-def delete_relationships(user_id: str, ids: list) -> None:
-    if ids:
-        get_client().table("relationship").delete().eq("user_id", user_id).in_("id", list(ids)).execute()
-
-
-# ---- person_fact (schema.sql section 31; was fact)
-
-def get_person_facts(user_id: str, person_id: int = None) -> list:
-    """Every fact (current and superseded) for one person, or for everyone."""
-    q = get_client().table("person_fact").select("*").eq("user_id", user_id)
-    if person_id is not None:
-        q = q.eq("person_id", person_id)
-    return _decrypt_rows("person_fact", q.order("observed_on", nullsfirst=True).order("id").execute().data)
-
-
-def insert_person_fact(user_id: str, **fields) -> dict:
-    resp = get_client().table("person_fact").insert(
-        _encrypt_fields("person_fact", {"user_id": user_id, **fields})).execute()
-    return _decrypt_row("person_fact", resp.data[0])
-
-
-def update_person_fact(user_id: str, fact_id: int, **fields) -> None:
-    get_client().table("person_fact").update(_encrypt_fields("person_fact", {**fields, "updated_at": _now_iso()})) \
-        .eq("id", fact_id).eq("user_id", user_id).execute()
-
-
-def delete_person_facts(user_id: str, ids: list) -> None:
-    if ids:
-        get_client().table("person_fact").delete().eq("user_id", user_id).in_("id", list(ids)).execute()
-
-
-# ---- key_date (schema.sql section 31)
-
-def get_key_dates(user_id: str, person_id: int = None) -> list:
-    q = get_client().table("key_date").select("*").eq("user_id", user_id)
-    if person_id is not None:
-        q = q.eq("person_id", person_id)
-    return _decrypt_rows("key_date", q.order("month").order("day", nullsfirst=False).order("id").execute().data)
-
-
-def insert_key_date(user_id: str, **fields) -> dict:
-    resp = get_client().table("key_date").insert(_encrypt_fields("key_date", {"user_id": user_id, **fields})).execute()
-    return _decrypt_row("key_date", resp.data[0])
-
-
-def update_key_date(user_id: str, key_date_id: int, **fields) -> None:
-    get_client().table("key_date").update(_encrypt_fields("key_date", {**fields, "updated_at": _now_iso()})) \
-        .eq("id", key_date_id).eq("user_id", user_id).execute()
-
-
-def delete_key_dates(user_id: str, ids: list) -> None:
-    if ids:
-        get_client().table("key_date").delete().eq("user_id", user_id).in_("id", list(ids)).execute()
 
 
 # ---------- Daily brief cache (schema.sql section 30) ----------
@@ -1151,3 +545,11 @@ def save_daily_brief(user_id: str, brief_date: str, fingerprint: str, brief: str
         _encrypt_fields("daily_brief", row),
         on_conflict="user_id,brief_date",
     ).execute()
+
+
+if __name__ == "__main__":
+    # Quick connectivity check: confirms env vars are set and the tables
+    # from schema.sql exist.
+    client = get_client()
+    resp = client.table("interaction").select("id").limit(1).execute()
+    print("Connected to Supabase successfully. `interaction` table is reachable.")

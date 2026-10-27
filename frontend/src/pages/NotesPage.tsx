@@ -48,7 +48,7 @@ export default function NotesPage() {
       if (filter === -1 && n.initiative_id !== null) return false
       if (typeof filter === 'number' && filter > 0 && n.initiative_id !== filter) return false
       if (!q) return true
-      return [n.summary, n.raw_text, n.person?.name, n.initiative?.name].some((f) => f?.toLowerCase().includes(q))
+      return [n.summary, n.raw_text, n.initiative?.name].some((f) => f?.toLowerCase().includes(q))
     })
   }, [notes, filter, query])
 
@@ -125,7 +125,7 @@ export default function NotesPage() {
           {!isLoading && notes?.length === 0 && (
             <EmptyState
               title="No notes yet"
-              body="Head to Home and tell it about a conversation — it'll show up here, sorted and summarised."
+              body="Head to Home and jot something down — it'll show up here, sorted and summarised."
               to="/"
               cta="Log your first note"
             />

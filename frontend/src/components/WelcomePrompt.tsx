@@ -23,7 +23,7 @@ export default function WelcomePrompt({ onStart, onSkip }: WelcomePromptProps) {
           Welcome to MyConfía
         </h2>
         <p className="mx-auto mb-7 max-w-xs text-[0.9375rem] leading-relaxed text-text-muted">
-          Your personal memory for people, conversations and follow-ups. Take a 60-second tour?
+          Your notes, tasks and morning brief in one place. Take a 60-second tour?
         </p>
         <div className="flex flex-col gap-2">
           <Button type="button" variant="primary" size="lg" block onClick={onStart}>

@@ -31,7 +31,7 @@ from datetime import date
 import db
 
 # Monthly caps for free-tier accounts. A resource name not listed here
-# has no cap at all (e.g. reading your own notes/people is never
+# has no cap at all (e.g. reading your own notes/tasks is never
 # metered - only the LLM-calling actions that cost real money against
 # Groq/Cohere's free-tier quota are). Numbers below are placeholders -
 # pick real ones based on actual per-user Groq/Cohere free-tier cost
@@ -40,7 +40,6 @@ FREE_LIMITS = {
     "interactions_logged": 50,   # notes/interactions captured per month
     "ai_questions_asked": 50,    # chat "ask" queries per month
     "voice_transcriptions": 30,  # voice notes per month (Whisper minutes)
-    "card_scans": 10,            # business card scans per month
 }
 
 
@@ -77,7 +76,7 @@ def _current_period() -> str:
 
 def check_and_increment(user_id: str, resource: str) -> None:
     """Call this right before performing a metered action (logging a
-    note, asking a question, transcribing voice, scanning a card).
+    note, asking a question, transcribing voice).
     Premium accounts always pass through untouched - usage isn't even
     counted for them, since there's nothing to enforce. A resource with
     no entry in FREE_LIMITS is unmetered for everyone (raises never).

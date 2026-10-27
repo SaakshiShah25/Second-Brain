@@ -5,12 +5,6 @@
 # to the older local dev version.
 FROM python:3.11-slim
 
-# card_scan.py needs the Tesseract OCR *binary*, not just the pytesseract
-# pip wrapper - see card_scan.py's module docstring.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    tesseract-ocr \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 COPY requirements.txt .

@@ -11,8 +11,8 @@ import morning_brief as mb  # noqa: E402
 calls = {"llm": 0}
 data = {"today": date.today().isoformat(),
         "due_today": [{"description": "Send the deck", "due_date": date.today().isoformat(), "owner": "me",
-                       "person": None, "interaction": {}}],
-        "overdue": [], "no_due_date_count": 0, "calendar_events": [], "stale_people": []}
+                       "interaction": {}}],
+        "overdue": [], "no_due_date_count": 0}
 
 
 def setup():
@@ -35,14 +35,14 @@ def test_the_brief_does_not_change_when_tasks_change_during_the_day():
     setup()
     first, written = mb.get_morning_brief("u1")
     data["due_today"] = []          # you completed everything
-    data["overdue"] = [{"description": "x", "due_date": "2026-01-01", "owner": "me", "person": None, "interaction": {}}]
+    data["overdue"] = [{"description": "x", "due_date": "2026-01-01", "owner": "me", "interaction": {}}]
     again, written_again = mb.get_morning_brief("u1")
     assert again == first == "brief version 1" and written_again == written and calls["llm"] == 1
 
 
 def test_refresh_writes_a_new_one_from_the_current_state():
     setup()
-    data["due_today"] = data["due_today"] or [{"description": "y", "due_date": data["today"], "owner": "me", "person": None, "interaction": {}}]
+    data["due_today"] = data["due_today"] or [{"description": "y", "due_date": data["today"], "owner": "me", "interaction": {}}]
     mb.get_morning_brief("u1")
     fresh, _ = mb.get_morning_brief("u1", refresh=True)
     assert fresh == "brief version 2" and calls["llm"] == 2
@@ -51,7 +51,7 @@ def test_refresh_writes_a_new_one_from_the_current_state():
 
 def test_a_quiet_morning_is_kept_too_so_a_task_added_later_does_not_flip_it():
     setup()
-    quiet = dict(data, due_today=[], overdue=[], calendar_events=[], stale_people=[])
+    quiet = dict(data, due_today=[], overdue=[])
     mb._gather_brief_data = lambda uid: quiet
     first, _ = mb.get_morning_brief("u1")
     assert first.startswith("Nothing urgent") and calls["llm"] == 0
@@ -59,7 +59,7 @@ def test_a_quiet_morning_is_kept_too_so_a_task_added_later_does_not_flip_it():
     assert mb.get_morning_brief("u1")[0] == first and calls["llm"] == 0
 
 
-def test_each_person_has_their_own_brief():
+def test_each_user_has_their_own_brief():
     setup()
     a = mb.get_morning_brief("u1")[0]
     b = mb.get_morning_brief("u2")[0]

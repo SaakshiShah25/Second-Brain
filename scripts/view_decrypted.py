@@ -20,10 +20,8 @@ This reads real account data. Treat the output the same way you'd treat
 any other decrypted view of it - don't paste it somewhere public.
 
 Usage:
-    python scripts/view_decrypted.py people        --user-id <uuid>
     python scripts/view_decrypted.py interactions  --user-id <uuid>
     python scripts/view_decrypted.py tasks         --user-id <uuid>
-    python scripts/view_decrypted.py person        --user-id <uuid> --id 7
     python scripts/view_decrypted.py interaction   --user-id <uuid> --id 42
     python scripts/view_decrypted.py task          --user-id <uuid> --id 3
 
@@ -67,7 +65,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Print decrypted DB rows for QA/testing.")
     parser.add_argument(
         "resource",
-        choices=["people", "person", "interactions", "interaction", "tasks", "task"],
+        choices=["interactions", "interaction", "tasks", "task"],
     )
     parser.add_argument("--user-id", required=True, help="Your account's user_id (see docstring above)")
     parser.add_argument("--id", type=int, help="Fetch a single row by id, instead of every row")
@@ -76,9 +74,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.resource in ("people", "person"):
-        rows = db.get_person(args.user_id, args.id) if args.id else db.get_all_people(args.user_id)
-    elif args.resource in ("interactions", "interaction"):
+    if args.resource in ("interactions", "interaction"):
         rows = (
             db.get_interactions_by_ids(args.user_id, [args.id])
             if args.id

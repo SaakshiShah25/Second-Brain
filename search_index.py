@@ -1,16 +1,14 @@
 """
 search_index.py — The unified retrieval index: one searchable layer over
-every source (notes, follow-ups, people, documents), so a question can be
-answered from whichever of them holds the answer instead of only from
-notes.
+the user's notes and follow-ups.
 
 Write side ("indexer")
     Every source row becomes a short, self-contained chunk of text plus
-    filterable metadata (date, people involved, initiative), embedded with
-    Cohere and stored in `search_chunk` (schema.sql section 28). Chunks are
-    DERIVED data: the source tables stay the truth, chunks are rebuilt
-    from them on every write (enqueue(), from a background worker so
-    capture latency doesn't change) and wholesale by reindex_user().
+    filterable metadata (date, initiative), embedded with Cohere and stored
+    in `search_chunk` (schema.sql section 28). Chunks are DERIVED data: the
+    source tables stay the truth, chunks are rebuilt from them on every
+    write (enqueue(), from a background worker so capture latency doesn't
+    change) and wholesale by reindex_user().
 
 Read side ("search")
     Hybrid retrieval, then rerank:
@@ -21,8 +19,9 @@ Read side ("search")
          in Python because chunk text is encrypted at rest;
       3. reciprocal-rank fusion of the two lists, then Cohere's reranker
          orders the top candidates by how well they actually answer.
-    Filters (kinds, person, initiative, date range) apply to both sides.
+    Filters (kinds, initiative, date range) apply to both sides.
 """
+
 
 import math
 import queue
@@ -35,7 +34,7 @@ from typing import Optional
 import db
 import embeddings
 
-KINDS = ("note", "task", "person", "document", "organization")
+KINDS = ("note", "task")
 
 
 # ---------------------------------------------------------------- chunk text
@@ -45,15 +44,11 @@ def _join(label: str, items) -> str:
     return f"{label}: " + "; ".join(items) if items else ""
 
 
-def _note_chunk(n: dict, mentioned: list) -> dict:
-    person = (n.get("person") or {}).get("name")
+def _note_chunk(n: dict) -> dict:
     initiative = (n.get("initiative") or {}).get("name")
-    title = f"Note · {n.get('date') or 'undated'}" + (f" · {person}" if person else "") + \
-        (f" · {initiative}" if initiative else "")
+    title = f"Note · {n.get('date') or 'undated'}" + (f" · {initiative}" if initiative else "")
     text = "\n".join(p for p in [
         title,
-        f"About: {person}" if person else "Personal note (no specific person)",
-        _join("Also mentioned", [m["name"] for m in mentioned]),
         f"Location: {n['location']}" if n.get("location") else "",
         f"Summary: {n.get('summary') or ''}",
         _join("Decisions", n.get("decisions")),
@@ -61,105 +56,24 @@ def _note_chunk(n: dict, mentioned: list) -> dict:
         _join("Topics", n.get("topics")),
         f"What was said: {(n.get('raw_text') or '')[:2500]}",
     ] if p)
-    ids = [x for x in [n.get("person_id")] + [m["id"] for m in mentioned] if x]
     return {"kind": "note", "entity_id": n["id"], "title": title, "text": text, "item_date": n.get("date"),
-            "person_ids": sorted(set(ids)), "initiative_id": n.get("initiative_id"), "meta": {}}
+            "person_ids": [], "initiative_id": n.get("initiative_id"), "meta": {}}
 
 
 def _task_chunk(t: dict) -> dict:
     inter = t.get("interaction") or {}
-    note_person = inter.get("person") or {}
-    task_person = t.get("person") or {}
-    who = task_person.get("name") or note_person.get("name")
-    owner = "I owe this" if t.get("owner") == "me" else f"{who or 'They'} owe(s) this"
-    title = f"Follow-up · {t.get('description', '')[:60]}"
+    owner = "I owe this" if t.get("owner") == "me" else "Someone else owes this to me"
+    title = f"Task · {t.get('description', '')[:60]}"
     text = "\n".join(p for p in [
-        f"Follow-up ({t.get('status')}) - {owner}" + (f", due {t['due_date']}" + (f" at {str(t['due_time'])[:5]}" if t.get("due_time") else "")
-                                               if t.get("due_date") else ", no due date"),
+        f"Task ({t.get('status')}) - {owner}" + (f", due {t['due_date']}" + (f" at {str(t['due_time'])[:5]}" if t.get("due_time") else "")
+                                           if t.get("due_date") else ", no due date"),
         t.get("description", ""),
-        f"About: {who}" if who else "",
         f"From a note on {inter.get('date')}: {inter.get('summary') or ''}" if inter else "",
     ] if p)
-    ids = [x for x in [task_person.get("id"), note_person.get("id")] if x]
     return {"kind": "task", "entity_id": t["id"], "title": title, "text": text,
-            "item_date": t.get("due_date") or inter.get("date"), "person_ids": sorted(set(ids)),
+            "item_date": t.get("due_date") or inter.get("date"), "person_ids": [],
             "initiative_id": (inter.get("initiative") or {}).get("id"),
             "meta": {"status": t.get("status"), "owner": t.get("owner")}}
-
-
-def _fact_line(f: dict) -> str:
-    who = "" if f.get("subject", "self") == "self" else \
-        f"{f['subject']}{' ' + f['subject_name'] if f.get('subject_name') else ''} - "
-    return f"{who}{f['attribute']}: {f['value']}"
-
-
-def _person_chunk(p: dict, memory: Optional[dict] = None) -> dict:
-    memory = memory or {}
-    notes = "; ".join(f"{e.get('date')}: {e.get('note')}" for e in (p.get("personal_notes") or []))
-    title = f"Person · {p['name']}"
-    text = "\n".join(x for x in [
-        f"Person: {p['name']}",
-        _join("Also known as", p.get("aliases")),
-        f"Role: {p['role']}" if p.get("role") else "",
-        f"Company: {p['company']}" if p.get("company") else "",
-        f"About: {p['description']}" if p.get("description") else "",
-        f"Personal details: {notes}" if notes else "",
-        _join("Tags", p.get("tags")),
-        f"Phone: {p['phone']}" if p.get("phone") else "",
-        f"Email: {p['email']}" if p.get("email") else "",
-        f"First met: {p['first_met_date']}" if p.get("first_met_date") else "",
-        _join("Key dates", [k["text"] for k in memory.get("key_dates", [])]),
-        _join("Known details", [_fact_line(f) for f in memory.get("facts", [])
-                                if f["attribute"] not in ("role", "company", "phone", "email", "trait", "personal")]),
-        _join("Family and connections", [f"{c['relation'] or c['rel']}: {c['name']}"
-                                         for c in memory.get("relationships", [])]),
-    ] if x)
-    return {"kind": "person", "entity_id": p["id"], "title": title, "text": text,
-            "item_date": p.get("first_met_date"), "person_ids": [p["id"]], "initiative_id": None,
-            "meta": {"company": p.get("company") or ""}}
-
-
-def _document_chunk(d: dict) -> dict:
-    title = f"Document · {d['title']}"
-    text = "\n".join(x for x in [
-        f"Document: {d['title']} ({d.get('category')})",
-        f"Belongs to: {d['owner']}" if d.get("owner") else "",
-        d.get("description") or "",
-        f"Expires: {d['expiry_date']}" if d.get("expiry_date") else "",
-        _join("Tags", d.get("tags")),
-        f"Contents: {(d.get('extracted_text') or '')[:1500]}",
-    ] if x)
-    return {"kind": "document", "entity_id": d["id"], "title": title, "text": text,
-            "item_date": (d.get("created_at") or "")[:10] or None,
-            "person_ids": [d["person_id"]] if d.get("person_id") else [],
-            "initiative_id": d.get("initiative_id"), "meta": {"category": d.get("category")}}
-
-
-def _organization_chunk(profile: dict) -> dict:
-    people = "; ".join(f"{p['name']}" + (f" ({p['role']})" if p.get("role") else "") for p in profile["people"])
-    former = "; ".join(p["name"] for p in profile["former_people"])
-    docs = "; ".join(d["title"] for d in profile["documents"])
-    text = "\n".join(x for x in [
-        f"Organization: {profile['name']}",
-        f"People there: {people}" if people else "",
-        f"Previously there: {former}" if former else "",
-        f"Documents: {docs}" if docs else "",
-    ] if x)
-    ids = [p["person_id"] for p in profile["people"] + profile["former_people"]]
-    return {"kind": "organization", "entity_id": profile["id"], "title": f"Organization · {profile['name']}",
-            "text": text, "item_date": None, "person_ids": sorted(set(ids)), "initiative_id": None, "meta": {}}
-
-
-def _memories(user_id: str, only_ids=None) -> dict:
-    """{person_id: graph.person_memory(...)} for the people whose cards are
-    being built; empty (cards fall back to the plain profile) until the
-    memory tables exist."""
-    try:
-        import graph
-
-        return graph.all_person_memory(user_id, sorted(only_ids) if only_ids is not None else None)
-    except Exception:
-        return {}
 
 
 def _build(user_id: str, wanted: Optional[dict] = None) -> list:
@@ -172,35 +86,9 @@ def _build(user_id: str, wanted: Optional[dict] = None) -> list:
 
     chunks = []
     if want("note"):
-        people = {p["id"]: p for p in db.get_all_people(user_id)}
-        links: dict = {}
-        for link in db.get_interaction_links(user_id):
-            if link["person_id"] in people:
-                links.setdefault(link["interaction_id"], []).append(people[link["person_id"]])
-        for n in db.get_all_interactions_with_context(user_id):
-            if keep("note", n["id"]):
-                chunks.append(_note_chunk(n, links.get(n["id"], [])))
+        chunks += [_note_chunk(n) for n in db.get_all_interactions_with_context(user_id) if keep("note", n["id"])]
     if want("task"):
         chunks += [_task_chunk(t) for t in db.get_all_tasks_with_context(user_id) if keep("task", t["id"])]
-    if want("person"):
-        memories = _memories(user_id, wanted.get("person") if wanted is not None else None)
-        chunks += [_person_chunk(p, memories.get(p["id"])) for p in db.get_all_people(user_id)
-                   if keep("person", p["id"])]
-    if want("document"):
-        try:
-            docs = db.get_documents_for_search(user_id)
-        except Exception:
-            docs = []  # documents table not migrated yet
-        chunks += [_document_chunk(d) for d in docs if keep("document", d["id"])]
-    if want("organization"):
-        try:
-            import graph
-
-            for org in db.get_organizations(user_id):
-                if keep("organization", org["id"]):
-                    chunks.append(_organization_chunk(graph.organization_profile(user_id, org["id"])))
-        except Exception:
-            pass  # graph tables not migrated yet
     return chunks
 
 
@@ -214,22 +102,13 @@ def _write(user_id: str, chunks: list) -> None:
 
 
 def prune(user_id: str) -> int:
-    """Removes chunks whose source row no longer exists (deleted person ->
-    cascaded notes/tasks, merges, deleted documents). Cheap: compares ids,
-    no embeddings."""
+    """Removes chunks whose source row no longer exists (deleted notes and
+    their cascaded tasks), plus any chunk of a kind this app no longer
+    indexes. Cheap: compares ids, no embeddings."""
     live = {
         "note": {n["id"] for n in db.get_all_interactions(user_id)},
         "task": {t["id"] for t in db.get_all_tasks_with_context(user_id)},
-        "person": {p["id"] for p in db.get_all_people(user_id)},
     }
-    try:
-        live["document"] = {d["id"] for d in db.get_documents(user_id)}
-    except Exception:
-        live["document"] = set()
-    try:
-        live["organization"] = {o["id"] for o in db.get_organizations(user_id)}
-    except Exception:
-        live["organization"] = set()
     stale: dict = {}
     for row in db.get_search_chunk_keys(user_id):
         if row["entity_id"] not in live.get(row["kind"], set()):
@@ -323,12 +202,12 @@ def _bm25(query: str, rows: list, k1: float = 1.2, b: float = 0.75) -> dict:
     return scores
 
 
-def search(user_id: str, query: str, kinds=None, person_id: Optional[int] = None,
-           initiative_id: Optional[int] = None, date_from: Optional[str] = None,
-           date_to: Optional[str] = None, k: int = 8) -> list:
+def search(user_id: str, query: str, kinds=None, initiative_id: Optional[int] = None,
+           date_from: Optional[str] = None, date_to: Optional[str] = None, k: int = 8) -> list:
     """Best `k` chunks for `query` under the filters, best first:
-    [{kind, entity_id, title, text, item_date, person_ids, meta, score}]."""
-    filters = dict(kinds=kinds, person_id=person_id, initiative_id=initiative_id, date_from=date_from, date_to=date_to)
+    [{kind, entity_id, title, text, item_date, meta, score}]."""
+    kinds = [x for x in (kinds or KINDS) if x in KINDS] or list(KINDS)
+    filters = dict(kinds=kinds, initiative_id=initiative_id, date_from=date_from, date_to=date_to)
     rows = db.get_search_chunks(user_id, **filters)
     if not rows:
         return []

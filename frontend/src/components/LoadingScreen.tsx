@@ -6,7 +6,7 @@ import ConfiaLogo from './ConfiaLogo'
 // wordmark, tagline, and a 3-dot loading indicator, on the plain page
 // ground of whichever theme is already active - so it reads as the
 // installed app's own launch screen, flowing straight into the UI.
-const TAGLINE = 'Your ideas, your people, every conversation — always at hand.'
+const TAGLINE = 'Your notes, your tasks, your day — always at hand.'
 const DOT_COUNT = 3
 const DOT_INTERVAL_MS = 700
 

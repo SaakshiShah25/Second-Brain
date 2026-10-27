@@ -17,7 +17,7 @@ import ConfiaLogo from './ConfiaLogo'
 // Renders EITHER the lock screen OR `children`, never both overlaid at
 // once (unlike TourGate's dismissible corner card) - the real content
 // must not sit in the DOM at all while locked, not just be visually
-// covered, since real note/contact data underneath an overlay could
+// covered, since real note/task data underneath an overlay could
 // still be inspected via devtools or briefly flash on mount.
 // A quick app-switch (checking a notification, glancing at another app)
 // shouldn't force a re-unlock every time - 75s sits in the middle of a

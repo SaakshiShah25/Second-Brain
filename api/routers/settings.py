@@ -12,8 +12,6 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 
 import db
-import documents
-import google_oauth
 from api.auth import get_current_user_id
 from api.schemas import UserPreferenceUpdate
 
@@ -72,10 +70,4 @@ def delete_account(user_id: str = Depends(get_current_user_id)):
     way to pass a different id here, so this can only ever delete your
     own account. See db.delete_account() for what actually gets removed
     (everything, via cascading foreign keys - one call covers it)."""
-    # Storage objects don't cascade from auth.users like table rows do.
-    documents.purge_user_files(user_id)
-    try:
-        google_oauth.disconnect(user_id)  # revoke the grant at Google too
-    except Exception:
-        pass
     db.delete_account(user_id)

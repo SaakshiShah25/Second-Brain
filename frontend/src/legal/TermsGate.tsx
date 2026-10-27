@@ -24,7 +24,7 @@ import TermsTextModal from './TermsTextModal'
 // faster front door onto it, not a shorter version of what you're
 // actually agreeing to.
 const SUMMARY_POINTS: { icon: typeof FileText; text: string }[] = [
-  { icon: FileText, text: 'Confía logs your notes and contacts, and lets you ask questions about what you\'ve recorded.' },
+  { icon: FileText, text: 'Confía logs your notes and tasks, and lets you ask questions about what you\'ve recorded.' },
   { icon: ShieldOff, text: 'What you log is sent to Groq and Cohere to process it, and stored via Supabase - never used to train AI models, sold, or used for advertising.' },
   { icon: TriangleAlert, text: 'Avoid logging highly sensitive info (IDs, passwords, financial details) - it is processed by third-party AI.' },
   { icon: UserCheck, text: 'You own your content. AI-generated answers can be wrong - verify anything important.' },

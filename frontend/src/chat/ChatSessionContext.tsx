@@ -1,9 +1,9 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import type { CardFields, ChatMessage, ChatResult } from '../api/types'
+import type { ChatMessage } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 
 // Browser-local only, deliberately not sent to the backend - this is just
-// the visible chat transcript (bubbles), not the actual notes/people/tasks
+// the visible chat transcript (bubbles), not the actual notes/tasks
 // data, which is already durably saved server-side regardless of this.
 // Keyed per signed-in user so a second account on the same browser/device
 // never sees a previous account's conversation.
@@ -11,21 +11,9 @@ function storageKey(userId: string) {
   return `confia:chat-messages:${userId}`
 }
 
-interface PendingCard extends CardFields {
-  context_note: string
-}
-
-// Narrows ChatResult down to just its two "needs a disambiguation choice"
-// variants - the only shapes this ever actually holds.
-export type PendingConfirm = Extract<ChatResult, { status: 'confirm_required' }>
-
 interface ChatSessionContextValue {
   messages: ChatMessage[]
   setMessages: (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => void
-  pendingConfirm: PendingConfirm | null
-  setPendingConfirm: (value: PendingConfirm | null) => void
-  pendingCard: PendingCard | null
-  setPendingCard: (value: PendingCard | null | ((prev: PendingCard | null) => PendingCard | null)) => void
 }
 
 const ChatSessionContext = createContext<ChatSessionContextValue | null>(null)
@@ -37,8 +25,6 @@ const ChatSessionContext = createContext<ChatSessionContextValue | null>(null)
 export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const [messages, setMessagesState] = useState<ChatMessage[]>([])
-  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null)
-  const [pendingCard, setPendingCardState] = useState<PendingCard | null>(null)
 
   // Restore this device's transcript on login/refresh, and reset to empty
   // on a user switch rather than leaving a previous account's in-memory
@@ -83,18 +69,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  function setPendingCard(updater: PendingCard | null | ((prev: PendingCard | null) => PendingCard | null)) {
-    setPendingCardState((prev) => (typeof updater === 'function' ? updater(prev) : updater))
-  }
-
-  const value: ChatSessionContextValue = {
-    messages,
-    setMessages,
-    pendingConfirm,
-    setPendingConfirm,
-    pendingCard,
-    setPendingCard,
-  }
+  const value: ChatSessionContextValue = { messages, setMessages }
 
   return <ChatSessionContext.Provider value={value}>{children}</ChatSessionContext.Provider>
 }

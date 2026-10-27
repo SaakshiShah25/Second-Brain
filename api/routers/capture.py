@@ -1,18 +1,8 @@
 """
-api/routers/capture.py — REST equivalent of views/chat_view.py's capture
-side (text/voice/card), reusing the exact same building blocks
-(extraction.py, person_match.py, capture.py's resolve_and_link_other_people,
-embeddings.py, date_utils.py) that chat_view.py's _process_extracted()/
-finish_capture_storage()/apply_capture_choice() already compose - just
-without Streamlit's server-side session_state. See api/schemas.py's
-module docstring for how the disambiguation "confirm" step avoids
-needing that state.
-
-Note: `import capture` below refers to the root-level capture.py module
-(resolve_and_link_other_people) - it shares a name with this file
-(api/routers/capture.py) but that's harmless: Python resolves absolute
-imports by their full module path (`capture` vs `api.routers.capture`),
-not the importing file's own name.
+api/routers/capture.py — Logging a note: text (and voice, via transcription)
+goes through extraction.py, is saved as a note with its follow-up tasks, and
+is queued for the search index. `_capture_text_core` is also what
+api/routers/chat.py calls for the main chat input.
 """
 
 import time
@@ -22,22 +12,18 @@ from typing import Awaitable, Callable, Optional
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 from starlette.concurrency import run_in_threadpool
 
-import capture
-import card_scan
 import db
 import embeddings
 import entitlements
 import extraction
 import google_maps
 import moderation
-import graph
-import person_match
 import search_index
 import voice
 from timing import step
 from api.auth import get_current_user_id
 from api.rate_limit import limiter
-from api.schemas import CandidateEnvelope, CaptureConfirmRequest, CaptureRequest, CardConfirmRequest
+from api.schemas import CaptureRequest
 from date_utils import resolve_relative_phrase, to_valid_time
 
 router = APIRouter()
@@ -45,22 +31,15 @@ router = APIRouter()
 
 def _reject_if_unsafe(text: str) -> None:
     """Raises a 400 if `text` fails moderation.py's check - shared by
-    every entry point that can turn free-form/OCR'd text into a stored
-    Person/Interaction, not just the ones the frontend's chat UI actually
-    calls. api/routers/chat.py already moderates text.text before it
-    ever reaches capture_text() below, but capture_text/capture_voice/
-    capture_card(_confirm) are ALSO their own independently-callable API
-    routes (verified: unused by this app's own frontend today, but a
-    live, authenticated endpoint all the same) - without this, hitting
-    one of those directly would skip moderation entirely, including for
-    business-card OCR text, which never went through ANY safety check
-    before this. That matters doubly here: unlike a live chat answer, a
-    saved Interaction's raw_text later comes back as "trusted" retrieved
-    context in a future ask/briefing answer (see retrieval.py) - so
+    every entry point that can turn free-form text into a stored note.
+    api/routers/chat.py already moderates the text before it reaches
+    _capture_text_core, but capture_text/capture_voice are ALSO their own
+    independently-callable API routes - without this, hitting one of those
+    directly would skip moderation entirely. That matters here: unlike a
+    live chat answer, a saved note's raw_text later comes back as
+    "trusted" retrieved context in a future answer (see agent.py), so
     letting unsafe or prompt-injection content into storage at all is a
-    bigger, longer-lived risk than one unmoderated live response would
-    be. See capture_text() below for how the one call this WOULD
-    double up on (the chat.py-mediated path) avoids re-checking."""
+    bigger, longer-lived risk than one unmoderated live response."""
     result = moderation.check(text)
     if not result["safe"]:
         if result.get("unavailable"):  # the check couldn't run: nothing is saved, try again
@@ -71,7 +50,7 @@ def _reject_if_unsafe(text: str) -> None:
 def _enforce(user_id: str, resource: str):
     """Raises a 402 with an upgrade-shaped message if this free-tier
     account has hit its monthly cap for `resource` - called right before
-    the expensive step it protects (extraction/transcription/OCR), not
+    the expensive step it protects (extraction/transcription), not
     after, so an over-limit account never actually triggers the LLM call
     it can't complete. Premium accounts (entitlements.get_tier) never hit
     this. 402 Payment Required, not 429, since this isn't "slow down and
@@ -105,8 +84,7 @@ def _resolve_initiative(user_id: str, extracted: dict) -> Optional[int]:
     or named something that doesn't match any existing initiative (stale
     list, wording mismatch, hallucination) - silent, no error, matching
     the "don't interrupt the capture flow for this" decision (a wrong/
-    missing initiative is a single dropdown fix later, unlike a wrong
-    person match)."""
+    missing initiative is a single dropdown fix later)."""
     name = (extracted.get("initiative") or "").strip()
     if not name:
         return None
@@ -114,82 +92,11 @@ def _resolve_initiative(user_id: str, extracted: dict) -> Optional[int]:
     return match["id"] if match else None
 
 
-def _resolve_task_person(task_desc: str, primary_name: Optional[str], primary_person_id: Optional[int],
-                          linked_others: list, all_people: list) -> Optional[int]:
-    """Attributes a follow-up task to whoever it's EXPLICITLY named for,
-    whether that's the interaction's primary person, a secondary person
-    extraction.py already linked for THIS note, or - as a last resort -
-    ANY other existing person this task text happens to name, even if
-    extraction didn't flag them at all for this note. That last tier
-    matters for a personal task/reminder that references someone without
-    describing an interaction with them (e.g. "I need to send David
-    Okafor my new email id tonight") - extraction.py's prompt now asks
-    for these to show up in other_people regardless of primary_person,
-    but LLM extraction is never 100% reliable, so this is a deterministic
-    safety net: if a real, already-known person's name is sitting right
-    there in the task text, attribute it to them rather than silently
-    losing that context to "Personal" every time extraction has an off
-    run. No extra LLM call needed for any of this - just substring
-    matching, same as the first two tiers.
-
-    Returning the primary person's own id (rather than None) when their
-    name is matched - instead of relying on the interaction's primary
-    person as an implicit default - matters because the display fallback
-    (DigestPage.tsx / morning_brief.py / google_calendar.py) only falls
-    back to the interaction's primary person when the task is owed by
-    THEM, not by me (a task I own with NO name mentioned shouldn't show
-    someone else's name by default - see the Sonali/t-shirt case). If a
-    task I own explicitly names the primary person, that distinction
-    must survive as an explicit match, not collapse into the same "no
-    one named" None as a task that never mentions anyone at all.
-
-    Returns None only when no name - primary, secondary, or any other
-    known person - appears in the description at all."""
-    desc_lower = task_desc.lower()
-    if primary_name and primary_name.lower() in desc_lower:
-        return primary_person_id
-    for other in linked_others:
-        name = other.get("name")
-        if name and name.lower() in desc_lower:
-            return other["person_id"]
-
-    # Last-resort tier: match against every other existing person by
-    # name/alias. Prefer the LONGEST matching name (reduces false
-    # positives from short/common names matching as a substring of an
-    # unrelated word), and only act on it if exactly one person is tied
-    # for that best length - a genuine tie between two different people
-    # sharing a name is safer left unattributed than guessed.
-    already_checked_ids = {primary_person_id} | {o["person_id"] for o in linked_others}
-    best_len, best_ids = 0, set()
-    for person in all_people:
-        if person["id"] in already_checked_ids:
-            continue
-        for name in [person["name"]] + (person.get("aliases") or []):
-            if name and len(name) >= 3 and name.lower() in desc_lower:
-                if len(name) > best_len:
-                    best_len, best_ids = len(name), {person["id"]}
-                elif len(name) == best_len:
-                    best_ids.add(person["id"])
-                break
-    if best_len and len(best_ids) == 1:
-        return next(iter(best_ids))
-    return None
-
-
-def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_name: Optional[str], created_new: bool,
-                             raw_text: str, extracted: dict, interaction_date: str, date_warning: Optional[str],
-                             initiative_id: Optional[int] = None,
+def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, interaction_date: str,
+                             date_warning: Optional[str], initiative_id: Optional[int] = None,
                              geo_lat: Optional[float] = None, geo_lng: Optional[float] = None) -> dict:
     with step("embedding"):
         embedding = embeddings.compute_embedding(raw_text)
-    sentiments = extracted.get("sentiments") or []
-    extracted_facts = {
-        "other_people": extracted.get("other_people", []),
-        "opinions_expressed": extracted.get("opinions_expressed", []),
-    }
-    memory = graph.memory_payload(extracted)  # kept with the note so the memory tables can be rebuilt from it
-    if memory:
-        extracted_facts["memory"] = memory
 
     # Opt-in device location (see ChatInput.tsx) - geo_address is only
     # ever populated if a GOOGLE_MAPS_API_KEY is configured; maps_url
@@ -203,16 +110,12 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
     _t_db0 = time.perf_counter()
     interaction_id = db.create_interaction(
         user_id,
-        person_id=person_id,
         initiative_id=initiative_id,
         raw_text=raw_text,
         date=interaction_date,
         location=extracted.get("location"),
-        appearance=extracted.get("appearance_this_meeting", "") or "",
         summary=extracted.get("summary", ""),
-        sentiment=sentiments,
         topics=extracted.get("topics", []),
-        extracted_facts=extracted_facts,
         embedding=embedding,
         geo_lat=geo_lat,
         geo_lng=geo_lng,
@@ -221,30 +124,6 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
         decisions=extracted.get("decisions") or [],
         concerns=extracted.get("concerns") or [],
     )
-
-    # Person-less notes have no primary_person, but a note can still
-    # mention OTHER people in passing (e.g. "reminder to call Priya about
-    # the trip") - other_people is independent of whether there's a
-    # primary person at all.
-    #
-    # Defensively drop any entry that's just the primary person's own
-    # name restated (extraction.py instructs the model not to do this,
-    # but a note that repeats the primary person's name throughout - "Met
-    # Isha today, she's a UX designer..." - can still trip it up
-    # occasionally) - without this, that person ends up linked via
-    # interaction_person to their OWN interaction, which then shows up on
-    # their profile as a nonsensical "mentioned in a note about
-    # themselves" secondary mention, alongside the same note already
-    # correctly listed as a direct interaction.
-    other_people = [
-        o for o in (extracted.get("other_people", []) or [])
-        if not (resolved_name and isinstance(o, dict) and (o.get("name") or "").strip().lower() == resolved_name.strip().lower())
-    ]
-    linked_others = capture.resolve_and_link_other_people(
-        user_id, interaction_id, other_people, interaction_date
-    )
-    already_linked_ids = {person_id} | {o["person_id"] for o in linked_others}
-    all_people = db.get_all_people(user_id)
 
     tasks_created = []
     task_ids = []
@@ -265,60 +144,27 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
             due_date = date.today().isoformat()  # "finish it by 7pm" with no day means today
         if raw_due_date and not due_date:
             skipped_due_dates.append({"description": task_desc, "raw_due_date": raw_due_date})
-        task_person_id = _resolve_task_person(task_desc, resolved_name, person_id, linked_others, all_people)
-        # A task-text-only match against an existing person (extraction
-        # didn't flag them at all for this note) - link them to this
-        # interaction too, same as an other_people mention, so this note
-        # is discoverable from their own profile later. Track locally so
-        # a second task in the same note naming the same fallback-matched
-        # person doesn't try to link them twice.
-        if task_person_id is not None and task_person_id not in already_linked_ids:
-            db.link_interaction_person(user_id, interaction_id, task_person_id, relation="")
-            already_linked_ids.add(task_person_id)
-        task_ids.append(db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner, due_time=due_time,
-                                       person_id=task_person_id))
-        tasks_created.append({
-            "description": task_desc, "due_date": due_date, "due_time": due_time, "owner": owner, "person_id": task_person_id,
-        })
+        task_ids.append(db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner,
+                                       due_time=due_time))
+        tasks_created.append({"description": task_desc, "due_date": due_date, "due_time": due_time, "owner": owner})
 
     print(f"[timing] db_writes: {time.perf_counter() - _t_db0:.2f}s")
 
-    # Keep the unified search index in step (background - no added latency).
+    # Keep the search index in step (background - no added latency).
     search_index.enqueue(user_id, "note", [interaction_id])
     search_index.enqueue(user_id, "task", task_ids)
-    search_index.enqueue(user_id, "person", list(already_linked_ids))
-    # Details, dates and links from the same extraction - deterministic, no extra
-    # LLM call. Filed here, not in a background thread: the note is already saved,
-    # this takes a second or two, and a background job that silently dies is how
-    # a note ended up with nothing remembered from it. A failure here is logged
-    # and never loses the note (scripts/rebuild_graph.py re-files from the kept payload).
-    remembered, memory_saved = [], False
-    for attempt in range(3):  # filing is safe to repeat: anything already filed is recognised
-        try:
-            with step("memory"):
-                filed = graph.on_capture(user_id, interaction_id, interaction_date, person_id, extracted, linked_others)
-            remembered, memory_saved = filed.get("items", [])[:12], True
-            break
-        except Exception as e:
-            print(f"[warn] filing memory for note {interaction_id} failed (attempt {attempt + 1}/3): {e}")
-            time.sleep(1.0 * (attempt + 1))
 
     return {
         "status": "saved",
-        "person_id": person_id,
-        "resolved_name": resolved_name,
-        "created_new": created_new,
         "interaction_id": interaction_id,
         "initiative_id": initiative_id,
         # Only ever non-null when initiative_id is null - extraction.py's
         # prompt keeps the two mutually exclusive (a note that already
         # matched an existing initiative has nothing to suggest). The
         # frontend offers "add this as a new initiative?" off of this,
-        # and re-tags the interaction via the existing generic
-        # PATCH /api/people/interactions/{id} once the user says yes -
-        # no dedicated confirm endpoint needed for this, unlike person
-        # disambiguation, since accepting/declining doesn't block the
-        # note from having already saved successfully either way.
+        # and re-tags the note via PATCH /api/notes/{id} once the user says
+        # yes - accepting/declining doesn't block the note from having
+        # already saved successfully either way.
         "suggested_initiative": extracted.get("suggested_initiative") or None,
         # Name, not just the id, so the chat UI can tell the user which
         # existing category this note landed in without a separate
@@ -333,8 +179,6 @@ def _finish_capture_storage(user_id: str, person_id: Optional[int], resolved_nam
         "maps_url": maps_url,
         "decisions": extracted.get("decisions") or [],
         "concerns": extracted.get("concerns") or [],
-        "remembered": remembered,
-        "memory_saved": memory_saved,
     }
 
 
@@ -348,79 +192,10 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
         # and there is nothing left to "suggest".
         initiative_id = forced_initiative_id
         extracted = {**extracted, "suggested_initiative": None}
-
-    primary = extracted.get("primary_person")
-    if primary is None:
-        # Standalone note - no person involved at all (an idea, a to-do,
-        # a personal reflection). Nothing to resolve/disambiguate, so
-        # this always saves directly, same as the no-candidate-match
-        # branch below.
-        return _finish_capture_storage(
-            user_id, None, None, False, raw_text, extracted, interaction_date, date_warning,
-            initiative_id=initiative_id, geo_lat=geo_lat, geo_lng=geo_lng,
-        )
-
-    name = primary.get("name") or "Unknown"
-    description = primary.get("description") or ""
-    role = primary.get("role") or ""
-    company = primary.get("company") or ""
-    phone = primary.get("phone") or ""
-    email = primary.get("email") or ""
-    personal_notes = primary.get("personal_notes") or ""
-    aliases = primary.get("aliases") or []
-
-    is_unnamed = name.strip().lower() == "unknown"
-    has_distinguishing_info = bool(description or role or company or personal_notes)
-
-    if is_unnamed and not has_distinguishing_info:
-        # Someone was involved but is both unnamed AND has no other
-        # identifying trait at all - not worth promoting to a standalone
-        # Person record. It adds nothing searchable, and worse, every
-        # OTHER equally-unnamed person from a different note would
-        # text-match "Unknown" against this one at 100% (see
-        # person_match.py) and risk merging two unrelated people if the
-        # match prompt isn't read carefully. The note itself
-        # (raw_text/summary) still records that someone was there - it
-        # just isn't split out as a trackable Person. Same handling as a
-        # fully person-less note.
-        return _finish_capture_storage(
-            user_id, None, None, False, raw_text, extracted, interaction_date, date_warning,
-            initiative_id=initiative_id, geo_lat=geo_lat, geo_lng=geo_lng,
-        )
-
-    with step("person_match"):
-        people = db.get_all_people(user_id)
-        # "Unknown" is a placeholder, not an identity - text-matching it
-        # against a DIFFERENT unnamed person from another note is
-        # meaningless and risks merging unrelated people. Skip candidate
-        # matching entirely in that case and always create a fresh record
-        # (still worth keeping here since there IS other distinguishing
-        # info, e.g. "Unknown - President").
-        candidates = [] if is_unnamed else person_match.score_candidates(name, people)
-
-    if not candidates:
-        person_id = db.create_person(
-            user_id, name=name, description=description, role=role, company=company,
-            phone=phone, email=email, first_met_date=interaction_date,
-            personal_notes=[{"date": interaction_date, "note": personal_notes}] if personal_notes else [],
-            aliases=aliases,
-        )
-        return _finish_capture_storage(
-            user_id, person_id, name, True, raw_text, extracted, interaction_date, date_warning,
-            initiative_id=initiative_id, geo_lat=geo_lat, geo_lng=geo_lng,
-        )
-
-    return {
-        "status": "confirm_required",
-        "extracted": extracted,
-        "raw_text": raw_text,
-        "interaction_date": interaction_date,
-        "date_warning": date_warning,
-        "initiative_id": initiative_id,
-        "geo_lat": geo_lat,
-        "geo_lng": geo_lng,
-        "candidates": [{"person": p, "score": s} for p, s in candidates],
-    }
+    return _finish_capture_storage(
+        user_id, raw_text, extracted, interaction_date, date_warning,
+        initiative_id=initiative_id, geo_lat=geo_lat, geo_lng=geo_lng,
+    )
 
 
 # ---------- Endpoints ----------
@@ -446,7 +221,7 @@ async def _capture_text_core(user_id: str, raw_text: str, geo_lat: Optional[floa
     frontend what's happening live. Only two stages are emitted ("extracting"
     and "saving") rather than one per line above: the 2026-10 timing
     instrumentation showed extraction is essentially the entire duration of
-    a slow capture, while entitlement-check/get_initiatives/person-matching/
+    a slow capture, while entitlement-check/get_initiatives/
     embeddings/db-writes are consistently sub-second - not worth
     distinguishing to the user. The plain (non-streaming) capture_text route
     below never passes on_stage, so this is a no-op for every other caller."""
@@ -486,65 +261,6 @@ async def capture_text(body: CaptureRequest, request: Request, user_id: str = De
     return await _capture_text_core(user_id, body.raw_text, body.geo_lat, body.geo_lng, request)
 
 
-@router.post("/confirm")
-def capture_confirm(body: CaptureConfirmRequest, user_id: str = Depends(get_current_user_id)):
-    """Resolves the primary-person disambiguation a prior /capture (or
-    /capture/voice, or /capture/card/confirm) call returned - mirrors
-    chat_view.py's apply_capture_choice(). `body.candidates` is the exact
-    list that call returned; the client round-trips it since there's no
-    server-side session to remember it from.
-
-    This endpoint only exists because _process_extracted found candidate
-    people to disambiguate - which requires a non-null primary_person -
-    so `body.extracted["primary_person"]` is guaranteed non-null here
-    (the person-less/standalone-note branch always saves directly and
-    never reaches this endpoint)."""
-    primary = body.extracted.get("primary_person") or {}
-    name = primary.get("name") or "Unknown"
-    description = primary.get("description") or ""
-    role = primary.get("role") or ""
-    company = primary.get("company") or ""
-    phone = primary.get("phone") or ""
-    email = primary.get("email") or ""
-    personal_notes = primary.get("personal_notes") or ""
-    aliases = primary.get("aliases") or []
-
-    if body.choice is None:
-        person_id = db.create_person(
-            user_id, name=name, description=description, role=role, company=company,
-            phone=phone, email=email, first_met_date=body.interaction_date,
-            personal_notes=[{"date": body.interaction_date, "note": personal_notes}] if personal_notes else [],
-            aliases=aliases,
-        )
-        resolved_name, created_new = name, True
-    else:
-        if body.choice < 0 or body.choice >= len(body.candidates):
-            raise HTTPException(400, "choice out of range")
-        chosen = body.candidates[body.choice].person
-        person_id = chosen["id"]
-        if name != chosen["name"]:
-            db.add_alias(user_id, person_id, name)
-        for alias in aliases:
-            if alias and alias != chosen["name"]:
-                db.add_alias(user_id, person_id, alias)
-        if description:
-            db.update_person_description(user_id, person_id, description)
-        if personal_notes:
-            db.update_person_personal_notes(user_id, person_id, personal_notes, body.interaction_date)
-        if role or company:
-            db.update_person_role_company(user_id, person_id, role=role, company=company)
-        if phone or email:
-            contact_fields = {k: v for k, v in [("phone", phone), ("email", email)] if v}
-            db.update_person(user_id, person_id, **contact_fields)
-        resolved_name, created_new = chosen["name"], False
-
-    return _finish_capture_storage(
-        user_id, person_id, resolved_name, created_new, body.raw_text, body.extracted,
-        body.interaction_date, body.date_warning, initiative_id=body.initiative_id,
-        geo_lat=body.geo_lat, geo_lng=body.geo_lng,
-    )
-
-
 @router.post("/voice")
 @limiter.limit("20/minute")
 async def capture_voice(
@@ -582,69 +298,3 @@ async def capture_voice(
     result = _process_extracted(user_id, text, extracted, geo_lat=geo_lat, geo_lng=geo_lng)
     result["transcript"] = text
     return result
-
-
-@router.post("/card")
-@limiter.limit("20/minute")
-async def capture_card(request: Request, file: UploadFile, user_id: str = Depends(get_current_user_id)):
-    """OCRs+structures a business card photo (card_scan.py). Returns the
-    fields for the client to show an editable confirm form (see
-    CardConfirmRequest) - card OCR isn't trusted as-is, unlike voice, so
-    nothing is saved here yet."""
-    _enforce(user_id, "card_scans")
-    image_bytes = await file.read()
-    try:
-        fields = card_scan.extract_business_card(image_bytes)
-    except Exception as e:
-        raise HTTPException(422, str(e))
-    # OCR'd text is still attacker-controllable content (anyone can print
-    # or photograph arbitrary text onto a "card") and, unlike a live chat
-    # reply, whatever gets confirmed from this becomes a stored Person
-    # record later fed back as retrieved context to future ask/briefing
-    # answers - checked here on the raw OCR result so an unsafe card is
-    # rejected before the user is even shown it to confirm.
-    _reject_if_unsafe(" ".join(str(v) for v in fields.values() if v))
-    return fields
-
-
-@router.post("/card/confirm")
-def capture_card_confirm(body: CardConfirmRequest, user_id: str = Depends(get_current_user_id)):
-    """Mirrors chat_view.py's render_pending_card() save path: builds the
-    same extraction.py-shaped dict from the (possibly user-edited) card
-    fields and feeds it through the same _process_extracted() a typed
-    note uses - so a scanned name matching an existing person gets the
-    exact same /capture/confirm disambiguation as a typed note would.
-
-    Not separately metered against "interactions_logged" - the card scan
-    itself already spent this account's "card_scans" allowance (see
-    capture_card above), and no LLM extraction call happens here (the
-    dict below is built from already-structured OCR fields, not a fresh
-    extraction.extract_info() call) - so there's no extra AI cost this
-    step needs to protect against."""
-    if not body.name.strip():
-        raise HTTPException(400, "Name is required.")
-    # capture_card() above only ever saw the ORIGINAL OCR result - the
-    # user can freely edit every field (including typing a fresh
-    # context_note that never went through OCR at all) in the confirm
-    # form before this actually saves, so this is checked independently
-    # right before storage rather than trusted from that earlier pass.
-    _reject_if_unsafe(f"{body.name} {body.role} {body.company} {body.context_note}")
-    context_note = body.context_note.strip()
-    raw_text = context_note or f"Scanned business card: {body.name}, {body.role} at {body.company}".strip()
-    extracted = {
-        "primary_person": {
-            "name": body.name, "description": "", "role": body.role, "company": body.company,
-            "phone": body.phone, "email": body.email,
-        },
-        # Business-card scans skip LLM extraction entirely (no free text
-        # to classify), so there's no initiative classification to do -
-        # always lands Uncategorized. A documented v1 limitation, not a bug.
-        "initiative": None,
-        "date_mentioned": None,
-        "location": None,
-        "appearance_this_meeting": "",
-        "summary": context_note or f"Scanned {body.name}'s business card",
-        "sentiments": [], "topics": [], "other_people": [], "opinions_expressed": [],
-        "follow_ups": [],
-    }
-    return _process_extracted(user_id, raw_text, extracted)

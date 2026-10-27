@@ -1,16 +1,15 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
-import type { Candidate, ChatMessage, ChatResult } from './types'
+import type { ChatMessage, ChatResult } from './types'
 
 // Invalidated on every successful capture-intent save, since a note can
-// create a person/interaction/task the Today and People pages should
-// reflect next time they're viewed - same reasoning as api/capture.ts's
-// useInvalidateOnCapture.
+// create a note/task the Today and Notes pages should reflect next time
+// they're viewed.
 function useInvalidateOnCapture() {
   const queryClient = useQueryClient()
   return () => {
     queryClient.invalidateQueries({ queryKey: ['tasks'] })
-    queryClient.invalidateQueries({ queryKey: ['people'] })
+    queryClient.invalidateQueries({ queryKey: ['agenda'] })
     queryClient.invalidateQueries({ queryKey: ['notes'] })
   }
 }
@@ -52,33 +51,6 @@ export function useChat() {
       ),
     onSuccess: (result) => {
       if (result.intent === 'capture' && result.status === 'saved') invalidate()
-    },
-  })
-}
-
-export interface ChatConfirmBody {
-  intent: 'capture' | 'ask'
-  candidates: Candidate[]
-  choice: number | null
-  // capture fields
-  extracted?: unknown
-  raw_text?: string
-  interaction_date?: string
-  date_warning?: string | null
-  initiative_id?: number | null
-  geo_lat?: number | null
-  geo_lng?: number | null
-  // ask fields
-  query?: string
-  parsed?: Record<string, unknown>
-}
-
-export function useChatConfirm() {
-  const invalidate = useInvalidateOnCapture()
-  return useMutation({
-    mutationFn: (body: ChatConfirmBody) => api.post<ChatResult>('/api/chat/confirm', body),
-    onSuccess: (result) => {
-      if (result.intent === 'capture') invalidate()
     },
   })
 }

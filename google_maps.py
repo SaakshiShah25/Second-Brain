@@ -9,15 +9,23 @@ scheme (https://www.google.com/maps?q=lat,lng), not an API call.
 reverse_geocode is the only piece that needs GOOGLE_MAPS_API_KEY (the
 Geocoding API) - if it's not set, capture.py simply skips it and stores
 the map link alone, so this is genuinely optional setup.
+
+    export GOOGLE_MAPS_API_KEY="..."   # Geocoding API key, optional
 """
 
+import os
 from typing import Optional
 
 import requests
 
-from google_client import get_maps_api_key
-
 GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+
+
+def get_maps_api_key() -> Optional[str]:
+    """None means reverse-geocoding is unavailable - reverse_geocode degrades
+    gracefully (map link only, no address) rather than erroring, since this
+    key is optional setup."""
+    return os.environ.get("GOOGLE_MAPS_API_KEY") or None
 
 
 def build_maps_url(lat: float, lng: float) -> str:

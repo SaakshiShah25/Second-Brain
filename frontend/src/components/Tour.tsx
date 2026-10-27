@@ -6,9 +6,7 @@ import {
   MessageSquare,
   NotebookText,
   Settings as SettingsIcon,
-  FolderOpen,
   Sun,
-  Users,
   type LucideIcon,
 } from 'lucide-react'
 import { useUsageMode } from '../lib/usageMode'
@@ -48,25 +46,25 @@ const STEPS: Step[] = [
   {
     icon: MessageSquare,
     title: 'Log anything',
-    description: 'Type or tap the mic and talk about anyone or anything — the AI works out who it’s about and what to remember.',
+    description: 'Type or tap the mic and talk about anything — the AI works out what to remember and what you need to do, and by when.',
     path: '/',
   },
   {
     icon: MessageCircleQuestion,
     title: 'Ask anything',
-    description: 'The same box doubles as search — ask “what did Priya say about pricing?” and it answers from your own notes.',
+    description: 'The same box doubles as search — ask “what did I note about pricing?” and it answers from your own notes.',
     path: '/',
   },
   {
     icon: Sun,
     title: 'Today',
-    description: 'Your morning brief, follow-ups you owe (and are owed), and people worth reconnecting with.',
+    description: 'Your morning brief, plus every task sorted by when it’s due — with a calendar for the bigger picture.',
     path: '/digest',
   },
   {
     icon: NotebookText,
     title: 'Notes',
-    description: 'Every note lands here, sorted by date and searchable, whether it’s about a person or just an idea.',
+    description: 'Every note lands here, sorted by date and searchable — a meeting, a thought, an idea.',
     path: '/notes',
   },
   {
@@ -76,22 +74,10 @@ const STEPS: Step[] = [
     path: '/notes?tab=initiatives',
   },
   {
-    icon: FolderOpen,
-    title: 'Documents',
-    description: 'Drop in IDs, statements, contracts — they name and sort themselves. Then just ask on Home: “pull my passport and photo”.',
-    path: '/documents',
-  },
-  {
-    icon: Users,
-    title: 'People',
-    description: 'Everyone you’ve talked about, each with a profile, a timeline, and a one-tap briefing.',
-    path: '/people',
-  },
-  {
     icon: SettingsIcon,
     title: 'Settings',
     description: 'Tap your initial up here for theme, text size, app lock and privacy — and to take this tour again.',
-    path: '/people',
+    path: '/notes',
     target: '/settings',
   },
 ]
@@ -99,12 +85,12 @@ const STEPS: Step[] = [
 // The first two steps' examples follow what the account is used for.
 const MODE_COPY: Record<'work' | 'personal' | 'both', Record<number, string>> = {
   work: {
-    0: 'Type or tap the mic after a meeting or call — the AI works out who it was with, what was agreed, and what you owe.',
-    1: 'The same box doubles as search — ask “what did Priya say about pricing?” or “brief me before I meet Vikas”.',
+    0: 'Type or tap the mic after a meeting or call — the AI works out what was agreed and what you owe, and by when.',
+    1: 'The same box doubles as search — ask “what did I note about pricing?” or “what’s overdue?”.',
   },
   personal: {
-    0: 'Type or tap the mic to jot down anything — a thought, a plan, or a detail about someone you care about.',
-    1: 'The same box doubles as search — ask “when did I last see Meera?” or “what does Mum want for her birthday?”',
+    0: 'Type or tap the mic to jot down anything — a thought, a plan, or a reminder for later.',
+    1: 'The same box doubles as search — ask “what’s coming up this week?” or “what did I note about the trip?”',
   },
   both: {},
 }

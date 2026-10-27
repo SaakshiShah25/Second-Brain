@@ -5,7 +5,6 @@ import { useDeleteAccount, useSettings, useUpdateSettings } from '../api/setting
 import type { FontSize, Theme } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import AppLockSettings from '../components/AppLockSettings'
-import GoogleAccountSettings from '../components/google/GoogleAccountSettings'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { ListGroup, ListRow, Toggle } from '../components/ListGroup'
 import PageHeader from '../components/PageHeader'
@@ -54,10 +53,10 @@ export default function SettingsPage() {
           title="Using MyConfía for"
           footer={
             usage.mode === 'work'
-              ? 'Shortcuts, wording and your morning brief are tuned for clients, colleagues and meetings.'
+              ? 'Shortcuts, wording and your morning brief are tuned for clients, colleagues and deadlines.'
               : usage.mode === 'personal'
-                ? 'Work-only tools (card scanning, company briefings) are tucked away, and wording is tuned for friends and family.'
-                : 'Everything is on — work tools and personal wording side by side.'
+                ? 'Wording and your morning brief are tuned for friends, family and everyday to-dos.'
+                : 'Work and personal wording side by side.'
           }
         >
           <div className="px-4 py-3">
@@ -76,8 +75,6 @@ export default function SettingsPage() {
           </div>
         </ListGroup>
       )}
-
-      <GoogleAccountSettings />
 
       <ListGroup title="Appearance">
         <div className="px-4 py-3">
@@ -138,7 +135,7 @@ export default function SettingsPage() {
 
       <ListGroup
         title="Notifications"
-        footer="Today’s tasks, calendar, and people you haven’t talked to in a while — sent every morning."
+        footer="What’s overdue and what’s due today — sent every morning."
       >
         <ListRow
           icon={Mail}
@@ -173,7 +170,7 @@ export default function SettingsPage() {
       </ListGroup>
 
       <ListGroup
-        footer="Permanently deletes your account and every note, contact and task tied to it. This can’t be undone."
+        footer="Permanently deletes your account and every note and task tied to it. This can’t be undone."
       >
         <ListRow
           icon={Trash2}
@@ -190,7 +187,7 @@ export default function SettingsPage() {
       {confirmingDelete && (
         <ConfirmDialog
           title="Delete your account?"
-          message="This permanently deletes your account and everything in it — every note, contact and task. There's no way to undo this or recover the data afterward."
+          message="This permanently deletes your account and everything in it — every note and task. There's no way to undo this or recover the data afterward."
           confirmLabel="Delete permanently"
           busy={deleteAccount.isPending}
           busyLabel="Deleting…"

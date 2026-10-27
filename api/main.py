@@ -27,7 +27,7 @@ import voice
 from llm_client import get_client as get_llm_client
 from api.auth import get_current_user_id
 from api.rate_limit import limiter
-from api.routers import agenda, ask, brief, calendar, capture, chat, documents, google, initiatives, notes, people, settings, tasks
+from api.routers import agenda, ask, brief, capture, chat, initiatives, notes, settings, tasks
 
 app = FastAPI(title="MyConfía API")
 
@@ -72,8 +72,7 @@ app.add_middleware(SlowAPIMiddleware)
 # other project on the machine (Vite just picks the next free one rather
 # than failing - see the "Port 5173 is in use" line it prints on start).
 # The deployed frontend origin is added on top of that via FRONTEND_URL
-# (the same env var api/routers/calendar.py already uses for the OAuth
-# redirect), so this doesn't need a second, separate env var to configure.
+# so this doesn't need a second, separate env var to configure.
 _origins = [f"http://localhost:{p}" for p in range(5173, 5178)]
 _frontend_url = os.environ.get("FRONTEND_URL")
 if _frontend_url and _frontend_url not in _origins:
@@ -88,18 +87,14 @@ app.add_middleware(
 )
 
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
-app.include_router(people.router, prefix="/api/people", tags=["people"])
 app.include_router(capture.router, prefix="/api/capture", tags=["capture"])
 app.include_router(ask.router, prefix="/api/ask", tags=["ask"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
-app.include_router(calendar.router, prefix="/api/calendar", tags=["calendar"])
 app.include_router(agenda.router, prefix="/api/agenda", tags=["agenda"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(brief.router, prefix="/api/brief", tags=["brief"])
 app.include_router(initiatives.router, prefix="/api/initiatives", tags=["initiatives"])
 app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
-app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
-app.include_router(google.router, prefix="/api/google", tags=["google"])
 
 
 @app.get("/api/health")

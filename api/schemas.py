@@ -4,14 +4,6 @@ api/schemas.py — Pydantic request models for the FastAPI backend.
 Response bodies mostly pass through the plain dicts db.py already returns
 (Supabase rows) rather than re-modeling every field - only request bodies
 need real validation here.
-
-Design note on the capture/ask "confirm" flow: Streamlit's version keeps
-a pending_capture/pending_retrieval dict in server-side st.session_state
-between the initial call and the disambiguation confirm click. A
-stateless REST API has nowhere to keep that, so the *client* holds it
-instead - CaptureConfirmRequest/AskConfirmRequest round-trip the
-`candidates` list the initial call returned, so the confirm endpoint
-never needs to re-look-up or re-guess what was shown to the user.
 """
 
 from typing import Any, Optional
@@ -25,11 +17,9 @@ from pydantic import BaseModel, Field
 # budget, and "burying" a prompt-injection attempt inside enough padding
 # that it's more likely to slip past both moderation.py and the model's
 # own attention. NOTE_MAX_LEN covers actual note/question content;
-# FIELD_MAX_LEN covers short structured fields (a name, a role) that
-# should never legitimately be long anyway.
+# the same reason applies to anything else that reaches a prompt.
 NOTE_MAX_LEN = 20_000
 QUERY_MAX_LEN = 2_000
-FIELD_MAX_LEN = 200
 
 
 class CaptureRequest(BaseModel):
@@ -40,44 +30,17 @@ class CaptureRequest(BaseModel):
     geo_lng: Optional[float] = None
 
 
-class CandidateEnvelope(BaseModel):
-    person: dict[str, Any]
-    score: float
-
-
-class CaptureConfirmRequest(BaseModel):
-    extracted: dict[str, Any]
-    raw_text: str = Field(..., max_length=NOTE_MAX_LEN)
-    interaction_date: str
-    date_warning: Optional[str] = None
-    candidates: list[CandidateEnvelope]
-    choice: Optional[int] = None  # index into candidates, or None for "new person"
-    initiative_id: Optional[int] = None  # round-tripped from the initial /capture call, like geo_lat/geo_lng
-    geo_lat: Optional[float] = None
-    geo_lng: Optional[float] = None
-
-
 class AskRequest(BaseModel):
     query: str = Field(..., max_length=QUERY_MAX_LEN)
     # Recent chat turns as [{"role": "user"|"assistant", "content": str}, ...] -
-    # same shape the frontend already needs to render the conversation, and
-    # the same shape retrieval.format_recent_context() expects (it does the
-    # actual formatting server-side, for pronoun/back-reference resolution -
-    # not duplicated client-side).
+    # same shape the frontend already needs to render the conversation.
     history: list[dict[str, Any]] = []
-
-
-class AskConfirmRequest(BaseModel):
-    query: str = Field(..., max_length=QUERY_MAX_LEN)
-    parsed: dict[str, Any]
-    candidates: list[CandidateEnvelope]
-    choice: Optional[int] = None  # index into candidates, or None for "none of these"
 
 
 class ChatRequest(BaseModel):
     """One unified chat input - api/routers/chat.py classifies it as
-    capture or ask and delegates to the matching existing flow (see that
-    module's docstring). Superset of CaptureRequest/AskRequest's fields."""
+    capture or ask and delegates to the matching flow (see that module's
+    docstring). Superset of CaptureRequest/AskRequest's fields."""
     text: str = Field(..., max_length=NOTE_MAX_LEN)
     history: list[dict[str, Any]] = []
     geo_lat: Optional[float] = None
@@ -85,67 +48,6 @@ class ChatRequest(BaseModel):
     # The category the user picked for THIS note in the input bar. When set it is
     # used as-is instead of the model's guess; null/absent means "decide for me".
     initiative_id: Optional[int] = None
-
-
-class ChatConfirmRequest(BaseModel):
-    """Covers both CaptureConfirmRequest's and AskConfirmRequest's fields -
-    `intent` (round-tripped from the initial /api/chat response) says
-    which set actually applies. Unused fields for the other intent are
-    just left null."""
-    intent: str  # "capture" | "ask"
-    candidates: list[CandidateEnvelope]
-    choice: Optional[int] = None
-    # capture fields
-    extracted: Optional[dict[str, Any]] = None
-    raw_text: Optional[str] = Field(None, max_length=NOTE_MAX_LEN)
-    interaction_date: Optional[str] = None
-    date_warning: Optional[str] = None
-    initiative_id: Optional[int] = None
-    geo_lat: Optional[float] = None
-    geo_lng: Optional[float] = None
-    # ask fields
-    query: Optional[str] = Field(None, max_length=QUERY_MAX_LEN)
-    parsed: Optional[dict[str, Any]] = None
-
-
-class PersonUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    # personal_notes is NOT here - it's a dated timeline (jsonb list), not
-    # a single overwritable field. See AddPersonalNoteRequest below and
-    # api/routers/people.py's dedicated add/delete endpoints.
-    role: Optional[str] = None
-    company: Optional[str] = None
-    phone: Optional[str] = None
-    email: Optional[str] = None
-    tags: Optional[list[str]] = None
-    first_met_date: Optional[str] = None
-
-
-class AddPersonalNoteRequest(BaseModel):
-    note: str
-    date: Optional[str] = None  # defaults to today server-side if not given
-
-
-class KeyDateCreate(BaseModel):
-    """A yearly date typed in on a profile. Either month (+ optional day,
-    optional year) or `when` (a phrase like 'tomorrow')."""
-    date_type: Optional[str] = Field(None, max_length=20)   # birthday | anniversary | custom
-    label: Optional[str] = Field(None, max_length=60)
-    subject: Optional[str] = Field(None, max_length=20)     # self | spouse | child | parent | sibling | other
-    subject_name: Optional[str] = Field(None, max_length=80)
-    month: Optional[int] = Field(None, ge=1, le=12)
-    day: Optional[int] = Field(None, ge=1, le=31)
-    year: Optional[int] = Field(None, ge=1900, le=2100)
-    when: Optional[str] = Field(None, max_length=40)
-
-
-class PersonFactCreate(BaseModel):
-    """A detail typed in on a profile ('likes' / 'coffee over tea')."""
-    attribute: str = Field(..., max_length=40)
-    value: str = Field(..., min_length=1, max_length=200)
-    subject: Optional[str] = Field(None, max_length=20)
-    subject_name: Optional[str] = Field(None, max_length=80)
 
 
 class InteractionUpdate(BaseModel):
@@ -159,22 +61,6 @@ class InteractionUpdate(BaseModel):
     initiative_id: Optional[int] = None
 
 
-class MergeRequest(BaseModel):
-    target_id: int
-
-
-class CardConfirmRequest(BaseModel):
-    """Submitted after the client shows an editable form for the fields
-    POST /api/capture/card returned - card OCR isn't trusted as-is,
-    unlike voice, so this is a distinct step from a plain text capture."""
-    name: str = Field(..., max_length=FIELD_MAX_LEN)
-    role: str = Field("", max_length=FIELD_MAX_LEN)
-    company: str = Field("", max_length=FIELD_MAX_LEN)
-    phone: str = Field("", max_length=FIELD_MAX_LEN)
-    email: str = Field("", max_length=FIELD_MAX_LEN)
-    context_note: str = Field("", max_length=NOTE_MAX_LEN)
-
-
 class TaskStatusUpdate(BaseModel):
     status: Optional[str] = None  # "open" | "done"
     owner: Optional[str] = None  # "me" | "them"
@@ -183,13 +69,6 @@ class TaskStatusUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=500)
     due_date: Optional[str] = Field(None, max_length=10)   # YYYY-MM-DD
     due_time: Optional[str] = Field(None, max_length=8)    # HH:MM
-
-
-class ScheduleCalendarRequest(BaseModel):
-    # When to actually put the event, if different from the task's
-    # due_date (e.g. scheduling the meeting itself a few days before the
-    # due-date deadline). None keeps the original due-date behavior.
-    event_date: Optional[str] = None
 
 
 class UserPreferenceUpdate(BaseModel):

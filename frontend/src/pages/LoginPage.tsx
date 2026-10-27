@@ -6,7 +6,7 @@ import Button from '../components/Button'
 import ConfiaLogo from '../components/ConfiaLogo'
 import { Input, Label } from '../components/fields'
 import Segmented from '../components/Segmented'
-import GoogleIcon from '../components/google/GoogleIcon'
+import GoogleIcon from '../components/GoogleIcon'
 
 type Mode = 'signin' | 'signup' | 'forgot'
 
