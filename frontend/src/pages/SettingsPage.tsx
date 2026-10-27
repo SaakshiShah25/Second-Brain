@@ -1,25 +1,27 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Check, Compass, LogOut, Lock, Moon, Sun, Trash2 } from 'lucide-react'
+import { Check, Compass, LogOut, Mail, Moon, ShieldCheck, Sun, Trash2, Type } from 'lucide-react'
 import { useDeleteAccount, useSettings, useUpdateSettings } from '../api/settings'
 import type { FontSize, Theme } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import AppLockSettings from '../components/AppLockSettings'
-import Card from '../components/Card'
+import GoogleAccountSettings from '../components/google/GoogleAccountSettings'
 import ConfirmDialog from '../components/ConfirmDialog'
-import PageIntro from '../components/PageIntro'
+import { ListGroup, ListRow, Toggle } from '../components/ListGroup'
+import PageHeader from '../components/PageHeader'
+import Segmented from '../components/Segmented'
 import { useTour } from '../components/TourGate'
-import { applyPalette, getStoredPalette, PALETTE_OPTIONS, setStoredPalette, type Palette } from '../lib/palette'
+import { USAGE_MODE_OPTIONS, useUsageMode } from '../lib/usageMode'
 
 const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Sun }[] = [
-  { value: 'light', label: 'Light', icon: Sun },
-  { value: 'dark', label: 'Dark', icon: Moon },
+  { value: 'light', label: 'Paper', icon: Sun },
+  { value: 'dark', label: 'Graphite', icon: Moon },
 ]
 
-const FONT_SIZE_OPTIONS: { value: FontSize; label: string; sample: string }[] = [
-  { value: 'small', label: 'Small', sample: 'text-sm' },
-  { value: 'default', label: 'Default', sample: 'text-base' },
-  { value: 'large', label: 'Large', sample: 'text-lg' },
+const FONT_SIZE_OPTIONS: { value: FontSize; label: string }[] = [
+  { value: 'small', label: 'Small' },
+  { value: 'default', label: 'Default' },
+  { value: 'large', label: 'Large' },
 ]
 
 export default function SettingsPage() {
@@ -30,191 +32,165 @@ export default function SettingsPage() {
   const deleteAccount = useDeleteAccount()
   const navigate = useNavigate()
   const [confirmingDelete, setConfirmingDelete] = useState(false)
-  const [palette, setPalette] = useState<Palette>(() => getStoredPalette())
-
-  function choosePalette(value: Palette) {
-    setPalette(value)
-    setStoredPalette(value)
-    applyPalette(value)
-  }
+  const initial = (user?.email?.[0] ?? '?').toUpperCase()
+  const usage = useUsageMode()
 
   return (
-    <div className="mx-auto max-w-xl">
-      <h1 className="mb-1 text-2xl font-bold tracking-tight">Settings</h1>
-      <PageIntro>Manage your theme, text size, and privacy — and you can always take the tour again from here.</PageIntro>
+    <div>
+      <PageHeader backTo="/" title="Settings" />
 
-      <Card className="mb-4">
-        <h2 className="mb-3 text-sm font-semibold tracking-tight text-text-muted">Profile</h2>
-        <p className="text-[15px] text-text">{user?.email}</p>
-      </Card>
-
-      <Card className="mb-4">
-        <div className="mb-2 flex items-center gap-2">
-          <Lock size={15} strokeWidth={1.6} className="text-accent" />
-          <h2 className="text-sm font-semibold tracking-tight text-text-muted">Privacy</h2>
+      <div className="mb-6 flex items-center gap-3.5 rounded-2xl border border-border bg-bg-card p-4">
+        <span className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-accent text-xl font-semibold text-accent-contrast">
+          {initial}
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-base font-semibold">{user?.email}</p>
+          <p className="text-sm text-text-muted">Signed in</p>
         </div>
-        <p className="text-xs leading-relaxed text-text-faint">
-          Your notes are encrypted at rest in our database — anyone with direct database access sees only
-          unreadable ciphertext, not your notes. To power search, the daily brief, and AI extraction, the app
-          itself decrypts your notes and shares text with our AI providers (Groq, Cohere) for that processing
-          only. We never sell or share your data.
-        </p>
-      </Card>
+      </div>
+
+      {usage.available && (
+        <ListGroup
+          title="Using MyConfía for"
+          footer={
+            usage.mode === 'work'
+              ? 'Shortcuts, wording and your morning brief are tuned for clients, colleagues and meetings.'
+              : usage.mode === 'personal'
+                ? 'Work-only tools (card scanning, company briefings) are tucked away, and wording is tuned for friends and family.'
+                : 'Everything is on — work tools and personal wording side by side.'
+          }
+        >
+          <div className="px-4 py-3">
+            <Segmented
+              value={usage.mode}
+              onChange={(v) => updateSettings.mutate({ usage_mode: v })}
+              options={USAGE_MODE_OPTIONS.map(({ value, label, icon: Icon }) => ({
+                value,
+                label: (
+                  <>
+                    <Icon size={15} strokeWidth={1.8} /> {label}
+                  </>
+                ),
+              }))}
+            />
+          </div>
+        </ListGroup>
+      )}
+
+      <GoogleAccountSettings />
+
+      <ListGroup title="Appearance">
+        <div className="px-4 py-3">
+          <p className="mb-2 text-sm text-text-muted">Theme</p>
+          <div className="grid grid-cols-2 gap-2.5">
+            {THEME_OPTIONS.map(({ value, label, icon: Icon }) => {
+              const active = settings?.theme === value
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => updateSettings.mutate({ theme: value })}
+                  className={`pressable relative overflow-hidden rounded-xl border-2 text-left ${
+                    active ? 'border-accent' : 'border-border'
+                  }`}
+                >
+                  {/* Mini preview of each theme's ground + ink + accent. */}
+                  <span
+                    className="block h-16 p-2.5"
+                    style={{ background: value === 'light' ? '#fdfbf7' : '#141210' }}
+                  >
+                    <span
+                      className="mb-1.5 block h-2 w-10 rounded-full"
+                      style={{ background: value === 'light' ? '#1b1a17' : '#f2efe8' }}
+                    />
+                    <span
+                      className="block h-2 w-16 rounded-full opacity-40"
+                      style={{ background: value === 'light' ? '#1b1a17' : '#f2efe8' }}
+                    />
+                    <span
+                      className="absolute top-2.5 right-2.5 h-4 w-4 rounded-full"
+                      style={{ background: '#ea580c' }}
+                    />
+                  </span>
+                  <span className="flex items-center justify-between bg-bg-card px-2.5 py-2 text-sm font-medium">
+                    <span className="flex items-center gap-1.5">
+                      <Icon size={15} strokeWidth={1.8} />
+                      {label}
+                    </span>
+                    {active && <Check size={16} strokeWidth={2.4} className="text-accent" />}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+        <div className="px-4 py-3">
+          <p className="mb-2 flex items-center gap-1.5 text-sm text-text-muted">
+            <Type size={14} strokeWidth={1.8} /> Text size
+          </p>
+          <Segmented
+            value={settings?.font_size ?? 'default'}
+            onChange={(v) => updateSettings.mutate({ font_size: v })}
+            options={FONT_SIZE_OPTIONS}
+          />
+        </div>
+      </ListGroup>
+
+      <ListGroup
+        title="Notifications"
+        footer="Today’s tasks, calendar, and people you haven’t talked to in a while — sent every morning."
+      >
+        <ListRow
+          icon={Mail}
+          iconColor="var(--sb-text-muted)"
+          soft
+          label="Morning brief by email"
+          trailing={
+            <Toggle
+              on={!!settings?.daily_brief_email_enabled}
+              onChange={() => updateSettings.mutate({ daily_brief_email_enabled: !settings?.daily_brief_email_enabled })}
+              label="Morning brief by email"
+            />
+          }
+        />
+      </ListGroup>
 
       <AppLockSettings />
 
-      <Card className="mb-4">
-        <h2 className="mb-3 text-sm font-semibold tracking-tight text-text-muted">Color palette</h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {PALETTE_OPTIONS.map(({ value, label, description, bg, accent }) => {
-            const active = palette === value
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => choosePalette(value)}
-                title={description}
-                className={`flex flex-col items-start gap-2 rounded-lg border p-3 text-left transition-colors ${
-                  active ? 'border-accent bg-accent-soft' : 'border-border-strong hover:border-accent/50'
-                }`}
-              >
-                <span className="flex w-full items-center justify-between">
-                  <span
-                    className="h-6 w-6 flex-shrink-0 rounded-full border border-border-strong"
-                    style={{ background: `conic-gradient(${accent} 0 50%, ${bg} 50% 100%)` }}
-                  />
-                  {active && <Check size={14} strokeWidth={2} className="text-accent" />}
-                </span>
-                <span className={`text-xs font-medium ${active ? 'text-accent' : 'text-text'}`}>{label}</span>
-              </button>
-            )
-          })}
-        </div>
-      </Card>
+      <ListGroup
+        title="Privacy"
+        footer="Your notes are encrypted at rest. To power search, the daily brief and AI extraction, the app decrypts your notes and shares text with our AI providers (Groq, Cohere) for that processing only. We never sell or share your data."
+      >
+        <ListRow icon={ShieldCheck} iconColor="var(--sb-text-muted)" soft label="Encrypted at rest" />
+      </ListGroup>
 
-      <Card className="mb-4">
-        <h2 className="mb-3 text-sm font-semibold tracking-tight text-text-muted">Appearance</h2>
-        <div className="grid grid-cols-2 gap-2">
-          {THEME_OPTIONS.map(({ value, label, icon: Icon }) => {
-            const active = settings?.theme === value
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => updateSettings.mutate({ theme: value })}
-                className={`flex items-center justify-between rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
-                  active
-                    ? 'border-accent bg-accent-soft text-accent'
-                    : 'border-border-strong text-text-muted hover:text-text'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <Icon size={16} strokeWidth={1.6} />
-                  {label}
-                </span>
-                {active && <Check size={16} strokeWidth={1.6} />}
-              </button>
-            )
-          })}
-        </div>
-      </Card>
+      <ListGroup title="Help">
+        <ListRow icon={Compass} iconColor="var(--sb-text-muted)" soft label="Take the tour again" chevron onClick={() => startTour()} />
+      </ListGroup>
 
-      <Card className="mb-4">
-        <h2 className="mb-3 text-sm font-semibold tracking-tight text-text-muted">Text size</h2>
-        <div className="flex flex-col gap-2">
-          {FONT_SIZE_OPTIONS.map(({ value, label, sample }) => {
-            const active = settings?.font_size === value
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => updateSettings.mutate({ font_size: value })}
-                className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-colors ${
-                  active
-                    ? 'border-accent bg-accent-soft text-accent'
-                    : 'border-border-strong text-text-muted hover:text-text'
-                }`}
-              >
-                <span className={`${sample} font-medium`}>{label}</span>
-                {active && <Check size={16} strokeWidth={1.6} />}
-              </button>
-            )
-          })}
-        </div>
-      </Card>
+      <ListGroup>
+        <ListRow icon={LogOut} iconColor="var(--sb-text-muted)" soft label="Sign out" onClick={() => signOut()} />
+      </ListGroup>
 
-      <Card className="mb-4">
-        <h2 className="mb-3 text-sm font-semibold tracking-tight text-text-muted">Notifications</h2>
-        <button
-          type="button"
-          onClick={() => updateSettings.mutate({ daily_brief_email_enabled: !settings?.daily_brief_email_enabled })}
-          className="flex w-full items-center justify-between gap-3 rounded-lg py-1 text-left"
-        >
-          <span className="text-[15px] text-text">
-            Daily morning brief by email
-            <span className="mt-0.5 block text-xs text-text-muted">
-              Today's tasks, calendar, and quiet relationships, sent each morning - on by default.
-            </span>
-          </span>
-          <span
-            className={`flex h-6 w-11 flex-shrink-0 items-center rounded-full p-0.5 transition-colors ${
-              settings?.daily_brief_email_enabled ? 'bg-accent' : 'bg-bg-hover'
-            }`}
-          >
-            <span
-              className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                settings?.daily_brief_email_enabled ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </span>
-        </button>
-      </Card>
-
-      <Card className="mb-4">
-        <button
-          type="button"
-          onClick={() => startTour()}
-          className="flex w-full items-center gap-2 rounded-lg py-1 text-left text-[15px] text-text transition-colors hover:text-accent"
-        >
-          <Compass size={16} strokeWidth={1.6} />
-          Take the tour again
-        </button>
-      </Card>
-
-      <Card className="mb-4">
-        <button
-          type="button"
-          onClick={() => signOut()}
-          className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium text-danger transition-colors hover:bg-danger/10"
-        >
-          <LogOut size={16} strokeWidth={1.6} />
-          Sign out
-        </button>
-      </Card>
-
-      <Card>
-        <h2 className="mb-3 text-sm font-semibold tracking-tight text-text-muted">Danger zone</h2>
-        <button
-          type="button"
-          onClick={() => setConfirmingDelete(true)}
+      <ListGroup
+        footer="Permanently deletes your account and every note, contact and task tied to it. This can’t be undone."
+      >
+        <ListRow
+          icon={Trash2}
+          iconColor="var(--sb-danger)"
+          soft
+          label={deleteAccount.isPending ? 'Deleting…' : 'Delete account'}
+          danger
           disabled={deleteAccount.isPending}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-danger/40 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Trash2 size={16} strokeWidth={1.6} />
-          {deleteAccount.isPending ? 'Deleting…' : 'Delete account'}
-        </button>
-        <p className="mt-2 text-xs text-text-faint">
-          Permanently deletes your account and every note, contact, and task tied to it. This can't be undone.
-        </p>
-        {deleteAccount.isError && (
-          <p className="mt-2 text-xs text-danger">Something went wrong - please try again.</p>
-        )}
-      </Card>
+          onClick={() => setConfirmingDelete(true)}
+        />
+      </ListGroup>
+      {deleteAccount.isError && <p className="-mt-4 mb-6 px-4 text-sm text-danger">Something went wrong — please try again.</p>}
 
       {confirmingDelete && (
         <ConfirmDialog
           title="Delete your account?"
-          message="This permanently deletes your account and everything in it - every note, contact, and task. There's no way to undo this or recover the data afterward."
+          message="This permanently deletes your account and everything in it — every note, contact and task. There's no way to undo this or recover the data afterward."
           confirmLabel="Delete permanently"
           busy={deleteAccount.isPending}
           busyLabel="Deleting…"

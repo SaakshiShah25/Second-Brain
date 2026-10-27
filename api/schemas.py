@@ -82,6 +82,9 @@ class ChatRequest(BaseModel):
     history: list[dict[str, Any]] = []
     geo_lat: Optional[float] = None
     geo_lng: Optional[float] = None
+    # The category the user picked for THIS note in the input bar. When set it is
+    # used as-is instead of the model's guess; null/absent means "decide for me".
+    initiative_id: Optional[int] = None
 
 
 class ChatConfirmRequest(BaseModel):
@@ -124,6 +127,27 @@ class AddPersonalNoteRequest(BaseModel):
     date: Optional[str] = None  # defaults to today server-side if not given
 
 
+class KeyDateCreate(BaseModel):
+    """A yearly date typed in on a profile. Either month (+ optional day,
+    optional year) or `when` (a phrase like 'tomorrow')."""
+    date_type: Optional[str] = Field(None, max_length=20)   # birthday | anniversary | custom
+    label: Optional[str] = Field(None, max_length=60)
+    subject: Optional[str] = Field(None, max_length=20)     # self | spouse | child | parent | sibling | other
+    subject_name: Optional[str] = Field(None, max_length=80)
+    month: Optional[int] = Field(None, ge=1, le=12)
+    day: Optional[int] = Field(None, ge=1, le=31)
+    year: Optional[int] = Field(None, ge=1900, le=2100)
+    when: Optional[str] = Field(None, max_length=40)
+
+
+class PersonFactCreate(BaseModel):
+    """A detail typed in on a profile ('likes' / 'coffee over tea')."""
+    attribute: str = Field(..., max_length=40)
+    value: str = Field(..., min_length=1, max_length=200)
+    subject: Optional[str] = Field(None, max_length=20)
+    subject_name: Optional[str] = Field(None, max_length=80)
+
+
 class InteractionUpdate(BaseModel):
     date: Optional[str] = None
     location: Optional[str] = None
@@ -154,6 +178,11 @@ class CardConfirmRequest(BaseModel):
 class TaskStatusUpdate(BaseModel):
     status: Optional[str] = None  # "open" | "done"
     owner: Optional[str] = None  # "me" | "them"
+    # Edits to the task itself. A field sent as null clears it (e.g. remove the time);
+    # a field left out is untouched - so these are read with exclude_unset.
+    description: Optional[str] = Field(None, max_length=500)
+    due_date: Optional[str] = Field(None, max_length=10)   # YYYY-MM-DD
+    due_time: Optional[str] = Field(None, max_length=8)    # HH:MM
 
 
 class ScheduleCalendarRequest(BaseModel):
@@ -167,6 +196,7 @@ class UserPreferenceUpdate(BaseModel):
     theme: Optional[str] = None                        # 'dark' | 'light'
     font_size: Optional[str] = None                     # 'small' | 'default' | 'large'
     daily_brief_email_enabled: Optional[bool] = None
+    usage_mode: Optional[str] = None                    # 'work' | 'personal' | 'both'
 
 
 class InitiativeCreate(BaseModel):

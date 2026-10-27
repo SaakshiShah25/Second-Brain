@@ -1,4 +1,5 @@
 import Button from './Button'
+import Sheet from './Sheet'
 
 interface ConfirmDialogProps {
   title: string
@@ -7,14 +8,9 @@ interface ConfirmDialogProps {
   onConfirm: () => void
   onCancel: () => void
   // While true: both buttons disable, the confirm button's label swaps to
-  // busyLabel, and the backdrop no longer dismisses on click. Without
-  // this, every caller closed the dialog the instant Confirm was clicked
-  // and fired its mutation into the void - for anything slower than
-  // instant (deleting a person cascades across their interactions and
-  // tasks server-side) that left no visible sign the click did anything
-  // at all until it finished, which read as "did this actually work?".
-  // Callers now keep the dialog mounted and pass the mutation's own
-  // isPending straight through instead of closing immediately.
+  // busyLabel, and the scrim no longer dismisses on tap - callers keep
+  // the sheet mounted and pass the mutation's own isPending through, so
+  // a slow cascading delete visibly shows it's working.
   busy?: boolean
   busyLabel?: string
 }
@@ -29,25 +25,23 @@ export default function ConfirmDialog({
   busyLabel = 'Working…',
 }: ConfirmDialogProps) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={busy ? undefined : onCancel}
-    >
-      <div
-        className="w-full max-w-sm rounded-xl border border-border-strong bg-bg-elevated p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="mb-2 text-base font-semibold">{title}</h3>
-        <p className="mb-4 text-sm text-text-muted">{message}</p>
-        <div className="flex justify-end gap-2">
-          <Button onClick={onCancel} disabled={busy}>
-            Cancel
-          </Button>
-          <Button variant="danger" onClick={onConfirm} disabled={busy}>
-            {busy ? busyLabel : confirmLabel}
-          </Button>
-        </div>
+    <Sheet onClose={busy ? undefined : onCancel}>
+      <h3 className="mb-1.5 text-lg font-semibold tracking-tight">{title}</h3>
+      <p className="mb-6 text-[0.9375rem] leading-relaxed text-text-muted">{message}</p>
+      <div className="flex flex-col gap-2">
+        <Button
+          size="lg"
+          block
+          onClick={onConfirm}
+          disabled={busy}
+          className="!border-transparent !bg-danger !text-white"
+        >
+          {busy ? busyLabel : confirmLabel}
+        </Button>
+        <Button size="lg" block variant="ghost" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
       </div>
-    </div>
+    </Sheet>
   )
 }

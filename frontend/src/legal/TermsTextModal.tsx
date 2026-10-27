@@ -1,7 +1,7 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { X } from 'lucide-react'
 import Button from '../components/Button'
+import Sheet from '../components/Sheet'
 import { TERMS_TEXT } from './termsText'
 
 // In-app dialog for the full Terms/Privacy text, used wherever a "Terms
@@ -11,28 +11,13 @@ import { TERMS_TEXT } from './termsText'
 // separately for the Play Store listing requirement.
 export default function TermsTextModal({ onClose }: { onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
-      <div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl border border-border-strong bg-bg-elevated">
-        <div className="flex items-center justify-between border-b border-border p-4">
-          <h2 className="text-base font-semibold tracking-tight">Terms of Service &amp; Privacy</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="text-text-muted hover:text-text"
-          >
-            <X size={18} strokeWidth={1.6} />
-          </button>
-        </div>
-        <div className="prose-chat flex-1 overflow-y-auto p-4 text-sm leading-relaxed">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{TERMS_TEXT}</ReactMarkdown>
-        </div>
-        <div className="flex justify-end border-t border-border p-4">
-          <Button type="button" variant="primary" onClick={onClose}>
-            Close
-          </Button>
-        </div>
+    <Sheet onClose={onClose} title="Terms of Service & Privacy" tall zIndex={60}>
+      <div className="prose-chat text-[0.9375rem] leading-relaxed">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{TERMS_TEXT}</ReactMarkdown>
       </div>
-    </div>
+      <Button type="button" variant="primary" size="lg" block className="mt-6" onClick={onClose}>
+        Close
+      </Button>
+    </Sheet>
   )
 }

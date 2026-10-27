@@ -57,25 +57,30 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id])
 
-  // Persisted on every change - a page refresh or closing the tab no
-  // longer wipes the conversation. Failures (private browsing, storage
-  // disabled/full) are silently ignored: the chat still works in-memory
-  // for the rest of this session either way.
-  useEffect(() => {
-    if (!user) return
-    try {
-      localStorage.setItem(storageKey(user.id), JSON.stringify(messages))
-    } catch {
-      // ignore - see comment above
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, user?.id])
-
   // Functional updaters must resolve against setState's own `prev`, not a
   // value closed over at render time - see the stale-closure bug this
   // exact pattern fixed in the earlier per-mode version of this file.
+  //
+  // Persisted here, on every actual change - not from an effect watching
+  // `messages`. An effect fired right after the restore above (and twice
+  // in React StrictMode) with the still-empty initial state, overwriting
+  // the saved transcript with [] before the restored one landed - which
+  // is what wiped the chat on every dev-mode refresh. Writing only when
+  // the conversation really changes can't race the restore. Storage
+  // failures (private browsing, quota) are ignored: the chat still works
+  // in memory for the session.
   function setMessages(updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) {
-    setMessagesState((prev) => (typeof updater === 'function' ? updater(prev) : updater))
+    setMessagesState((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      if (user) {
+        try {
+          localStorage.setItem(storageKey(user.id), JSON.stringify(next))
+        } catch {
+          // ignore - see comment above
+        }
+      }
+      return next
+    })
   }
 
   function setPendingCard(updater: PendingCard | null | ((prev: PendingCard | null) => PendingCard | null)) {

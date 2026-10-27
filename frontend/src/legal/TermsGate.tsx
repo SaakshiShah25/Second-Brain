@@ -3,6 +3,7 @@ import { FileText, Lock, ShieldOff, Trash2, TriangleAlert, UserCheck } from 'luc
 import { useAcceptTerms, useSettings } from '../api/settings'
 import { useAuth } from '../auth/AuthContext'
 import Button from '../components/Button'
+import Sheet from '../components/Sheet'
 import LoadingScreen from '../components/LoadingScreen'
 import TermsTextModal from './TermsTextModal'
 
@@ -49,56 +50,52 @@ export default function TermsGate({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl border border-border-strong bg-bg-elevated">
-        <div className="border-b border-border p-4">
-          <h1 className="flex items-center gap-2 text-base font-semibold tracking-tight">
-            <Lock size={16} strokeWidth={1.6} className="text-accent" />
-            Before you start
-          </h1>
-          <p className="mt-0.5 text-xs text-text-muted">The short version - the full Terms & Privacy Policy are one tap away.</p>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          <ul className="flex flex-col gap-3">
-            {SUMMARY_POINTS.map(({ icon: Icon, text }, i) => (
-              <li key={i} className="flex items-start gap-2.5 text-sm leading-relaxed text-text">
-                <Icon size={16} strokeWidth={1.6} className="mt-0.5 flex-shrink-0 text-accent" />
-                {text}
-              </li>
-            ))}
-          </ul>
-          <label className="mt-5 flex cursor-pointer items-start gap-2 text-sm text-text-muted">
-            <input
-              type="checkbox"
-              checked={checked}
-              onChange={(e) => setChecked(e.target.checked)}
-              className="mt-0.5 h-4 w-4 flex-shrink-0 accent-accent"
-            />
-            I've read and agree to the full{' '}
-            <button
-              type="button"
-              onClick={() => setShowFullText(true)}
-              className="text-accent underline"
-            >
-              Terms of Service &amp; Privacy Policy
-            </button>
-          </label>
-        </div>
-        <div className="flex flex-col-reverse gap-2 border-t border-border p-4 sm:flex-row sm:justify-end">
-          <Button type="button" variant="secondary" onClick={() => signOut()}>
-            Decline &amp; sign out
-          </Button>
-          <Button
-            type="button"
-            variant="primary"
-            disabled={!checked || acceptTerms.isPending}
-            onClick={() => acceptTerms.mutate()}
-          >
-            {acceptTerms.isPending ? 'Saving…' : 'I Agree'}
-          </Button>
-        </div>
+    <Sheet tall>
+      <h1 className="flex items-center gap-2 font-display text-[1.625rem] font-semibold tracking-[-0.025em]">
+        <Lock size={20} strokeWidth={2} className="text-brand-ink" />
+        Before you start
+      </h1>
+      <p className="mt-1 mb-5 text-[0.9375rem] text-text-muted">The short version — the full Terms &amp; Privacy Policy are one tap away.</p>
+      <ul className="flex flex-col gap-3.5">
+        {SUMMARY_POINTS.map(({ icon: Icon, text }, i) => (
+          <li key={i} className="flex items-start gap-3 text-[0.9375rem] leading-relaxed text-text">
+            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
+              <Icon size={16} strokeWidth={2} />
+            </span>
+            {text}
+          </li>
+        ))}
+      </ul>
+      <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-2xl bg-bg-elevated p-3.5 text-[0.9375rem] text-text-muted">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => setChecked(e.target.checked)}
+          className="mt-0.5 h-5 w-5 flex-shrink-0 accent-[var(--sb-accent)]"
+        />
+        <span>
+          I've read and agree to the full{' '}
+          <button type="button" onClick={() => setShowFullText(true)} className="font-medium text-link underline">
+            Terms of Service &amp; Privacy Policy
+          </button>
+        </span>
+      </label>
+      <div className="mt-5 flex flex-col gap-2">
+        <Button
+          type="button"
+          variant="primary"
+          size="lg"
+          block
+          disabled={!checked || acceptTerms.isPending}
+          onClick={() => acceptTerms.mutate()}
+        >
+          {acceptTerms.isPending ? 'Saving…' : 'I agree'}
+        </Button>
+        <Button type="button" variant="ghost" size="lg" block onClick={() => signOut()}>
+          Decline &amp; sign out
+        </Button>
       </div>
       {showFullText && <TermsTextModal onClose={() => setShowFullText(false)} />}
-    </div>
+    </Sheet>
   )
 }

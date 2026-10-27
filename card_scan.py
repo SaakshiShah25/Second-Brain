@@ -25,7 +25,8 @@ import pytesseract
 from PIL import Image
 
 import text_utils
-from llm_client import get_client, MODEL_NAME
+import llm_budget
+from llm_client import MODEL_NAME
 
 
 def _ocr_image(image_bytes: bytes) -> str:
@@ -47,9 +48,7 @@ ignore those. Return ONLY valid JSON matching this schema:
 If the card lists multiple phone numbers, pick the one that looks primary (e.g. labeled
 "mobile"/"cell", or listed first). Do not invent anything not present in the text."""
 
-    client = get_client()
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
+    response = llm_budget.chat(MODEL_NAME,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": raw_text},

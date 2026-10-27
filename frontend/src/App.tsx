@@ -8,6 +8,7 @@ import ChatPage from './pages/ChatPage'
 import PeopleListPage from './pages/PeopleListPage'
 import PersonDetailPage from './pages/PersonDetailPage'
 import NotesPage from './pages/NotesPage'
+import DocumentsPage from './pages/DocumentsPage'
 import SettingsPage from './pages/SettingsPage'
 import AccountDeletionInfoPage from './pages/AccountDeletionInfoPage'
 import PublicPrivacyPage from './pages/PublicPrivacyPage'
@@ -47,6 +48,7 @@ export default function App() {
         >
           <Route path="/" element={<ChatPage />} />
           <Route path="/notes" element={<NotesPage />} />
+          <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/digest" element={<DigestPage />} />
           <Route path="/people" element={<PeopleListPage />} />
           <Route path="/people/:personId" element={<PersonDetailPage />} />

@@ -45,46 +45,48 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-bg p-4">
-      <div className="mb-6 flex flex-col items-center gap-3">
-        <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-soft text-text">
-          <ConfiaLogo size={26} />
-        </span>
-        <span className="text-lg font-semibold tracking-[-0.02em] text-text">MyConfía</span>
-      </div>
+    <div className="bg-bg">
+      <div className="pt-safe pb-safe mx-auto flex min-h-dvh max-w-[480px] flex-col px-6">
+        <div className="flex flex-1 flex-col justify-center pt-10 pb-8">
+          <span className="mb-6 text-text">
+            <ConfiaLogo size={52} />
+          </span>
+          <h1 className="font-display text-[2.375rem] leading-[1.1] font-semibold tracking-[-0.035em]">
+            Set a new password
+          </h1>
+        </div>
 
-      <div className="w-full max-w-sm rounded-xl border border-border bg-bg-card p-6">
-        <h1 className="mb-4 text-sm font-semibold text-text">Set a new password</h1>
+        <div className="pb-8">
+          {!ready ? (
+            <p className="rounded-2xl bg-bg-elevated p-4 text-[0.9375rem] text-text-muted">
+              Open this page using the password reset link from your email.
+            </p>
+          ) : done ? (
+            <p className="rounded-2xl bg-bg-elevated p-4 text-[0.9375rem] text-text-muted">Password updated — redirecting…</p>
+          ) : (
+            <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
+              <div>
+                <Label>New password</Label>
+                <Input
+                  type="password"
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+              {error && <p className="text-sm text-danger">{error}</p>}
+              <Button type="submit" variant="primary" size="lg" block disabled={submitting} className="mt-1">
+                {submitting ? 'Saving…' : 'Update password'}
+              </Button>
+            </form>
+          )}
 
-        {!ready ? (
-          <p className="text-sm text-text-muted">
-            Open this page using the password reset link from your email.
-          </p>
-        ) : done ? (
-          <p className="text-sm text-text-muted">Password updated — redirecting…</p>
-        ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <div>
-              <Label>New password</Label>
-              <Input
-                type="password"
-                required
-                minLength={6}
-                autoComplete="new-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-            {error && <p className="text-sm text-danger">{error}</p>}
-            <Button type="submit" variant="primary" disabled={submitting} className="mt-1">
-              {submitting ? 'Saving…' : 'Update password'}
-            </Button>
-          </form>
-        )}
-
-        <Link to="/login" className="mt-4 inline-block text-xs text-text-muted underline">
-          Back to sign in
-        </Link>
+          <Link to="/login" className="pressable mt-4 block py-2 text-center text-[0.9375rem] font-medium text-link">
+            Back to sign in
+          </Link>
+        </div>
       </div>
     </div>
   )

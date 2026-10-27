@@ -11,7 +11,9 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
+import date_utils
 import db
+import search_index
 import google_calendar
 from api.auth import get_current_user_id
 from api.schemas import ScheduleCalendarRequest, TaskStatusUpdate
@@ -63,6 +65,34 @@ def update_task(task_id: int, body: TaskStatusUpdate, user_id: str = Depends(get
         if body.owner not in ("me", "them"):
             raise HTTPException(400, "owner must be 'me' or 'them'")
         db.update_task_owner(user_id, task_id, body.owner)
+    edits = body.model_dump(exclude_unset=True)
+    changes = {}
+    if "description" in edits:
+        text = " ".join((edits["description"] or "").split())
+        if not text:
+            raise HTTPException(400, "A task needs some wording.")
+        changes["description"] = text
+    if "due_date" in edits:
+        if edits["due_date"] and not date_utils.to_valid_date(edits["due_date"]):
+            raise HTTPException(400, "due_date must be YYYY-MM-DD")
+        changes["due_date"] = edits["due_date"] or None
+    if "due_time" in edits:
+        valid = date_utils.to_valid_time(edits["due_time"]) if edits["due_time"] else None
+        if edits["due_time"] and not valid:
+            raise HTTPException(400, "due_time must look like 19:00 or 7pm")
+        changes["due_time"] = valid
+    if changes.get("due_time") and not (changes.get("due_date") or db.get_task(user_id, task_id).get("due_date")):
+        raise HTTPException(400, "Give the task a date before giving it a time.")
+    if changes.get("due_date") is None and "due_date" in changes:
+        changes["due_time"] = None  # no date -> no time of day either
+    if changes:
+        try:
+            db.update_task_fields(user_id, task_id, **changes)
+        except Exception as e:
+            if "due_time" in changes and "due_time" in str(e):
+                raise HTTPException(503, "Task times aren't available yet - run schema.sql section 32 first.")
+            raise
+    search_index.enqueue(user_id, "task", [task_id])
     return {"ok": True}
 
 

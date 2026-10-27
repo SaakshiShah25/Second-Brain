@@ -111,6 +111,25 @@ export async function postStream<T>(
   return result
 }
 
+// Authenticated binary download (document files, thumbnails, ZIP
+// exports) - documents are never exposed through public/signed Storage
+// URLs, so every byte comes through the API with the user's own token.
+export async function fetchBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
+      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      ...init.headers,
+    },
+  })
+  if (!res.ok) throw new ApiError(res.status, res.statusText)
+  return res.blob()
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
   // `signal` lets a caller cancel an in-flight POST (e.g. a "Stop"

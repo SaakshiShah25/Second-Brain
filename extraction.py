@@ -13,7 +13,8 @@ from datetime import date
 import gemini_client
 import text_utils
 from groq import RateLimitError
-from llm_client import get_client, MODEL_NAME
+import llm_budget
+from llm_client import MODEL_NAME
 
 
 def _build_system_prompt(reference_date: str, reference_weekday: str, initiative_names: list = None) -> str:
@@ -136,7 +137,28 @@ Return ONLY valid JSON (no markdown fences, no preamble) matching this exact sch
     "description": "string - GENERAL, stable, PROFESSIONALLY-OBSERVABLE traits only: physical appearance (e.g. build, hair, glasses) and personality/demeanor (e.g. funny, sincere, analytical, reserved) that would still be true the next time you meet them. Do NOT include their job title or company here - those go in separate fields below. Do NOT include personal-life details (family, hobbies, interests, life events) - those go in 'personal_notes' below instead. Do NOT include a reaction or emotion about a specific thing discussed in THIS meeting (e.g. 'excited about the pricing change', 'skeptical about the timeline') - that is not a stable trait, it belongs in the 'sentiments' field below instead, tied to its specific topic. Empty string if nothing is mentioned. Do not invent traits that aren't stated or clearly implied.",
     "role": "string - their job title/role if mentioned (e.g. 'Procurement Manager'), else empty string",
     "company": "string - their company/organization if mentioned, else empty string",
-    "personal_notes": "string - PERSONAL, non-professional details mentioned about them: family, hobbies/interests, alma mater, life events, upcoming personal plans (e.g. 'has two kids', 'into cycling on weekends', 'went to Stanford'). Kept separate from 'description' above, which is professional/stable demeanor and appearance only. Empty string if nothing personal was mentioned."
+    "personal_notes": "string - PERSONAL, non-professional details mentioned about them: family, hobbies/interests, alma mater, life events, upcoming personal plans (e.g. 'has two kids', 'into cycling on weekends', 'went to Stanford'). Kept separate from 'description' above, which is professional/stable demeanor and appearance only. Empty string if nothing personal was mentioned.",
+    "facts": [
+      {{
+        "attribute": "string - ONE of: likes, dislikes, hobby, diet, allergy, health, lives_in, hometown, education, language, pet, goal, life_event, other. likes/dislikes = preferences (e.g. likes 'coffee over tea'); hobby = what they do for fun; diet = how they eat (vegetarian, vegan); lives_in = the city they live in NOW - a move ('moved to Bangalore', 'shifted to Delhi', 'relocated to Pune') is ALWAYS lives_in with the NEW city as the value, never a life_event; hometown = where they are from; education = school/college/degree; life_event = a milestone that is not covered by another attribute (got married, new baby, promotion) - NOT a move to a new city; health = a medical condition; goal = something they are working towards",
+        "value": "string - the detail itself as a short, SELF-CONTAINED phrase (e.g. 'coffee over tea', 'trekking', 'vegetarian', 'Pune', 'training for a marathon'). Never a whole sentence about the meeting",
+        "subject": "string - whom the detail is about: 'self' for the person themself, or 'spouse', 'child', 'parent', 'sibling', 'pet', 'other' for a member of their family",
+        "subject_name": "string - that relative's name if the note gives it (e.g. 'Anya'), else null. Null whenever subject is 'self'",
+        "confidence": "string - 'stated' when the note says it outright, 'likely' when it is hearsay or a guess ('I think he likes golf')"
+      }}
+    ],
+    "key_dates": [
+      {{
+        "label": "string - which recurring occasion: 'Birthday', 'Wedding anniversary', or a short name for another date that comes round every year (e.g. 'Son's annual day')",
+        "date_type": "string - 'birthday', 'anniversary' or 'custom'",
+        "subject": "string - whose date it is: 'self' for the person themself, or 'spouse', 'child', 'parent', 'sibling', 'other'. A wedding anniversary is 'spouse'",
+        "subject_name": "string - that relative's name if given (e.g. 'Anya', 'Karan'), else null",
+        "month": "integer 1-12 - ONLY when the note states the month explicitly (e.g. 'March 14'); else null",
+        "day": "integer 1-31 - the day of the month if stated, else null (a note that gives only the month, e.g. 'her birthday is in June', gives month and a null day; 'Anya turns 5 in June' is Anya's birthday: month 6, day null, year null)",
+        "year": "four-digit integer - ONLY a year the note states outright (a birth year, 'born in 1990'); else null. Never guess one and never work one out from an age",
+        "when": "string - ONLY when the date is given RELATIVELY instead of as a month/day ('tomorrow', 'next Friday') - a normalized phrase per the date-phrase rules above. Null whenever month and day were given"
+      }}
+    ]
   }},
   "initiative": "string - the EXACT name of one initiative from the list above that this note best fits, or null if none confidently applies. Pick null rather than guess when uncertain - never invent a name not in the list.",
   "suggested_initiative": "string - ONLY when 'initiative' above is null AND this note represents a substantial theme/project worth tracking as a new initiative (see instructions above) - a short 2-4 word proposed name. Null otherwise, and ALWAYS null when 'initiative' is non-null.",
@@ -144,7 +166,9 @@ Return ONLY valid JSON (no markdown fences, no preamble) matching this exact sch
     {{
       "name": "string - the other person's name as mentioned, or 'Unknown' if they're referred to only by role/title/relation and never actually named (e.g. 'the CTO', 'his manager') - put the role/title in 'relation' below instead, NEVER use a role/title as the name itself",
       "relation": "string - how this person relates to the primary person and/or to the user, stated or clearly implied in the note (e.g. 'Priya's sister', 'Rohan's colleague, might join the next call'). Empty string if the note gives no indication of the relationship - do not guess.",
-      "present": "boolean - true ONLY if this person actually took part in THIS specific meeting/conversation (e.g. joined the call, was physically there, spoke). false if they were merely mentioned/referenced by the primary person without being present themselves (e.g. 'his colleague Priya, who handles onboarding' - Priya wasn't on the call). Default to false when it's unclear - only mark true when the note clearly indicates they participated."
+      "present": "boolean - true ONLY if this person actually took part in THIS specific meeting/conversation (e.g. joined the call, was physically there, spoke). false if they were merely mentioned/referenced by the primary person without being present themselves (e.g. 'his colleague Priya, who handles onboarding' - Priya wasn't on the call). Default to false when it's unclear - only mark true when the note clearly indicates they participated.",
+      "facts": "optional list in EXACTLY the same shape as primary_person.facts above - details the note states about THIS person (e.g. Karan 'likes' 'cricket'). Empty list when none",
+      "key_dates": "optional list in EXACTLY the same shape as primary_person.key_dates above - this person's own birthday or anniversary when the note states it (e.g. Anya's birthday). Empty list when none"
     }}
   ],
   "date_mentioned": "string - when the CONVERSATION/EVENT THIS NOTE DESCRIBES actually happened (past or today) - per the date-phrase rules above. Do NOT put a future date here just because one is mentioned - a personal task/reminder being logged today ('set up a demo with Mansi tomorrow', 'need to call the bank next week') is being written TODAY about something not done yet; 'tomorrow'/'next week' there belongs on that follow-up's own due_date below, not here. Leave this null (it defaults to today) whenever the note is simply a forward-looking task/reminder with no past-or-present interaction actually described - only set it when the note recounts something that has already happened or is happening now.",
@@ -163,8 +187,9 @@ Return ONLY valid JSON (no markdown fences, no preamble) matching this exact sch
   "decisions": ["concrete decisions or agreements reached during this meeting, each as a SELF-CONTAINED sentence (e.g. 'Agreed to move forward with the annual plan', 'Decided to use their existing vendor for onboarding'). Distinct from 'follow_ups' below - a decision is a SETTLED OUTCOME, not something still to be done. Empty list if no clear decisions were made."],
   "follow_ups": [
     {{
-      "description": "string - the action item/to-do, written as a SELF-CONTAINED, SPECIFIC sentence that makes sense read entirely on its own, with no other context. ALWAYS name the actual subject/topic and who it's for/from - never leave it as a bare, ambiguous phrase. BAD (too vague): 'send revised timeline', 'Rohan to get back', 'follow up on this'. GOOD (specific): 'Send Vikas a revised delivery timeline for the project', 'Rohan to get back to us after discussing our pricing with his team'. If the note doesn't give enough detail to be this specific, include whatever specifics ARE available (topic, project, document type) rather than a generic placeholder.",
+      "description": "string - the action item/to-do, written as a SELF-CONTAINED, SPECIFIC sentence that makes sense read entirely on its own, with no other context. ALWAYS name the actual subject/topic and who it's for/from - never leave it as a bare, ambiguous phrase. BAD (too vague): 'send revised timeline', 'Rohan to get back', 'follow up on this'. GOOD (specific): 'Send Vikas a revised delivery timeline for the project', 'Rohan to get back to us after discussing our pricing with his team'. If the note doesn't give enough detail to be this specific, include whatever specifics ARE available (topic, project, document type) rather than a generic placeholder. Leave the deadline itself OUT of the description ('by Friday', 'tomorrow', 'by 7pm', 'on October 27') - it is stored in due_date/due_time and shown right beside the task, and wording left in the text goes stale if the date is later changed. Write 'Send Priya the deck', not 'Send Priya the deck by Friday'.",
       "due_date": "string - when THIS ACTION ITSELF must be done by, per the date-phrase rules above (a normalized relative phrase like 'next Monday'/'in 3 days', or an explicit YYYY-MM-DD). Do NOT use a date that only describes something ELSE mentioned in the task, rather than the task's own deadline - e.g. 'enroll for the GRE exam coming up in December' has no stated enrollment deadline (enrollment is normally due well before the exam itself, and this note doesn't say when) - due_date is null here, NOT December (that's when the EXAM is, not when enrolling is due). Only set this when a deadline for completing the action itself is actually stated or clearly implied. Else null.",
+      "due_time": "string - 24-hour HH:MM, ONLY when the note states a clock time for the deadline ('by 7pm' -> '19:00', 'at 10:30 in the morning' -> '10:30', 'by noon' -> '12:00'). Null when no time of day was given - never guess one from words like 'evening' or 'end of day'.",
       "owner": "string - who owns this action item: 'me' if the user (the note-taker) needs to do it (e.g. 'I need to send...', 'Send Vikas a...'), 'them' if the other person owes it (e.g. 'Rohan to get back to us...', 'He's going to send over...'). Default to 'me' if genuinely unclear from phrasing."
     }}
   ]
@@ -177,6 +202,10 @@ Notes:
 - Be faithful to the note - do not invent details that aren't stated or strongly implied.
 - If information for a field isn't present, use an empty string, empty list, or null as appropriate.
 - "primary_person" is null for a standalone personal note (idea/to-do/reflection with no one else involved) - most other fields (other_people, sentiments, appearance_this_meeting, etc.) will naturally be empty/null in that case too, which is expected, not an error.
+- "facts" and "key_dates" are for DURABLE things worth remembering about a person - preferences, family, where they live, birthdays, anniversaries. They are NOT for what happened in this meeting (that belongs in summary/topics/decisions/follow_ups). Capture every such detail the note states, one fact per item; never invent one. Keep "personal_notes" too, as a short free-text recap.
+- A birthday or anniversary is a date that comes round EVERY YEAR. A one-off meeting, a deadline, a trip or a task is NOT a key date (those are follow_ups). A relative's date (a child's birthday, a spouse's anniversary) is recorded under the person the note is about, with that relative as "subject".
+- Both lists are empty ([]) when the note states nothing of the kind.
+- Stored text is read weeks later, when "tomorrow" or "next Friday" would point at the wrong day. In "summary", "concerns", "decisions" and "personal_notes" (NOT in follow-up descriptions: a to-do keeps the user's own wording, e.g. "Send Priya the deck by Friday", because its due_date field already carries the exact date), replace relative day words ("today", "tomorrow", "yesterday", "next week", "this Friday") with the actual calendar date worked out from today's date above, written like "October 6" (or "Friday, October 9"). The note's own wording is kept separately, so nothing is lost. Example: the note "her birthday is tomorrow" written on 2026-10-05 gives "her birthday is on October 6".
 - "initiative" only ever names one of the initiatives listed above, verbatim, or null - never a name outside that list.
 - "suggested_initiative" is the one exception to "never invent a name" above - it's specifically FOR proposing a new one, but only when "initiative" is null and the note is substantial enough to deserve its own category (see instructions above), not for every uncategorized note.
 - Always output person names and company names in proper capitalization (e.g. "David Okafor", "IBM", "Acme Corp"), regardless of how they appear in the source text - voice transcripts in particular sometimes come through in lowercase or inconsistent casing, and that's a transcription artifact, not how the name should be recorded or displayed.
@@ -200,7 +229,6 @@ def extract_info(raw_text: str, reference_date: date = None, initiative_names: l
     Returns a dict matching the schema in _build_system_prompt.
     Raises ValueError if the model doesn't return valid JSON.
     """
-    client = get_client()
 
     if reference_date is None:
         reference_date = date.today()
@@ -217,8 +245,7 @@ def extract_info(raw_text: str, reference_date: date = None, initiative_names: l
     # message the model might feel obligated to respond/comply with.
     user_content = f"<note>\n{raw_text}\n</note>"
     try:
-        response = client.chat.completions.create(
-            model=MODEL_NAME,
+        response = llm_budget.chat(MODEL_NAME,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},

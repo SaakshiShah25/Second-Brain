@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
-import type { CompanyGroup, Person, PersonDetailResponse } from './types'
+import type { CompanyGroup, Person, PersonDetailResponse, PersonMemory } from './types'
 
 export function usePeople() {
   return useQuery({ queryKey: ['people'], queryFn: () => api.get<Person[]>('/api/people') })
@@ -110,4 +110,45 @@ export function useDeleteInteraction() {
       queryClient.invalidateQueries({ queryKey: ['notes'] })
     },
   })
+}
+
+// Key dates and remembered details (schema.sql section 31). Each call returns
+// the person's refreshed memory, which is written straight into the cached
+// person so the screen updates without a refetch.
+function useMemoryMutation<V>(personId: number, call: (v: V) => Promise<PersonMemory>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: call,
+    onSuccess: (memory) => {
+      queryClient.setQueryData<PersonDetailResponse>(['people', personId], (old) => (old ? { ...old, memory } : old))
+    },
+  })
+}
+
+export interface NewKeyDate {
+  date_type: 'birthday' | 'anniversary' | 'custom'
+  label?: string
+  subject?: string
+  subject_name?: string
+  month: number
+  day?: number
+  year?: number
+}
+
+export function useAddKeyDate(personId: number) {
+  return useMemoryMutation<NewKeyDate>(personId, (body) =>
+    api.post<PersonMemory>(`/api/people/${personId}/key_dates`, body))
+}
+
+export function useDeleteKeyDate(personId: number) {
+  return useMemoryMutation<number>(personId, (id) => api.delete<PersonMemory>(`/api/people/${personId}/key_dates/${id}`))
+}
+
+export function useAddPersonFact(personId: number) {
+  return useMemoryMutation<{ attribute: string; value: string; subject?: string; subject_name?: string }>(
+    personId, (body) => api.post<PersonMemory>(`/api/people/${personId}/facts`, body))
+}
+
+export function useDeletePersonFact(personId: number) {
+  return useMemoryMutation<number>(personId, (id) => api.delete<PersonMemory>(`/api/people/${personId}/facts/${id}`))
 }

@@ -454,6 +454,30 @@ person automatically — there's nothing to confirm in that case.
   pricing but impressed by the demo, and both are captured as separate
   `{topic, sentiment}` entries in `Interaction.sentiment` (jsonb).
 
+### What the app remembers about people (memory layer)
+
+Everything a note says about a person that is worth remembering is filed into
+typed rows (schema.sql section 31, rules in `memory_schema.py`, filing in
+`graph.py`) instead of one free-text blob, so it can be filtered, joined and
+answered exactly:
+
+| Table | Holds | Example |
+|---|---|---|
+| `person_fact` | one attribute value about a person, or a relative of theirs; single-valued ones are *superseded*, never overwritten | `likes` = "coffee over tea"; `lives_in` = Pune (replaced Mumbai); `hobby` = painting, about child Anya |
+| `key_date` | yearly dates: birthday, anniversary, custom (month may be known without the day) | Birthday 14 March; Karan's wedding anniversary 2 Nov; Anya's birthday: June |
+| `relationship` | links between people, organizations and documents, with `rel_type` (spouse / parent / child / sibling / relative / friend / colleague) | Karan is Priya's spouse |
+
+The extraction prompt returns `facts` and `key_dates` for the person a note is
+about and for the other people in it; `memory_schema` validates them (fixed
+vocabulary, real calendar dates, caps), and `graph.on_capture` files them in the
+background. They can also be added by hand on the contact's page, and a value
+typed by hand is never overwritten by a note. The agent reads them through
+`person_profile`, `key_dates` ("whose birthday is next month?") and
+`query_people` ("which friends are vegetarian?"); the search index puts them on
+each person's card. `scripts/rebuild_graph.py` backfills existing contacts
+(including dates saved by the earlier `important_dates` feature).
+`tests/` has the unit tests (`python tests/test_memory_schema.py`, no database needed).
+
 ## Notes / things you'll likely want to tune
 
 - **CANDIDATE_THRESHOLD** in `capture.py` (default `0.5`) — how similar a

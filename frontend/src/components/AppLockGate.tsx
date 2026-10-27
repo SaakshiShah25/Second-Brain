@@ -78,10 +78,10 @@ export default function AppLockGate({ children }: { children: ReactNode }) {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-bg px-6">
-      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft text-text">
-        <ConfiaLogo size={22} />
+      <div className="mb-4 text-text">
+        <ConfiaLogo size={48} />
       </div>
-      <h1 className="mb-1 text-lg font-semibold tracking-tight text-text">MyConfía is locked</h1>
+      <h1 className="mb-1 font-display text-2xl font-semibold tracking-[-0.025em] text-text">MyConfía is locked</h1>
       <p className="mb-6 flex items-center gap-1 text-sm text-text-muted">
         <ShieldCheck size={14} strokeWidth={1.6} />
         Enter your PIN to continue
@@ -98,18 +98,18 @@ export default function AppLockGate({ children }: { children: ReactNode }) {
             setPin(e.target.value.replace(/\D/g, ''))
             setError(false)
           }}
-          className="w-full rounded-lg border border-border-strong bg-bg-card px-4 py-3 text-center text-2xl tracking-[0.5em] text-text focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          className="h-14 w-full rounded-2xl border border-border-strong bg-bg-card px-4 text-center text-2xl tracking-[0.5em] text-text focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25"
           placeholder="••••"
         />
         {error && <p className="text-xs text-danger">Incorrect PIN - try again.</p>}
-        <Button type="submit" variant="primary" className="w-full justify-center" disabled={pin.length < 4 || checking}>
+        <Button type="submit" variant="primary" size="lg" block disabled={pin.length < 4 || checking}>
           {checking ? 'Checking…' : 'Unlock'}
         </Button>
       </form>
       <button
         type="button"
         onClick={() => signOut()}
-        className="mt-8 flex items-center gap-1.5 text-xs text-text-faint hover:text-danger"
+        className="pressable mt-8 flex items-center gap-1.5 py-2 text-sm text-text-muted"
       >
         <LogOut size={13} strokeWidth={1.6} />
         Not you? Sign out instead

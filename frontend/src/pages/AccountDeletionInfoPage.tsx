@@ -33,7 +33,7 @@ export default function AccountDeletionInfoPage() {
       <h2 className="mb-2 mt-6 text-sm font-semibold text-text-muted">If you can't log in anymore</h2>
       <p className="mb-3 text-[15px] leading-relaxed text-text-muted">
         Email{' '}
-        <a href={`mailto:${SUPPORT_EMAIL}`} className="text-accent underline">
+        <a href={`mailto:${SUPPORT_EMAIL}`} className="text-link underline">
           {SUPPORT_EMAIL}
         </a>{' '}
         from the address you signed up with, asking us to delete your account. We'll verify it's you and
@@ -46,7 +46,7 @@ export default function AccountDeletionInfoPage() {
         credentials, and your app preferences. This is permanent and can't be reversed.
       </p>
 
-      <Link to="/login" className="mt-8 text-sm text-accent underline">
+      <Link to="/login" className="mt-8 text-sm text-link underline">
         Back to MyConfía
       </Link>
     </div>

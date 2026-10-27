@@ -34,6 +34,7 @@ verifies it against Supabase Auth - it is never client-supplied.
 """
 
 import os
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -41,12 +42,20 @@ from supabase import create_client, Client
 
 import crypto_utils
 
-_client = None
+# One Supabase client PER THREAD, not one for the whole process. The client
+# keeps a single HTTP/2 connection open, and that connection is not safe to
+# share between threads. This app is heavily threaded (the request thread-pool,
+# the search-index worker, the graph pool, the agent's parallel tools), and a
+# measured 8-thread read test through one shared client failed ~11% of calls
+# with "ReadError: Resource temporarily unavailable" - the cause of notes whose
+# details were only partly saved. Each thread making its own client removes the
+# sharing, and the failures with it.
+_local = threading.local()
 
 
 def get_client() -> Client:
-    global _client
-    if _client is None:
+    client = getattr(_local, "client", None)
+    if client is None:
         url = os.environ.get("SUPABASE_URL")
         key = os.environ.get("SUPABASE_KEY")
         if not url or not key:
@@ -55,8 +64,8 @@ def get_client() -> Client:
                 "Create a free project at https://supabase.com, run schema.sql "
                 "in the SQL editor, then set these env vars. See README.md."
             )
-        _client = create_client(url, key)
-    return _client
+        client = _local.client = create_client(url, key)
+    return client
 
 
 # ---------- Encrypt-at-rest (see crypto_utils.py + schema.sql section 22) ----------
@@ -78,10 +87,17 @@ _ENCRYPTED_TEXT_FIELDS = {
     "interaction": ["raw_text", "summary", "location", "appearance", "geo_address"],
     "task": ["description"],
     "google_credentials": ["access_token", "refresh_token"],
+    "document": ["title", "description", "owner", "file_name", "extracted_text"],
+    "search_chunk": ["title", "text"],
+    "relationship": ["label"],
+    "person_fact": ["value", "subject_name"],
+    "key_date": ["label", "subject_name"],
+    "daily_brief": ["brief"],
 }
 _ENCRYPTED_JSON_FIELDS = {
     "person": ["personal_notes"],
     "interaction": ["sentiment", "topics", "extracted_facts", "decisions", "concerns"],
+    "document": ["tags"],
 }
 
 
@@ -133,17 +149,13 @@ def get_all_people(user_id: str):
 
 
 def get_people_by_company(user_id: str, company: str):
-    """Case-insensitive exact match on company (ilike with no wildcards in
-    `company` behaves as case-insensitive equality) - deliberately not
-    fuzzy, since company names typed inconsistently (e.g. "Acme" vs "Acme
-    Corp") should be a follow-up if it turns out to matter in practice,
-    not guessed at upfront."""
-    resp = (
-        get_client().table("person").select("*")
-        .eq("user_id", user_id).ilike("company", company)
-        .execute()
-    )
-    return _decrypt_rows("person", resp.data)
+    """Everyone at a company, matched on graph.org_key - case, punctuation
+    and legal suffixes folded, so "Northwind", "northwind" and "Northwind
+    Pvt Ltd" are the same company (an exact ilike match split them)."""
+    from graph import org_key  # local import: graph imports this module
+
+    key = org_key(company)
+    return [p for p in get_all_people(user_id) if key and org_key(p.get("company") or "") == key]
 
 
 def create_person(user_id: str, name, description="", role="", company="", phone="", email="",
@@ -359,8 +371,8 @@ def search_interactions_by_embedding(user_id: str, query_embedding, top_k=5, per
 
 # ---------- Task helpers ----------
 
-def create_task(user_id: str, interaction_id, description, due_date=None, owner="me", person_id=None):
-    resp = get_client().table("task").insert(_encrypt_fields("task", {
+def create_task(user_id: str, interaction_id, description, due_date=None, owner="me", person_id=None, due_time=None):
+    row = {
         "user_id": user_id,
         "interaction_id": interaction_id,
         "description": description,
@@ -369,7 +381,17 @@ def create_task(user_id: str, interaction_id, description, due_date=None, owner=
         "person_id": person_id,  # who this SPECIFIC task is about, if not the interaction's primary
                                   # person - None means "use the interaction's primary person" (the
                                   # common case), see api/routers/capture.py's _resolve_task_person
-    })).execute()
+    }
+    if due_time:  # only sent when there is one: the column exists once schema.sql section 32 has run
+        row["due_time"] = due_time
+    try:
+        resp = get_client().table("task").insert(_encrypt_fields("task", row)).execute()
+    except Exception as e:
+        if "due_time" not in row or "due_time" not in str(e):
+            raise
+        print(f"[warn] task.due_time column missing (run schema.sql section 32) - saving the task without its time: {e}")
+        row.pop("due_time")
+        resp = get_client().table("task").insert(_encrypt_fields("task", row)).execute()
     return resp.data[0]["id"]
 
 
@@ -420,6 +442,13 @@ def update_task_status(user_id: str, task_id: int, status: str):
     get_client().table("task").update({"status": status}).eq("id", task_id).eq("user_id", user_id).execute()
 
 
+def update_task_fields(user_id: str, task_id: int, **fields):
+    """Edits a task's wording and/or deadline (description, due_date, due_time - a
+    null clears one). Only the keys passed are touched."""
+    if fields:
+        get_client().table("task").update(_encrypt_fields("task", fields)).eq("id", task_id).eq("user_id", user_id).execute()
+
+
 def update_task_owner(user_id: str, task_id: int, owner: str):
     get_client().table("task").update({"owner": owner}).eq("id", task_id).eq("user_id", user_id).execute()
 
@@ -451,14 +480,24 @@ def get_google_credentials(user_id: str):
     return _decrypt_row("google_credentials", resp.data[0]) if resp.data else None
 
 
-def upsert_google_credentials(user_id: str, access_token: str, refresh_token: str, expires_at: str, scope: str):
-    get_client().table("google_credentials").upsert(_encrypt_fields("google_credentials", {
+def upsert_google_credentials(user_id: str, access_token: str, refresh_token: str, expires_at: str, scope: str,
+                              google_email: Optional[str] = None):
+    row = {
         "user_id": user_id,
         "access_token": access_token,
         "refresh_token": refresh_token,
         "expires_at": expires_at,
         "scope": scope,
-    })).execute()
+    }
+    try:
+        get_client().table("google_credentials").upsert(
+            _encrypt_fields("google_credentials", {**row, "google_email": google_email})).execute()
+    except Exception as e:
+        # google_email arrived with schema.sql section 27 - keep connecting
+        # (just without the account label) on a database that predates it.
+        if "google_email" not in str(e):
+            raise
+        get_client().table("google_credentials").upsert(_encrypt_fields("google_credentials", row)).execute()
 
 
 def update_google_access_token(user_id: str, access_token: str, expires_at: str):
@@ -818,3 +857,297 @@ if __name__ == "__main__":
     client = get_client()
     resp = client.table("person").select("id").limit(1).execute()
     print("Connected to Supabase successfully. `person` table is reachable.")
+
+
+# ---------- Documents (schema.sql section 26, documents.py) ----------
+#
+# Same row-boundary encryption as every other table (see the
+# _ENCRYPTED_*_FIELDS maps above). The list query deliberately leaves out
+# the heavy columns (embedding, extracted_text) - the Docs screen never
+# needs them; search fetches embeddings separately.
+
+_DOCUMENT_LIST_COLUMNS = (
+    "id, title, description, category, tags, owner, person_id, initiative_id, file_name, "
+    "mime_type, size_bytes, thumb_path, issue_date, expiry_date, source, created_at, "
+    "drive_file_id, drive_folder_id"
+)
+
+
+def create_document(user_id: str, **fields) -> dict:
+    resp = get_client().table("document").insert(_encrypt_fields("document", {"user_id": user_id, **fields})).execute()
+    return _decrypt_row("document", resp.data[0])
+
+
+def get_documents(user_id: str) -> list:
+    resp = (
+        get_client().table("document").select(_DOCUMENT_LIST_COLUMNS)
+        .eq("user_id", user_id).eq("hidden", False).order("created_at", desc=True).execute()
+    )
+    return _decrypt_rows("document", resp.data)
+
+
+def get_document(user_id: str, document_id: int, include_private: bool = False):
+    """include_private adds storage paths, extracted text and embedding -
+    for the backend's own use (serving the file, search), never returned
+    to the client as-is."""
+    cols = "*" if include_private else _DOCUMENT_LIST_COLUMNS
+    resp = get_client().table("document").select(cols).eq("id", document_id).eq("user_id", user_id).execute()
+    return _decrypt_row("document", resp.data[0]) if resp.data else None
+
+
+def get_documents_for_search(user_id: str) -> list:
+    resp = (
+        get_client().table("document")
+        .select(_DOCUMENT_LIST_COLUMNS + ", extracted_text, embedding")
+        .eq("user_id", user_id).eq("hidden", False).execute()
+    )
+    return _decrypt_rows("document", resp.data)
+
+
+def update_document(user_id: str, document_id: int, **fields) -> dict:
+    resp = (
+        get_client().table("document").update(_encrypt_fields("document", fields))
+        .eq("id", document_id).eq("user_id", user_id).execute()
+    )
+    return _decrypt_row("document", resp.data[0]) if resp.data else None
+
+
+def delete_document(user_id: str, document_id: int) -> None:
+    get_client().table("document").delete().eq("id", document_id).eq("user_id", user_id).execute()
+
+
+def get_drive_documents(user_id: str, drive_folder_id: int) -> list:
+    """Every row synced from one Drive folder, hidden ones included (the
+    sync needs those to know not to re-import them)."""
+    resp = (
+        get_client().table("document")
+        .select("id, drive_file_id, drive_modified_time, thumb_path, hidden")
+        .eq("user_id", user_id).eq("drive_folder_id", drive_folder_id).execute()
+    )
+    return resp.data
+
+
+def get_document_by_drive_id(user_id: str, drive_file_id: str):
+    resp = (
+        get_client().table("document").select("id, drive_folder_id, hidden")
+        .eq("user_id", user_id).eq("drive_file_id", drive_file_id).execute()
+    )
+    return resp.data[0] if resp.data else None
+
+
+# ---------- Google Drive folders (schema.sql section 27, google_drive.py) ----------
+
+def get_drive_folders(user_id: str) -> list:
+    return (
+        get_client().table("drive_folder").select("*").eq("user_id", user_id)
+        .order("created_at").execute().data
+    )
+
+
+def get_drive_folder(user_id: str, folder_row_id: int):
+    resp = get_client().table("drive_folder").select("*").eq("id", folder_row_id).eq("user_id", user_id).execute()
+    return resp.data[0] if resp.data else None
+
+
+def create_drive_folder(user_id: str, folder_id: str, name: str) -> dict:
+    resp = get_client().table("drive_folder").upsert(
+        {"user_id": user_id, "folder_id": folder_id, "name": name}, on_conflict="user_id,folder_id"
+    ).execute()
+    return resp.data[0]
+
+
+def update_drive_folder(user_id: str, folder_row_id: int, **fields) -> None:
+    get_client().table("drive_folder").update(fields).eq("id", folder_row_id).eq("user_id", user_id).execute()
+
+
+def delete_drive_folder(user_id: str, folder_row_id: int) -> None:
+    """Its documents go with it (ON DELETE CASCADE on document.drive_folder_id)."""
+    get_client().table("drive_folder").delete().eq("id", folder_row_id).eq("user_id", user_id).execute()
+
+
+# ---------- Unified search index (schema.sql section 28, search_index.py) ----------
+
+def get_interaction_links(user_id: str) -> list:
+    """Every secondary-mention link (interaction_person) for this user -
+    lets the indexer tag a note with everyone it mentions, not just its
+    primary person."""
+    return (
+        get_client().table("interaction_person").select("interaction_id, person_id")
+        .eq("user_id", user_id).execute().data
+    )
+
+
+def upsert_search_chunks(user_id: str, rows: list) -> None:
+    if not rows:
+        return
+    payload = [_encrypt_fields("search_chunk", {"user_id": user_id, **r}) for r in rows]
+    for start in range(0, len(payload), 200):
+        get_client().table("search_chunk").upsert(
+            payload[start:start + 200], on_conflict="user_id,kind,entity_id").execute()
+
+
+def delete_search_chunks(user_id: str, kind: str, entity_ids: list) -> None:
+    if entity_ids:
+        get_client().table("search_chunk").delete().eq("user_id", user_id).eq("kind", kind) \
+            .in_("entity_id", list(entity_ids)).execute()
+
+
+def get_search_chunk_keys(user_id: str) -> list:
+    return get_client().table("search_chunk").select("kind, entity_id").eq("user_id", user_id).execute().data
+
+
+def get_search_chunks(user_id: str, kinds=None, person_id=None, initiative_id=None,
+                      date_from=None, date_to=None) -> list:
+    """All chunks matching the filters, decrypted, WITHOUT embeddings -
+    the keyword (BM25) side of hybrid search scores these in Python."""
+    q = (get_client().table("search_chunk")
+         .select("id, kind, entity_id, title, text, item_date, person_ids, initiative_id, meta")
+         .eq("user_id", user_id))
+    if kinds:
+        q = q.in_("kind", list(kinds))
+    if person_id is not None:
+        q = q.contains("person_ids", [person_id])
+    if initiative_id is not None:
+        q = q.eq("initiative_id", initiative_id)
+    if date_from:
+        q = q.gte("item_date", date_from)
+    if date_to:
+        q = q.lte("item_date", date_to)
+    return _decrypt_rows("search_chunk", q.execute().data)
+
+
+def match_search_chunks(user_id: str, query_embedding, k: int = 40, kinds=None, person_id=None,
+                        initiative_id=None, date_from=None, date_to=None) -> list:
+    return get_client().rpc("match_search_chunks", {
+        "query_embedding": query_embedding, "filter_user_id": user_id, "match_count": k,
+        "filter_kinds": list(kinds) if kinds else None, "filter_person_id": person_id,
+        "filter_initiative_id": initiative_id, "date_from": date_from, "date_to": date_to,
+    }).execute().data
+
+
+# ---------- Knowledge graph + memory (schema.sql sections 29 and 31, graph.py) ----------
+
+def get_organizations(user_id: str) -> list:
+    return get_client().table("organization").select("*").eq("user_id", user_id).order("name").execute().data
+
+
+def upsert_organization(user_id: str, name: str, name_key: str) -> dict:
+    resp = get_client().table("organization").upsert(
+        {"user_id": user_id, "name": name, "name_key": name_key}, on_conflict="user_id,name_key",
+        ignore_duplicates=True).execute()
+    if resp.data:
+        return resp.data[0]
+    return get_client().table("organization").select("*").eq("user_id", user_id).eq("name_key", name_key) \
+        .execute().data[0]
+
+
+def delete_organizations(user_id: str, ids: list) -> None:
+    if ids:
+        get_client().table("organization").delete().eq("user_id", user_id).in_("id", list(ids)).execute()
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ---- relationship (schema.sql section 31; was entity_edge)
+
+def get_relationships(user_id: str, entity_type: str = None, entity_id: int = None, rel: str = None) -> list:
+    """Relationships touching an entity (either direction), or all of a user's."""
+    q = get_client().table("relationship").select("*").eq("user_id", user_id)
+    if rel:
+        q = q.eq("rel", rel)
+    rows = q.execute().data
+    if entity_type is not None:
+        rows = [r for r in rows if (r["src_type"] == entity_type and r["src_id"] == entity_id)
+                or (r["dst_type"] == entity_type and r["dst_id"] == entity_id)]
+    return _decrypt_rows("relationship", rows)
+
+
+def upsert_relationship(user_id: str, **fields) -> None:
+    get_client().table("relationship").upsert(
+        _encrypt_fields("relationship", {"user_id": user_id, **fields}),
+        on_conflict="user_id,src_type,src_id,rel,dst_type,dst_id").execute()
+
+
+def update_relationship(user_id: str, relationship_id: int, **fields) -> None:
+    get_client().table("relationship").update(_encrypt_fields("relationship", {**fields, "updated_at": _now_iso()})) \
+        .eq("id", relationship_id).eq("user_id", user_id).execute()
+
+
+def delete_relationships(user_id: str, ids: list) -> None:
+    if ids:
+        get_client().table("relationship").delete().eq("user_id", user_id).in_("id", list(ids)).execute()
+
+
+# ---- person_fact (schema.sql section 31; was fact)
+
+def get_person_facts(user_id: str, person_id: int = None) -> list:
+    """Every fact (current and superseded) for one person, or for everyone."""
+    q = get_client().table("person_fact").select("*").eq("user_id", user_id)
+    if person_id is not None:
+        q = q.eq("person_id", person_id)
+    return _decrypt_rows("person_fact", q.order("observed_on", nullsfirst=True).order("id").execute().data)
+
+
+def insert_person_fact(user_id: str, **fields) -> dict:
+    resp = get_client().table("person_fact").insert(
+        _encrypt_fields("person_fact", {"user_id": user_id, **fields})).execute()
+    return _decrypt_row("person_fact", resp.data[0])
+
+
+def update_person_fact(user_id: str, fact_id: int, **fields) -> None:
+    get_client().table("person_fact").update(_encrypt_fields("person_fact", {**fields, "updated_at": _now_iso()})) \
+        .eq("id", fact_id).eq("user_id", user_id).execute()
+
+
+def delete_person_facts(user_id: str, ids: list) -> None:
+    if ids:
+        get_client().table("person_fact").delete().eq("user_id", user_id).in_("id", list(ids)).execute()
+
+
+# ---- key_date (schema.sql section 31)
+
+def get_key_dates(user_id: str, person_id: int = None) -> list:
+    q = get_client().table("key_date").select("*").eq("user_id", user_id)
+    if person_id is not None:
+        q = q.eq("person_id", person_id)
+    return _decrypt_rows("key_date", q.order("month").order("day", nullsfirst=False).order("id").execute().data)
+
+
+def insert_key_date(user_id: str, **fields) -> dict:
+    resp = get_client().table("key_date").insert(_encrypt_fields("key_date", {"user_id": user_id, **fields})).execute()
+    return _decrypt_row("key_date", resp.data[0])
+
+
+def update_key_date(user_id: str, key_date_id: int, **fields) -> None:
+    get_client().table("key_date").update(_encrypt_fields("key_date", {**fields, "updated_at": _now_iso()})) \
+        .eq("id", key_date_id).eq("user_id", user_id).execute()
+
+
+def delete_key_dates(user_id: str, ids: list) -> None:
+    if ids:
+        get_client().table("key_date").delete().eq("user_id", user_id).in_("id", list(ids)).execute()
+
+
+# ---------- Daily brief cache (schema.sql section 30) ----------
+
+def get_daily_brief(user_id: str, brief_date: str):
+    """The stored brief for this user and day, or None."""
+    rows = (
+        get_client().table("daily_brief").select("*")
+        .eq("user_id", user_id).eq("brief_date", brief_date).limit(1).execute().data
+    )
+    return _decrypt_row("daily_brief", rows[0]) if rows else None
+
+
+def save_daily_brief(user_id: str, brief_date: str, fingerprint: str, brief: str, written_at: str = None) -> None:
+    """One row per user per day - a re-written brief replaces the old one."""
+    row = {"user_id": user_id, "brief_date": brief_date, "fingerprint": fingerprint, "brief": brief}
+    if written_at:
+        row["created_at"] = written_at  # the column default only applies on insert, not on a rewrite
+    get_client().table("daily_brief").upsert(
+        _encrypt_fields("daily_brief", row),
+        on_conflict="user_id,brief_date",
+    ).execute()

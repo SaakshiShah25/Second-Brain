@@ -32,8 +32,11 @@ def _brief_subject() -> str:
 
 
 @router.get("/morning")
-def get_morning_brief(user_id: str = Depends(get_current_user_id)):
-    return {"brief": morning_brief.generate_morning_brief(user_id)}
+def get_morning_brief(refresh: bool = False, user_id: str = Depends(get_current_user_id)):
+    """Today's brief - written once a day and kept (it is the morning's snapshot). `refresh=true`
+    writes a new one from the current state; `generated_at` says when the kept one was written."""
+    text, written_at = morning_brief.get_morning_brief(user_id, refresh=refresh)
+    return {"brief": text, "generated_at": written_at}
 
 
 @router.post("/send-email")

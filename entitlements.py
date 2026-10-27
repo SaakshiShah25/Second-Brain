@@ -38,7 +38,7 @@ import db
 # once that's measured, not guessed here.
 FREE_LIMITS = {
     "interactions_logged": 50,   # notes/interactions captured per month
-    "ai_questions_asked": 30,    # chat "ask" queries per month
+    "ai_questions_asked": 50,    # chat "ask" queries per month
     "voice_transcriptions": 30,  # voice notes per month (Whisper minutes)
     "card_scans": 10,            # business card scans per month
 }

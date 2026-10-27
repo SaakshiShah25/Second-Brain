@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { useCompleteTour, useSettings } from '../api/settings'
+import { useUsageMode } from '../lib/usageMode'
 import Tour from './Tour'
+import UsageModeSheet from './UsageModeSheet'
 import WelcomePrompt from './WelcomePrompt'
 
 // Auto-shows the onboarding tour once, for any account that hasn't seen
@@ -47,7 +49,11 @@ export default function TourGate({ children }: { children: ReactNode }) {
   // "Start Tour" card flashing back up right after clicking Finish.
   const [firstTimeFlowDone, setFirstTimeFlowDone] = useState(false)
 
-  const isFirstTime = !!settings && !settings.tour_completed_at && !firstTimeFlowDone
+  // Asked before anything else on first run (and once for existing
+  // accounts that predate it) - the welcome/tour wait until it's answered.
+  const { needsChoice } = useUsageMode()
+
+  const isFirstTime = !!settings && !needsChoice && !settings.tour_completed_at && !firstTimeFlowDone
   const showWelcome = isFirstTime && !welcomeAccepted && !manualOpen
   const showTour = manualOpen || (isFirstTime && welcomeAccepted)
 
@@ -65,6 +71,7 @@ export default function TourGate({ children }: { children: ReactNode }) {
   return (
     <TourContext.Provider value={{ startTour: () => setManualOpen(true) }}>
       {children}
+      {needsChoice && <UsageModeSheet />}
       {showWelcome && <WelcomePrompt onStart={() => setWelcomeAccepted(true)} onSkip={handleDone} />}
       {showTour && <Tour onDone={handleDone} />}
     </TourContext.Provider>

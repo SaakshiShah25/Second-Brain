@@ -44,6 +44,7 @@ export interface Task {
   interaction_id: number
   description: string
   due_date: string | null
+  due_time?: string | null // HH:MM(:SS), only when the deadline has a time of day
   status: 'open' | 'done'
   owner: TaskOwner
   created_at: string
@@ -140,10 +141,56 @@ export interface SecondaryMention {
   }
 }
 
+// What the memory layer holds about a person (schema.sql section 31).
+export interface PersonFact {
+  id: number
+  attribute: string
+  value: string
+  subject: string // self | spouse | child | parent | sibling | pet | other
+  subject_name: string | null
+  confidence: string // stated | likely
+  is_sensitive: boolean
+  since: string | null
+  until: string | null
+  source: string | null // interaction | manual | backfill
+}
+
+export interface KeyDate {
+  id: number
+  date_type: 'birthday' | 'anniversary' | 'custom'
+  label: string | null
+  subject: string
+  subject_name: string | null
+  month: number
+  day: number | null
+  year: number | null
+  source: string | null
+  days_until: number | null
+  text: string // e.g. "Birthday: 14 March (in 12 days)"
+}
+
+export interface PersonLink {
+  rel: string
+  relation: string | null // what the other person is to this one: sibling, parent, spouse...
+  direction: string
+  type: string
+  id: number
+  name: string
+  label: string | null
+}
+
+export interface PersonMemory {
+  facts: PersonFact[]
+  history: PersonFact[]
+  key_dates: KeyDate[]
+  relationships: PersonLink[]
+}
+
 export interface PersonDetailResponse {
   person: Person
   interactions: Interaction[]
   mentioned_in: SecondaryMention[]
+  memory?: PersonMemory
 }
 
 export interface Candidate {
@@ -194,13 +241,17 @@ export interface CaptureSavedResult {
   // (extraction.py never sets both for the same note).
   initiative_name: string | null
   summary: string
-  tasks_created: { description: string; due_date: string | null; owner: TaskOwner }[]
+  tasks_created: { description: string; due_date: string | null; due_time?: string | null; owner: TaskOwner }[]
   date_warning: string | null
   skipped_due_dates: { description: string; raw_due_date: string }[]
   geo_address: string | null
   maps_url: string | null
   decisions: string[]
   concerns: string[]
+  // Details, dates and links filed from this note, e.g. "Priya: Birthday · 14 March".
+  remembered?: string[]
+  // false when the note saved but its details could not be filed (retry with scripts/rebuild_graph.py).
+  memory_saved?: boolean
 }
 
 export interface CaptureConfirmRequiredResult {
@@ -225,9 +276,30 @@ export interface CardFields {
   email: string
 }
 
+// One item the answer relied on (agent.py) - shown as a tappable chip.
+export interface AnswerSource {
+  ref: string
+  kind: 'note' | 'task' | 'person' | 'document'
+  id: number
+  title: string
+  date: string | null
+  person_id: number | null
+}
+
 export interface AskAnsweredResult {
   status: 'answered'
   answer: string
+  sources?: AnswerSource[]
+  // Files the agent found along the way - rendered as a DocumentResultCard.
+  documents?: DocumentSearchResult | null
+}
+
+// The agent needs one detail before it can answer ("Which Priya?") - the
+// options are real matches, sent back as the user's next message.
+export interface AskClarifyResult {
+  status: 'clarify'
+  answer: string
+  options: string[]
 }
 
 export interface AskConfirmRequiredResult {
@@ -237,11 +309,62 @@ export interface AskConfirmRequiredResult {
   candidates: Candidate[]
 }
 
-export type AskResult = AskAnsweredResult | AskConfirmRequiredResult
+export type AskResult = AskAnsweredResult | AskConfirmRequiredResult | AskClarifyResult
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  // Present on an assistant message that answered a "pull my documents"
+  // request - rendered as a DocumentResultCard instead of plain text.
+  documents?: DocumentSearchResult
+  sources?: AnswerSource[]
+  options?: string[]
+}
+
+// ---------- Documents (document organizer) ----------
+
+export interface DocumentItem {
+  id: number
+  title: string
+  description: string | null
+  category: string
+  tags: string[] | null
+  owner: string | null
+  person_id: number | null
+  initiative_id: number | null
+  file_name: string
+  mime_type: string
+  size_bytes: number
+  issue_date: string | null
+  expiry_date: string | null
+  source: string
+  created_at: string
+  has_thumbnail: boolean
+  // Set for documents synced from a Google Drive folder (source 'gdrive').
+  drive_url: string | null
+  drive_folder_id: number | null
+}
+
+export interface DocumentMatch extends DocumentItem {
+  score: number
+}
+
+export interface DocumentSearchGroup {
+  label: string
+  matches: DocumentMatch[]
+  best: number | null
+}
+
+export interface DocumentSearchResult {
+  groups: DocumentSearchGroup[]
+  total_documents: number
+  query?: string
+}
+
+export interface ChatDocumentsResult extends DocumentSearchResult {
+  intent: 'documents'
+  status: 'answered'
+  query: string
 }
 
 // ---------- Unified chat (single thread, no mode tabs) ----------
@@ -256,15 +379,16 @@ export type ChatAskResult = { intent: 'ask' } & AskResult
 export interface ChatBlockedResult {
   intent: 'blocked'
   status: 'answered'
-  reason: 'unsafe' | 'out_of_scope'
+  reason: 'unsafe' | 'out_of_scope' | 'unavailable'
   answer: string
 }
-export type ChatResult = ChatCaptureResult | ChatAskResult | ChatBlockedResult
+export type ChatResult = ChatCaptureResult | ChatAskResult | ChatBlockedResult | ChatDocumentsResult
 
 // ---------- Settings (theme, font size, Terms of Service) ----------
 
 export type Theme = 'dark' | 'light'
 export type FontSize = 'small' | 'default' | 'large'
+export type UsageMode = 'work' | 'personal' | 'both'
 
 export interface UserPreference {
   user_id: string
@@ -273,6 +397,10 @@ export interface UserPreference {
   terms_accepted_at: string | null
   daily_brief_email_enabled: boolean
   tour_completed_at: string | null
+  // null = not asked yet (triggers the onboarding question). Absent
+  // entirely (undefined) until schema.sql section 25 is applied - the
+  // feature stays dormant then; see lib/usageMode.ts.
+  usage_mode?: UsageMode | null
   updated_at: string
 }
 
@@ -280,4 +408,37 @@ export interface UserPreference {
 
 export interface MorningBrief {
   brief: string
+  // When today's brief was written (ISO). It is a snapshot of that moment.
+  generated_at?: string | null
+}
+
+// ---------- Calendar (api/routers/agenda.py)
+export interface AgendaTask {
+  id: number
+  description: string
+  due_date: string
+  due_time: string | null // HH:MM
+  status: 'open' | 'done'
+  owner: TaskOwner
+  person: { id: number; name: string } | null
+  initiative: string | null
+}
+
+// A birthday/anniversary/other yearly date falling on one specific day.
+export interface AgendaEvent {
+  date: string
+  key_date_id: number
+  person_id: number
+  person: string
+  date_type: 'birthday' | 'anniversary' | 'custom'
+  title: string // "Priya's birthday (turns 36)"
+  age?: number
+  days_until?: number
+}
+
+export interface Agenda {
+  start: string
+  end: string
+  tasks: AgendaTask[]
+  events: AgendaEvent[]
 }

@@ -32,7 +32,27 @@ EMBED_URL = "https://api.cohere.com/v2/embed"
 MODEL_NAME = "embed-english-v3.0"
 
 
+_query_cache: dict = {}
+_rerank_day = {"day": None, "count": 0}
+
+
 def compute_embedding(text: str, input_type: str = "search_document"):
+    """Cached for search queries - a trial Cohere key allows only 1,000 calls
+    a month, and the agent often searches the same phrasing more than once."""
+    if input_type == "search_query":
+        key = text.strip().lower()
+        if key in _query_cache:
+            return _query_cache[key]
+        vec = _compute_embedding(text, input_type)
+        if vec is not None:
+            if len(_query_cache) > 500:
+                _query_cache.clear()
+            _query_cache[key] = vec
+        return vec
+    return _compute_embedding(text, input_type)
+
+
+def _compute_embedding(text: str, input_type: str = "search_document"):
     """Returns a list[float] (1024-dim), or None if the embedding API
     isn't reachable/configured (e.g. COHERE_API_KEY not set, or a
     transient API error) - callers already handle None gracefully (a
@@ -69,3 +89,63 @@ def compute_embedding(text: str, input_type: str = "search_document"):
     except Exception as e:
         print(f"[warn] Embedding request failed ({e}). Continuing without semantic embeddings.")
         return None
+
+
+RERANK_URL = "https://api.cohere.com/v2/rerank"
+RERANK_MODEL = "rerank-v3.5"
+
+
+def compute_embeddings(texts: list, input_type: str = "search_document") -> list:
+    """Batched compute_embedding() - Cohere takes up to 96 texts per call,
+    so re-indexing a whole account (search_index.reindex_user) costs a
+    handful of requests rather than one per note. Returns a list aligned
+    with `texts`; entries are None where embedding failed."""
+    api_key = os.environ.get("COHERE_API_KEY")
+    out = [None] * len(texts)
+    if not api_key:
+        return out
+    for start in range(0, len(texts), 96):
+        batch = texts[start:start + 96]
+        try:
+            resp = requests.post(
+                EMBED_URL,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": MODEL_NAME, "texts": batch, "input_type": input_type, "embedding_types": ["float"]},
+                timeout=60,
+            )
+            resp.raise_for_status()
+            out[start:start + len(batch)] = resp.json()["embeddings"]["float"]
+        except Exception as e:
+            print(f"[warn] Batch embedding failed ({e}); those chunks will be keyword-searchable only.")
+    return out
+
+
+def rerank(query: str, documents: list, top_n: int) -> list:
+    """Cohere's cross-encoder reranker: [(index, relevance 0-1), ...] best
+    first, or [] if unavailable (callers keep their own order then).
+    Much better than embedding distance at "which of these 20 candidates
+    actually answers the question" - search_index.search() uses it as the
+    final ordering step over hybrid (vector + keyword) candidates."""
+    api_key = os.environ.get("COHERE_API_KEY")
+    if not api_key or len(documents) <= 3:
+        return []  # nothing to gain from reordering three or fewer candidates
+    from datetime import date
+
+    today = date.today().isoformat()
+    if _rerank_day["day"] != today:
+        _rerank_day.update(day=today, count=0)
+    if _rerank_day["count"] >= int(os.environ.get("COHERE_RERANK_DAILY_CAP", "25")):
+        return []  # daily cap reached (trial keys: 1,000 calls/month) - hybrid order is used instead
+    _rerank_day["count"] += 1
+    try:
+        resp = requests.post(
+            RERANK_URL,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"model": RERANK_MODEL, "query": query, "documents": documents, "top_n": top_n},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return [(r["index"], r["relevance_score"]) for r in resp.json()["results"]]
+    except Exception as e:
+        print(f"[warn] Rerank failed ({e}); using hybrid order.")
+        return []
