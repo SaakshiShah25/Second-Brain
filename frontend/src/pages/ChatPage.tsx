@@ -24,6 +24,11 @@ import { useUsageMode } from '../lib/usageMode'
 // equal-weight shortcuts, so a different hue on each only added noise.
 const STARTER_TINT = 'bg-accent-soft text-accent'
 
+// "Something went wrong: Error: Couldn't reach…" reads badly - just the message.
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
 function formatSavedMessage(result: CaptureSavedResult): string {
   const lines: string[] = []
   // Omitted entirely for Uncategorized rather than shown as "none",
@@ -220,7 +225,7 @@ export default function ChatPage() {
       if (err instanceof DOMException && err.name === 'AbortError') {
         appendMessage('assistant', '_Stopped._', { status: true })
       } else {
-        appendMessage('assistant', `Something went wrong: ${err}`, { status: true })
+        appendMessage('assistant', `Something went wrong: ${errorText(err)}`, { status: true })
       }
     } finally {
       setIsBusy(false)
@@ -275,7 +280,7 @@ export default function ChatPage() {
         setInputText(transcript)
         chatInputRef.current?.focus()
       } catch (err) {
-        appendMessage('assistant', `Voice transcription failed: ${err}`, { status: true })
+        appendMessage('assistant', `Voice transcription failed: ${errorText(err)}`, { status: true })
       } finally {
         setIsBusy(false)
       }

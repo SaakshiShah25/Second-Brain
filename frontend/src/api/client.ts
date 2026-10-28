@@ -2,6 +2,15 @@ import { supabase } from '../lib/supabase'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
+// What a browser reports as a bare "TypeError: Failed to fetch" when the request never got an
+// answer: the server is still waking up or redeploying (the free host sleeps when idle), or the
+// phone's connection dropped for a moment.
+const UNREACHABLE = "Couldn't reach the server - it may still be waking up. Wait a few seconds and try again."
+
+function isNetworkError(err: unknown): boolean {
+  return err instanceof TypeError
+}
+
 export class ApiError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -16,14 +25,20 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     data: { session },
   } = await supabase.auth.getSession()
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      ...options.headers,
-    },
-  })
+  let res: Response
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        ...options.headers,
+      },
+    })
+  } catch (err) {
+    if (isNetworkError(err)) throw new ApiError(0, UNREACHABLE)
+    throw err
+  }
 
   if (!res.ok) {
     let detail = res.statusText
@@ -57,15 +72,31 @@ export async function postStream<T>(
     data: { session },
   } = await supabase.auth.getSession()
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
-    },
-    body: JSON.stringify(body),
-    signal,
-  })
+  const send = () =>
+    fetch(`${BASE_URL}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
+      body: JSON.stringify(body),
+      signal,
+    })
+  // No answer at all usually means the server was still waking up: the request never reached
+  // the app, so it is safe to send once more after a moment (nothing was saved).
+  let res: Response
+  try {
+    try {
+      res = await send()
+    } catch (err) {
+      if (!isNetworkError(err) || signal?.aborted) throw err
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+      res = await send()
+    }
+  } catch (err) {
+    if (isNetworkError(err)) throw new ApiError(0, UNREACHABLE)
+    throw err
+  }
 
   if (!res.ok || !res.body) {
     let detail = res.statusText

@@ -110,8 +110,9 @@ a personal reminder, or a question about the user's own notes.
 VIOLATION only if the message clearly falls into one of these five categories, however it is
 phrased (request, first-person statement, hypothetical):
 1. illegal_activity - asks for instructions or material help to do something illegal or
-   dangerous (weapons, explosives, hard drugs, hacking, fraud). Merely mentioning that a crime,
-   arrest, breach or drug use happened or exists is NOT this.
+   dangerous (weapons, explosives, hard drugs, fraud, or hacking: breaking into a system,
+   account or network the user is NOT allowed into). Merely mentioning that a crime, arrest,
+   breach or drug use happened or exists is NOT this.
 2. hate_harassment - slurs, hate speech, or content demeaning a person/group for a protected
    characteristic, or sustained severe harassment. Ordinary anger, insults, swearing and
    frustration with someone are NOT this.
@@ -133,6 +134,13 @@ NEVER a violation - these are normal things people write in a private notebook:
   divorce, pregnancy, arrests or legal trouble, money problems, sexuality, religion, politics.
 - Recounting that something bad happened (a breach, a crime, an accident, an argument).
 - Mentioning children, students or family members in ordinary context.
+- Everyday work and admin to-dos about access: "get access to the backend repository", "ask IT
+  for admin access", "request VPN / AWS / GitHub / drive permissions", "reset my password",
+  "share the doc with the team", "onboard the new hire onto the servers". Asking for, granting
+  or sorting out ACCESS or PERMISSIONS through normal channels is routine, not hacking - hacking
+  means getting into something without authorization (bypassing a login, cracking, stealing
+  credentials). A short reminder to yourself ("Get access to X by EOD") is a to-do, not a request
+  for the assistant to break in.
 When in doubt, it is NOT a violation - only flag a clear match to one of the five categories.
 
 Return ONLY JSON: {"violation": 0 or 1, "category": one of the five names above or null, "rationale": "one short sentence"}"""
