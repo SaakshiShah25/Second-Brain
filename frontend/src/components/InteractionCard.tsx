@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Check, CheckCircle2, ChevronDown, ListChecks, MapPin, Pencil, Trash2, TriangleAlert } from 'lucide-react'
+import { CheckCircle2, ChevronDown, MapPin, Pencil, Trash2, TriangleAlert } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { useDeleteInteraction, useUpdateInteraction } from '../api/notes'
-import { useUpdateTaskStatus } from '../api/tasks'
-import type { Interaction, Task } from '../api/types'
-import { dueLabel, fullDate, isoLocal } from '../lib/dates'
+import type { Interaction } from '../api/types'
+import { fullDate } from '../lib/dates'
 import { notePoints } from '../lib/initiativeFilter'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
 import Button from './Button'
@@ -31,53 +30,6 @@ function Section({ icon: Icon, title, items }: { icon: typeof CheckCircle2; titl
   )
 }
 
-function TaskCheckbox({ task }: { task: Task }) {
-  const updateStatus = useUpdateTaskStatus()
-  const done = task.status === 'done'
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation()
-        updateStatus.mutate({ taskId: task.id, status: done ? 'open' : 'done' })
-      }}
-      aria-label={done ? 'Reopen' : 'Mark done'}
-      className="-m-1.5 flex-shrink-0 p-1.5"
-    >
-      <span
-        className={`flex h-[1.125rem] w-[1.125rem] items-center justify-center rounded-[0.3rem] border-2 transition-colors ${
-          done ? 'border-success bg-success text-white' : task.owner === 'them' ? 'border-them-task' : 'border-text-faint'
-        }`}
-      >
-        {done && <Check size={11} strokeWidth={3.2} />}
-      </span>
-    </button>
-  )
-}
-
-// One tickable task line - used on the card and in the open note.
-export function TaskLine({ task, onOpen }: { task: Task; onOpen?: () => void }) {
-  const done = task.status === 'done'
-  const overdue = !done && !!task.due_date && task.due_date < isoLocal(new Date())
-  return (
-    <li className="flex items-start gap-2.5">
-      <span className="mt-[0.2rem]">
-        <TaskCheckbox task={task} />
-      </span>
-      <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left text-[0.9375rem] leading-snug">
-        <span className={done ? 'text-text-faint line-through' : ''}>{task.description}</span>
-        {(task.due_date || task.owner === 'them') && !done && (
-          <span className={`ml-1.5 whitespace-nowrap text-[0.8125rem] ${overdue ? 'font-medium text-danger' : 'text-text-muted'}`}>
-            {task.owner === 'them' ? 'waiting' : ''}
-            {task.owner === 'them' && task.due_date ? ' · ' : ''}
-            {task.due_date ? dueLabel(task.due_date, task.due_time) : ''}
-          </span>
-        )}
-      </button>
-    </li>
-  )
-}
-
 export function Points({ points, max }: { points: string[]; max?: number }) {
   const shown = max ? points.slice(0, max) : points
   return (
@@ -92,22 +44,17 @@ export function Points({ points, max }: { points: string[]; max?: number }) {
   )
 }
 
-const CARD_TASKS = 4
-
-// A note as short bullet points plus its tasks as tick boxes, so it can be
-// read and acted on at a glance; tapping opens the whole note in a bottom
-// sheet, where Edit and Delete live.
+// A note as short bullet points; tapping opens the whole note in a bottom
+// sheet, where Edit and Delete live. (Its tasks live on the Tasks tab.)
 //
 // `autoOpen` opens it straight away (arriving from a task's "View the note"); `onClosed` tells the
 // page the sheet was dismissed, so it can forget what it was asked to open.
 export default function InteractionCard({
   interaction,
-  tasks = [],
   autoOpen = false,
   onClosed,
 }: {
   interaction: Interaction
-  tasks?: Task[]
   autoOpen?: boolean
   onClosed?: () => void
 }) {
@@ -165,11 +112,6 @@ export default function InteractionCard({
     onClosed?.()
   }
 
-  // Open tasks first, then done ones; the card only has room for a few.
-  const sortedTasks = [...tasks].sort((a, b) => Number(a.status === 'done') - Number(b.status === 'done'))
-  const cardTasks = sortedTasks.slice(0, CARD_TASKS)
-  const hiddenTasks = sortedTasks.length - cardTasks.length
-
   return (
     <>
       <div ref={cardRef} className="rounded-2xl border border-border bg-bg-card">
@@ -192,20 +134,6 @@ export default function InteractionCard({
             <p className="line-clamp-2 text-[0.9375rem] leading-snug">{interaction.raw_text || '(empty note)'}</p>
           )}
         </button>
-        {cardTasks.length > 0 && (
-          <ul className="flex flex-col gap-2 border-t border-border px-4 py-3">
-            {cardTasks.map((t) => (
-              <TaskLine key={t.id} task={t} onOpen={() => setOpen(true)} />
-            ))}
-            {hiddenTasks > 0 && (
-              <li>
-                <button type="button" onClick={() => setOpen(true)} className="pressable pl-7 text-[0.8125rem] font-medium text-link">
-                  +{hiddenTasks} more
-                </button>
-              </li>
-            )}
-          </ul>
-        )}
       </div>
 
       {open && (
@@ -231,19 +159,6 @@ export default function InteractionCard({
                 <Points points={points} />
               ) : (
                 <p className="text-[0.9375rem] text-text-muted">(no summary)</p>
-              )}
-
-              {sortedTasks.length > 0 && (
-                <div className="mt-5">
-                  <p className="mb-2 flex items-center gap-1.5 text-[0.8125rem] font-medium uppercase tracking-wide text-text-faint">
-                    <ListChecks size={14} strokeWidth={2} /> Tasks
-                  </p>
-                  <ul className="flex flex-col gap-2.5">
-                    {sortedTasks.map((t) => (
-                      <TaskLine key={t.id} task={t} />
-                    ))}
-                  </ul>
-                </div>
               )}
 
               {(interaction.location || interaction.maps_url) && (

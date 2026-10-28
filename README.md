@@ -15,7 +15,7 @@ A simple notes-and-tasks app you can talk or type to, with everything sorted int
 | | |
 |---|---|
 | **Chat input (Home)** | One box: type, or tap the mic and talk. It works out whether you are *logging a note* (or a to-do) or *asking a question* about what you logged. Recording can be paused or cancelled; you can pick a category and optionally attach your location. |
-| **Notes** | Organised **by initiative**: a block per initiative, each opening to a page with AI-sorted sections, its notes as short bullet points, and all its tasks as tick boxes. Search shows matching notes; open a note to read, edit or delete it. Initiatives (name, colour, order) are yours to manage. |
+| **Notes** | Organised **by initiative**: a block per initiative showing its notes as short bullet points; tap one to open that initiative's page, where the points are sorted into sections that fit the subject. Search shows matching notes; open a note to read, edit or delete it. Notes carry no task lists - tasks live on the Tasks tab. Initiatives (name, colour, order) are yours to manage. |
 | **Task reminders** | Optional push notifications at **9 AM and 5 PM** (each device's own time zone) listing your open tasks grouped by category. Turn them on per device in Settings → Notifications. See "Task reminders" below. |
 | **Tasks** | Every task pulled out of your notes, **grouped under its initiative** (never by date), with the nearest deadline first inside each. Tasks can have a date and a time ("send the deck by 6pm"); an overdue date shows in red. Tap a task to tick it off, edit its wording or deadline, flip who owes it, or jump to the note it came from. |
 

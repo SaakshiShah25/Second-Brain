@@ -3,8 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Search, X } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { useNotes } from '../api/notes'
-import { useTasks } from '../api/tasks'
-import type { Interaction, Task } from '../api/types'
+import type { Interaction } from '../api/types'
 import Button from '../components/Button'
 import EmptyState from '../components/EmptyState'
 import InitiativeBar from '../components/InitiativeBar'
@@ -15,7 +14,7 @@ import { useConnection } from '../lib/connection'
 import { useInitiativeFilter } from '../lib/initiativeFilter'
 
 // Notes are organised by initiative, not by date: each initiative reads as
-// one page (summary, its points in sections, all its tasks). "All" shows a
+// one page (its points in sections). "All" shows a
 // block per initiative; picking one opens its page. Searching shows the
 // matching notes themselves.
 export default function NotesPage() {
@@ -23,37 +22,27 @@ export default function NotesPage() {
   const connection = useConnection()
   const offline = connection.offline || connection.unreachable
   const { data: initiatives } = useInitiatives()
-  const { data: taskData } = useTasks('all')
   const [filter, setFilter] = useInitiativeFilter()
   const [query, setQuery] = useState('')
   // ?open=<note id> (from a task's "View the note") opens that note straight away.
   const [searchParams, setSearchParams] = useSearchParams()
   const openNote = notes?.find((n) => n.id === (Number(searchParams.get('open')) || -1)) ?? null
 
-  // Everything grouped by initiative id, 0 = Others.
+  // Notes grouped by initiative id, 0 = Others.
   const groups = useMemo(() => {
-    const map = new Map<number, { notes: Interaction[]; tasks: Task[] }>()
-    const get = (id: number) => map.get(id) ?? map.set(id, { notes: [], tasks: [] }).get(id)!
+    const map = new Map<number, { notes: Interaction[] }>()
     for (const n of notes ?? []) {
-      get(n.initiative_id ?? 0).notes.push(n)
-    }
-    for (const t of taskData?.tasks ?? []) {
-      get(t.interaction?.initiative?.id ?? 0).tasks.push(t)
+      const id = n.initiative_id ?? 0
+      ;(map.get(id) ?? map.set(id, { notes: [] }).get(id)!).notes.push(n)
     }
     return map
-  }, [notes, taskData])
+  }, [notes])
 
   const counts = useMemo(() => {
     const map = new Map<number, number>()
     for (const [id, g] of groups) if (g.notes.length) map.set(id === 0 ? -1 : id, g.notes.length)
     return map
   }, [groups])
-
-  const tasksByNote = useMemo(() => {
-    const map = new Map<number, Task[]>()
-    for (const t of taskData?.tasks ?? []) map.set(t.interaction_id, [...(map.get(t.interaction_id) ?? []), t])
-    return map
-  }, [taskData])
 
   const q = query.trim().toLowerCase()
   const searchResults = q
@@ -68,7 +57,7 @@ export default function NotesPage() {
 
   const focusId = filter === null ? null : filter === -1 ? 0 : filter
   const focusInitiative = focusId ? initiatives?.find((i) => i.id === focusId) ?? null : null
-  const empty = { notes: [], tasks: [] }
+  const empty = { notes: [] as Interaction[] }
 
   return (
     <div>
@@ -80,7 +69,6 @@ export default function NotesPage() {
           <InteractionCard
             key={openNote.id}
             interaction={openNote}
-            tasks={tasksByNote.get(openNote.id)}
             autoOpen
             onClosed={() =>
               setSearchParams(
@@ -154,7 +142,7 @@ export default function NotesPage() {
           )}
           <div className="flex flex-col gap-2.5">
             {searchResults.map((n) => (
-              <InteractionCard key={n.id} interaction={n} tasks={tasksByNote.get(n.id)} />
+              <InteractionCard key={n.id} interaction={n} />
             ))}
           </div>
         </>
@@ -164,7 +152,6 @@ export default function NotesPage() {
           id={focusId}
           initiative={focusInitiative}
           notes={(groups.get(focusId) ?? empty).notes}
-          tasks={(groups.get(focusId) ?? empty).tasks}
         />
       ) : (
         <div className="flex flex-col gap-3">
@@ -174,7 +161,6 @@ export default function NotesPage() {
               id={b.id}
               initiative={b.initiative}
               notes={groups.get(b.id)!.notes}
-              tasks={groups.get(b.id)!.tasks}
               onOpen={() => {
                 setFilter(b.id === 0 ? -1 : b.id)
                 document.getElementById('app-scroll')?.scrollTo({ top: 0 })
