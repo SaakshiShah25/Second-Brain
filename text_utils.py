@@ -135,3 +135,33 @@ def clean_task_text(text):
             out = (_GERUNDS[first.lower()] + " " + rest).strip()
     return out[:1].upper() + out[1:] if out else strip_bullet(text)
 
+
+# Spoken hesitations only (never real words): "uh", "um", "umm", "uhm", "erm", "hmm", "mm", "mhm".
+_FILLER = re.compile(
+    r"(?<![\w'-])(?:u+h+m*|u+m+|u+h+m+|e+r+m+|h+m+|m{2,}|m+h+m+)(?![\w'-])[,.;:…\-]*\s*",
+    re.I,
+)
+
+
+# Whisper sometimes spells "hmm" as "hum": only when it stands alone between commas / sentence breaks.
+_HUM = re.compile(r"(?<=[,.]\s)hum(?=\s*[,.])[,.]?\s*", re.I)
+# A comma straight after one of these (left behind where a filler was) cuts a phrase in half: "need to, send".
+_DANGLING_COMMA = re.compile(r"\b(to|the|a|an|of|and|that|with|for|in|on|at|by|i|we|you|but|or)\s*,\s+", re.I)
+
+
+def remove_fillers(text):
+    """A dictated note without the "uh, umm..." hesitations: "Uh, I need to... umm, send the deck"
+    -> "I need to send the deck". Only filler sounds are removed - never ordinary words - and
+    the sentence is re-capitalised where a filler started it."""
+    if not isinstance(text, str) or not text.strip():
+        return text
+    if not (_FILLER.search(text) or _HUM.search(text)):
+        return text
+    out = _FILLER.sub(" ", _HUM.sub(" ", text))  # "hum" first: its comma context is still there
+    out = re.sub(r"\s+([,.;:!?])", r"\1", out)           # no space before punctuation
+    out = re.sub(r"([,;:])(\s*[,;:])+", r"\1", out)        # ",," left behind
+    out = re.sub(r"\.{2,}|…", " ", out)                    # trailing-off dots around a hesitation
+    out = _DANGLING_COMMA.sub(lambda m: m.group(1) + " ", out)
+    out = re.sub(r"\s{2,}", " ", out).strip(" ,;")
+    out = re.sub(r"(^|[.!?]\s+)([a-z])", lambda m: m.group(1) + m.group(2).upper(), out)  # sentence starts
+    return out or text.strip()

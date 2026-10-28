@@ -1,3 +1,4 @@
+import { reportReachable, reportUnreachable } from '../lib/connection'
 import { supabase } from '../lib/supabase'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -36,9 +37,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       },
     })
   } catch (err) {
-    if (isNetworkError(err)) throw new ApiError(0, UNREACHABLE)
+    if (isNetworkError(err)) {
+      reportUnreachable()
+      throw new ApiError(0, UNREACHABLE)
+    }
     throw err
   }
+  reportReachable()
 
   if (!res.ok) {
     let detail = res.statusText
@@ -94,9 +99,13 @@ export async function postStream<T>(
       res = await send()
     }
   } catch (err) {
-    if (isNetworkError(err)) throw new ApiError(0, UNREACHABLE)
+    if (isNetworkError(err)) {
+      reportUnreachable()
+      throw new ApiError(0, UNREACHABLE)
+    }
     throw err
   }
+  reportReachable()
 
   if (!res.ok || !res.body) {
     let detail = res.statusText

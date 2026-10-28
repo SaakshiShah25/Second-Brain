@@ -18,6 +18,7 @@ import ChatInput, { type ChatInputHandle } from '../components/chat/ChatInput'
 import { useChatSession } from '../chat/ChatSessionContext'
 import { useLiveTranscript } from '../lib/useLiveTranscript'
 import { dueLabel } from '../lib/dates'
+import { isOffline } from '../lib/connection'
 import { useUsageMode } from '../lib/usageMode'
 
 // One shared soft tint for every Home starter tile - the tiles are
@@ -541,6 +542,11 @@ export default function ChatPage() {
             value={inputText}
             onChange={setInputText}
             onSend={() => {
+              if (isOffline()) {
+                // Nothing to send it with: keep the text in the box so it isn't lost.
+                appendMessage('assistant', "You're offline, so that wasn't sent. Your message is still in the box - send it once you're back online.", { status: true })
+                return
+              }
               submitText(inputText)
               setInputText('')
             }}

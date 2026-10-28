@@ -10,6 +10,7 @@ import PageHeader from '../components/PageHeader'
 import Sheet from '../components/Sheet'
 import { dueLabel, fullDate, isoLocal } from '../lib/dates'
 import { groupByInitiative } from '../lib/groupByInitiative'
+import { useConnection } from '../lib/connection'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
 import { stripBullet } from '../lib/text'
 
@@ -150,7 +151,9 @@ export default function TasksPage() {
   const [editDate, setEditDate] = useState('')
   const [editTime, setEditTime] = useState('')
   const { data: initiatives = [] } = useInitiatives()
-  const { data, isLoading, error } = useTasks('all')
+  const { data, error, refetch, isFetching } = useTasks('all')
+  const connection = useConnection()
+  const offline = connection.offline || connection.unreachable
   const allTasks = data?.tasks ?? []
   const activeTask = allTasks.find((t) => t.id === activeTaskId) ?? null
 
@@ -183,13 +186,30 @@ export default function TasksPage() {
       <PageHeader title="Tasks" showProfile />
 
       <div className="mb-4 flex items-center justify-between gap-3">
-        <p className="text-[0.9375rem] text-text-muted">{open.length === 0 ? 'Nothing open' : `${open.length} open`}</p>
+        <p className="text-[0.9375rem] text-text-muted">{!data ? '' : open.length === 0 ? 'Nothing open' : `${open.length} open`}</p>
         <OwnerPills value={ownerFilter} onChange={setOwnerFilter} />
       </div>
 
-      {error && <p className="text-sm text-danger">Couldn't load tasks: {String(error)}</p>}
-      {isLoading && <p className="text-sm text-text-muted">Loading…</p>}
-      {!isLoading && !error && open.length === 0 && (
+      {/* Only say "All clear" once the tasks have actually arrived - not while loading or offline. */}
+      {!data && (
+        <div className="py-8 text-center">
+          {error ? (
+            <>
+              <p className="mb-3 text-[0.9375rem] text-text-muted">
+                {offline ? "You're offline, so your tasks can't load right now." : "Couldn't load your tasks."}
+              </p>
+              <Button size="sm" onClick={() => refetch()} disabled={isFetching}>
+                {isFetching ? 'Trying…' : 'Try again'}
+              </Button>
+            </>
+          ) : (
+            <p className="text-[0.9375rem] text-text-muted">
+              {offline ? "You're offline. Your tasks will appear when you're back online." : 'Loading…'}
+            </p>
+          )}
+        </div>
+      )}
+      {data && open.length === 0 && (
         <div className="mb-6 rounded-2xl border border-dashed border-border-strong py-8 text-center">
           <CheckCircle2 size={28} strokeWidth={1.6} className="mx-auto mb-2 text-success" />
           <p className="text-[0.9375rem] text-text-muted">All clear. Nothing waiting on anyone.</p>

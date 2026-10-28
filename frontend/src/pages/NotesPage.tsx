@@ -3,12 +3,14 @@ import { useSearchParams } from 'react-router-dom'
 import { Search, X } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { useNotes } from '../api/notes'
+import Button from '../components/Button'
 import Chip, { ChipRow } from '../components/Chip'
 import EmptyState from '../components/EmptyState'
 import InitiativesManager from '../components/InitiativesManager'
 import InteractionCard from '../components/InteractionCard'
 import PageHeader from '../components/PageHeader'
 import Segmented from '../components/Segmented'
+import { useConnection } from '../lib/connection'
 import { groupByInitiative } from '../lib/groupByInitiative'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
 
@@ -19,7 +21,9 @@ type FilterValue = null | -1 | number
 type Tab = 'notes' | 'initiatives'
 
 export default function NotesPage() {
-  const { data: notes, isLoading, error } = useNotes()
+  const { data: notes, error, refetch, isFetching } = useNotes()
+  const connection = useConnection()
+  const offline = connection.offline || connection.unreachable
   const { data: initiatives } = useInitiatives()
   const [filter, setFilter] = useState<FilterValue>(null)
   const [query, setQuery] = useState('')
@@ -127,9 +131,25 @@ export default function NotesPage() {
             </Chip>
           </ChipRow>
 
-          {error && <p className="text-sm text-danger">Couldn't load notes: {String(error)}</p>}
-          {isLoading && <p className="text-sm text-text-muted">Loading…</p>}
-          {!isLoading && notes?.length === 0 && (
+          {!notes && (
+            <div className="py-8 text-center">
+              {error ? (
+                <>
+                  <p className="mb-3 text-[0.9375rem] text-text-muted">
+                    {offline ? "You're offline, so your notes can't load right now." : "Couldn't load your notes."}
+                  </p>
+                  <Button size="sm" onClick={() => refetch()} disabled={isFetching}>
+                    {isFetching ? 'Trying…' : 'Try again'}
+                  </Button>
+                </>
+              ) : (
+                <p className="text-[0.9375rem] text-text-muted">
+                  {offline ? "You're offline. Your notes will appear when you're back online." : 'Loading…'}
+                </p>
+              )}
+            </div>
+          )}
+          {notes?.length === 0 && (
             <EmptyState
               title="No notes yet"
               body="Head to Home and jot something down — it'll show up here, sorted and summarised."
@@ -137,7 +157,7 @@ export default function NotesPage() {
               cta="Log your first note"
             />
           )}
-          {!isLoading && notes && notes.length > 0 && visibleNotes.length === 0 && (
+          {notes && notes.length > 0 && visibleNotes.length === 0 && (
             <p className="py-10 text-center text-[0.9375rem] text-text-muted">
               {query ? `No notes match “${query}”.` : 'No notes in this category yet.'}
             </p>

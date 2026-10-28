@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Home, ListChecks, NotebookText, type LucideIcon } from 'lucide-react'
 import Toaster from './Toast'
+import ConnectionBanner from './ConnectionBanner'
 import { syncReminders } from '../lib/push'
 
 // Each tab has its own hue (index.css --sb-fun-*), shown when it's the
@@ -101,6 +102,7 @@ export default function Layout() {
     // position:fixed, so content can never end up hidden underneath it.
     <div className="bg-bg text-text">
       <div className="pt-safe relative mx-auto flex h-dvh max-w-[480px] flex-col bg-bg min-[481px]:border-x min-[481px]:border-border">
+        <ConnectionBanner />
         <main id="app-scroll" className="flex-1 overflow-y-auto overscroll-contain">
           <div className="flex min-h-full flex-col px-4 pt-2 pb-6">
             <Outlet />

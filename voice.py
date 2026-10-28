@@ -7,7 +7,11 @@ shared Groq client and GROQ_API_KEY as extraction.py/retrieval.py.
 """
 
 from llm_client import get_client, WHISPER_MODEL_NAME
-from text_utils import fix_transcript_casing
+from text_utils import fix_transcript_casing, remove_fillers
+
+# Whisper imitates the style of this text: a tidy, filler-free, well-punctuated sample nudges it to
+# write the same way. It is not a guarantee, so remove_fillers() below still runs on the result.
+_STYLE_PROMPT = "A clear, well-punctuated note, without filler words or false starts."
 
 
 def transcribe_audio(audio_bytes: bytes, filename: str = "note.wav") -> str:
@@ -21,11 +25,14 @@ def transcribe_audio(audio_bytes: bytes, filename: str = "note.wav") -> str:
     fix_transcript_casing() corrects a known Whisper quirk - the
     standalone pronoun "I" and sentence-initial words sometimes come back
     lowercased - before this text is shown to the user or fed into
-    extraction, since it's stored verbatim as the note's raw_text.
+    extraction, since it's stored verbatim as the note's raw_text. The same goes for spoken
+    hesitations ("uh", "umm"): they are not part of what the person meant, so they are removed.
     """
     client = get_client()
     transcription = client.audio.transcriptions.create(
         file=(filename, audio_bytes),
         model=WHISPER_MODEL_NAME,
+        prompt=_STYLE_PROMPT,
+        temperature=0,
     )
-    return fix_transcript_casing(transcription.text)
+    return remove_fillers(fix_transcript_casing(transcription.text))

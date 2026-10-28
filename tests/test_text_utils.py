@@ -52,6 +52,28 @@ def test_a_to_do_loses_its_wrapper_and_keeps_the_action():
         assert c(raw) == expected, (raw, c(raw))
 
 
+def test_spoken_fillers_are_removed_but_real_words_are_not():
+    from text_utils import remove_fillers as r
+    cases = {
+        "Uh, I need to... umm, send the deck to Priya.": "I need to send the deck to Priya.",
+        "so, um, the meeting went well, uh, she liked the demo": "So, the meeting went well, she liked the demo",
+        "Umm... call the bank tomorrow": "Call the bank tomorrow",
+        "Hmm, I think we should go with the annual plan.": "I think we should go with the annual plan.",
+        "Erm, book the dentist, uhh, by Friday": "Book the dentist, by Friday",
+        "Uh, I need to, um, send the deck to Priya by Friday. And, uh, hum, email Sam the notes.": "I need to send the deck to Priya by Friday. And email Sam the notes.",
+        "Send the deck. Um, and email Sam.": "Send the deck. And email Sam.",
+        # nothing to remove: unchanged
+        "Send the deck to Priya by Friday.": "Send the deck to Priya by Friday.",
+        # real words that merely contain or resemble a filler sound
+        "The umbrella is in the summary, hum along, mum called, error in the humming, ummah": "The umbrella is in the summary, hum along, mum called, error in the humming, ummah",
+        "Meeting with Hume and Ahmed": "Meeting with Hume and Ahmed",
+    }
+    for raw, expected in cases.items():
+        assert r(raw) == expected, (raw, r(raw))
+    assert r("") == "" and r("   ") == "   " and r(None) is None
+    assert r("umm") == "umm"      # a recording of nothing but a filler is left alone rather than emptied
+
+
 if __name__ == "__main__":
     tests = [(k, f) for k, f in sorted(globals().items()) if k.startswith("test_") and callable(f)]
     failed = 0

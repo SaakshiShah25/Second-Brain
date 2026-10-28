@@ -19,7 +19,9 @@ import './styles/index.css'
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 fetch(`${API_BASE_URL}/api/health`).catch(() => {})
 
-const queryClient = new QueryClient()
+// Reads wait quietly while offline and refresh themselves on reconnect (the default). A change
+// (tick a task, save a note) should fail right away with a clear message instead of hanging.
+const queryClient = new QueryClient({ defaultOptions: { mutations: { networkMode: 'always' } } })
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
