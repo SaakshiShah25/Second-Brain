@@ -1,18 +1,63 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import type { Initiative } from './types'
+import { colorForNewInitiative, setKnownInitiatives } from '../lib/initiativeStyle'
 
 export function useInitiatives() {
   return useQuery({
     queryKey: ['initiatives'],
-    queryFn: () => api.get<Initiative[]>('/api/initiatives'),
+    queryFn: async () => {
+      const list = applyLocalOrder(await api.get<Initiative[]>('/api/initiatives'))
+      setKnownInitiatives(list)
+      return list
+    },
+  })
+}
+
+// The user's own order. Saved on the server (initiative.position) and
+// also on this device, so it works before schema.sql section 34 has run.
+const ORDER_KEY = 'confia.initiativeOrder'
+
+function applyLocalOrder(list: Initiative[]): Initiative[] {
+  let order: number[] = []
+  try {
+    order = JSON.parse(localStorage.getItem(ORDER_KEY) ?? '[]')
+  } catch {
+    return list
+  }
+  if (!Array.isArray(order) || order.length === 0) return list
+  const rank = new Map(order.map((id, i) => [id, i]))
+  // Ones not in the saved order (new) keep the server's order, after the rest.
+  return list
+    .map((item, i) => ({ item, key: rank.get(item.id) ?? order.length + i }))
+    .sort((a, b) => a.key - b.key)
+    .map((x) => x.item)
+}
+
+export function useReorderInitiatives() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (ids: number[]) => api.put<{ saved: boolean }>('/api/initiatives/order', { ids }),
+    onMutate: (ids) => {
+      try {
+        localStorage.setItem(ORDER_KEY, JSON.stringify(ids))
+      } catch {
+        // the server copy still holds it
+      }
+      queryClient.setQueryData<Initiative[]>(['initiatives'], (old) => (old ? applyLocalOrder(old) : old))
+    },
   })
 }
 
 export function useCreateInitiative() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: { name: string; color?: string }) => api.post<Initiative>('/api/initiatives', body),
+    // Every new initiative is saved with its own color - one no other
+    // initiative is using yet - so its tasks and notes are easy to tell apart.
+    mutationFn: async (body: { name: string; color?: string }) => {
+      const color = body.color ?? colorForNewInitiative(body.name, await api.get<Initiative[]>('/api/initiatives'))
+      return api.post<Initiative>('/api/initiatives', { ...body, color })
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['initiatives'] }),
   })
 }
@@ -39,5 +84,24 @@ export function useDeleteInitiative() {
       // Uncategorized - refetch so the Notes page reflects that.
       queryClient.invalidateQueries({ queryKey: ['notes'] })
     },
+  })
+}
+
+export interface InitiativeDigest {
+  sections: { title: string; points: string[] }[]
+  note_count: number
+  generated_at: string | null
+  organised: boolean
+}
+
+// An initiative as one page (initiative_digest.py) - 0 = Others. Keyed
+// under 'notes' so anything that refetches notes refreshes it too; the
+// server only rewrites it when that initiative's notes actually changed.
+export function useInitiativeDigest(id: number, enabled = true) {
+  return useQuery({
+    queryKey: ['notes', 'digest', id],
+    queryFn: () => api.get<InitiativeDigest>(`/api/initiatives/${id}/digest`),
+    enabled,
+    staleTime: 5 * 60_000,
   })
 }

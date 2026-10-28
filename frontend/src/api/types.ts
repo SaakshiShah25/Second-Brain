@@ -144,10 +144,36 @@ export interface UserPreference {
   theme: Theme
   font_size: FontSize
   terms_accepted_at: string | null
+  daily_brief_email_enabled: boolean
   tour_completed_at: string | null
   // null = not asked yet (triggers the onboarding question). Absent
   // entirely (undefined) until schema.sql section 25 is applied - the
   // feature stays dormant then; see lib/usageMode.ts.
   usage_mode?: UsageMode | null
   updated_at: string
+}
+
+// ---------- Morning brief ----------
+
+export interface MorningBrief {
+  brief: string
+  // When today's brief was written (ISO). It is a snapshot of that moment.
+  generated_at?: string | null
+}
+
+// ---------- Calendar (api/routers/agenda.py) ----------
+export interface AgendaTask {
+  id: number
+  description: string
+  due_date: string
+  due_time: string | null // HH:MM
+  status: 'open' | 'done'
+  owner: TaskOwner
+  initiative: string | null
+}
+
+export interface Agenda {
+  start: string
+  end: string
+  tasks: AgendaTask[]
 }

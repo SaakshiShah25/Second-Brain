@@ -1,0 +1,74 @@
+# Nightly database backup. Supabase's free plan keeps no backups, so this
+# dumps the database every night, encrypts the dump with a passphrase, and
+# keeps it as a workflow artifact for 14 days (Actions > this workflow >
+# a run > Artifacts). About a minute a night of GitHub's free minutes.
+#
+# Note text is already encrypted field-by-field in the database
+# (ENCRYPTION_KEY) - this adds a second layer for everything else (emails,
+# dates, structure). To read a backup you need BOTH the passphrase below and,
+# for note content, the app's ENCRYPTION_KEY - keep copies of both offline.
+#
+# Required repo secrets (Settings > Secrets and variables > Actions):
+#   DATABASE_URL       Supabase > Connect > Session pooler URI (with password)
+#   BACKUP_PASSPHRASE  any long random string, stored in your password manager
+#
+# Restore into a NEW, empty Supabase project (the dump creates the tables
+# itself - don't run schema.sql first): enable the "vector" extension
+# (Database > Extensions), then
+#   gpg --decrypt myconfia-YYYY-MM-DD.sql.gz.gpg | gunzip | psql "$DATABASE_URL"
+# and set the same ENCRYPTION_KEY on the backend.
+name: Nightly backup
+
+on:
+  schedule:
+    - cron: '30 21 * * *' # 03:00 IST
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secrets
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::error::Set the DATABASE_URL and BACKUP_PASSPHRASE repo secrets first."
+            exit 1
+          fi
+
+      # pg_dump must be at least the server's major version (Supabase runs 15-17).
+      - name: Install pg_dump 17
+        run: |
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Dump, compress, encrypt
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -o pipefail
+          file="myconfia-$(date -u +%F).sql.gz.gpg"
+          dump=/usr/lib/postgresql/17/bin/pg_dump
+          # Two dumps, because --table and --schema can't be combined: first
+          # the accounts (rows only - auth.users already exists in any
+          # Supabase project), then the app's own tables with their data.
+          {
+            $dump "$DATABASE_URL" --data-only --table=auth.users --no-owner --no-privileges &&
+            $dump "$DATABASE_URL" --schema=public --no-owner --no-privileges
+          } \
+            | gzip -9 \
+            | gpg --batch --yes --symmetric --cipher-algo AES256 \
+                  --passphrase "$BACKUP_PASSPHRASE" -o "$file"
+          ls -lh "$file"
+          echo "FILE=$file" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.FILE }}
+          path: ${{ env.FILE }}
+          retention-days: 14
+          if-no-files-found: error

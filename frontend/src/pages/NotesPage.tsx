@@ -1,205 +1,187 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Search, X } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { useNotes } from '../api/notes'
+import { useTasks } from '../api/tasks'
+import type { Interaction, Task } from '../api/types'
 import Button from '../components/Button'
-import Chip, { ChipRow } from '../components/Chip'
 import EmptyState from '../components/EmptyState'
-import InitiativesManager from '../components/InitiativesManager'
+import InitiativeBar from '../components/InitiativeBar'
+import { InitiativeBlock, InitiativeView } from '../components/InitiativePage'
 import InteractionCard from '../components/InteractionCard'
 import PageHeader from '../components/PageHeader'
-import Segmented from '../components/Segmented'
 import { useConnection } from '../lib/connection'
-import { groupByInitiative } from '../lib/groupByInitiative'
-import { getInitiativeStyle } from '../lib/initiativeStyle'
+import { useInitiativeFilter } from '../lib/initiativeFilter'
 
-// null = "All", -1 = "Uncategorized" (sentinel, since real initiative ids
-// are always positive), else a real initiative id.
-type FilterValue = null | -1 | number
-
-type Tab = 'notes' | 'initiatives'
-
+// Notes are organised by initiative, not by date: each initiative reads as
+// one page (summary, its points in sections, all its tasks). "All" shows a
+// block per initiative; picking one opens its page. Searching shows the
+// matching notes themselves.
 export default function NotesPage() {
   const { data: notes, error, refetch, isFetching } = useNotes()
   const connection = useConnection()
   const offline = connection.offline || connection.unreachable
   const { data: initiatives } = useInitiatives()
-  const [filter, setFilter] = useState<FilterValue>(null)
+  const { data: taskData } = useTasks('all')
+  const [filter, setFilter] = useInitiativeFilter()
   const [query, setQuery] = useState('')
-
-  // ?tab=initiatives deep-links straight to the Initiatives view - used
-  // by the onboarding tour (Tour.tsx) so it can show the real screen.
-  const [searchParams, setSearchParams] = useSearchParams()
   // ?open=<note id> (from a task's "View the note") opens that note straight away.
-  const openNoteId = Number(searchParams.get('open')) || null
-  const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'initiatives' ? 'initiatives' : 'notes')
-  useEffect(() => {
-    setTab(searchParams.get('tab') === 'initiatives' ? 'initiatives' : 'notes')
-  }, [searchParams])
+  const [searchParams, setSearchParams] = useSearchParams()
+  const openNote = notes?.find((n) => n.id === (Number(searchParams.get('open')) || -1)) ?? null
 
-  // If the initiative selected as a filter gets deleted, fall back to
-  // "All" instead of silently filtering on an id that no longer exists.
-  useEffect(() => {
-    if (typeof filter === 'number' && filter > 0 && initiatives && !initiatives.some((i) => i.id === filter)) {
-      setFilter(null)
+  // Everything grouped by initiative id, 0 = Others.
+  const groups = useMemo(() => {
+    const map = new Map<number, { notes: Interaction[]; tasks: Task[] }>()
+    const get = (id: number) => map.get(id) ?? map.set(id, { notes: [], tasks: [] }).get(id)!
+    for (const n of notes ?? []) {
+      get(n.initiative_id ?? 0).notes.push(n)
     }
-  }, [initiatives, filter])
+    for (const t of taskData?.tasks ?? []) {
+      get(t.interaction?.initiative?.id ?? 0).tasks.push(t)
+    }
+    return map
+  }, [notes, taskData])
 
-  // Client-side filtering + search - a personal-scale dataset, not worth
-  // a server round-trip per keystroke or chip tap.
-  const visibleNotes = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return (notes ?? []).filter((n) => {
-      if (filter === -1 && n.initiative_id !== null) return false
-      if (typeof filter === 'number' && filter > 0 && n.initiative_id !== filter) return false
-      if (!q) return true
-      return [n.summary, n.raw_text, n.initiative?.name].some((f) => f?.toLowerCase().includes(q))
-    })
-  }, [notes, filter, query])
+  const counts = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const [id, g] of groups) if (g.notes.length) map.set(id === 0 ? -1 : id, g.notes.length)
+    return map
+  }, [groups])
 
-  // Under their category (in the order the categories are listed), newest note first.
-  const sections = groupByInitiative(
-    visibleNotes.slice().sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.id - a.id),
-    initiatives ?? [],
-    (n) => n.initiative_id,
-  )
+  const tasksByNote = useMemo(() => {
+    const map = new Map<number, Task[]>()
+    for (const t of taskData?.tasks ?? []) map.set(t.interaction_id, [...(map.get(t.interaction_id) ?? []), t])
+    return map
+  }, [taskData])
+
+  const q = query.trim().toLowerCase()
+  const searchResults = q
+    ? (notes ?? []).filter((n) => [n.summary, n.raw_text, n.initiative?.name].some((f) => f?.toLowerCase().includes(q)))
+    : []
+
+  // Initiatives with something in them, in the user's own order; Others last.
+  const blocks = [
+    ...(initiatives ?? []).filter((i) => groups.get(i.id)).map((i) => ({ id: i.id, initiative: i })),
+    ...(groups.get(0)?.notes.length ? [{ id: 0, initiative: null }] : []),
+  ]
+
+  const focusId = filter === null ? null : filter === -1 ? 0 : filter
+  const focusInitiative = focusId ? initiatives?.find((i) => i.id === focusId) ?? null : null
+  const empty = { notes: [], tasks: [] }
 
   return (
     <div>
       <PageHeader title="Notes" showProfile />
 
-      <Segmented
-        className="mb-4"
-        value={tab}
-        onChange={setTab}
-        options={[
-          { value: 'notes', label: 'All notes' },
-          { value: 'initiatives', label: 'Initiatives' },
-        ]}
-      />
-
-      {tab === 'initiatives' ? (
-        <InitiativesManager />
-      ) : (
-        <>
-          {notes && notes.length > 0 && (
-            <div className="relative mb-3">
-              <Search
-                size={18}
-                strokeWidth={2}
-                className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-text-faint"
-              />
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search notes"
-                className="h-11 w-full rounded-xl bg-bg-elevated pr-10 pl-10 text-base text-text placeholder:text-text-faint focus:outline-none focus:ring-2 focus:ring-accent/25 [&::-webkit-search-cancel-button]:hidden"
-              />
-              {query && (
-                <button
-                  type="button"
-                  onClick={() => setQuery('')}
-                  aria-label="Clear search"
-                  className="absolute top-1/2 right-2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-text-faint"
-                >
-                  <X size={16} strokeWidth={2} />
-                </button>
-              )}
-            </div>
-          )}
-
-          <ChipRow className="mb-5">
-            <Chip active={filter === null} onClick={() => setFilter(null)}>
-              All
-            </Chip>
-            {initiatives?.map((i) => {
-              const catStyle = getInitiativeStyle(i)
-              return (
-                <Chip key={i.id} active={filter === i.id} color={catStyle?.color} onClick={() => setFilter(i.id)}>
-                  {catStyle && <catStyle.Icon size={14} strokeWidth={2} />}
-                  {i.name}
-                </Chip>
+      {openNote && (
+        // The note's sheet floats above the page, so the card itself can stay out of sight.
+        <div hidden>
+          <InteractionCard
+            key={openNote.id}
+            interaction={openNote}
+            tasks={tasksByNote.get(openNote.id)}
+            autoOpen
+            onClosed={() =>
+              setSearchParams(
+                (prev) => {
+                  prev.delete('open')
+                  return prev
+                },
+                { replace: true },
               )
-            })}
-            {/* Uncategorized is a first-class filter - every pre-migration
-                note (and anything the classifier wasn't sure about) lives
-                here, not an edge case. */}
-            <Chip active={filter === -1} onClick={() => setFilter(-1)}>
-              Others
-            </Chip>
-          </ChipRow>
+            }
+          />
+        </div>
+      )}
 
-          {!notes && (
-            <div className="py-8 text-center">
-              {error ? (
-                <>
-                  <p className="mb-3 text-[0.9375rem] text-text-muted">
-                    {offline ? "You're offline, so your notes can't load right now." : "Couldn't load your notes."}
-                  </p>
-                  <Button size="sm" onClick={() => refetch()} disabled={isFetching}>
-                    {isFetching ? 'Trying…' : 'Try again'}
-                  </Button>
-                </>
-              ) : (
-                <p className="text-[0.9375rem] text-text-muted">
-                  {offline ? "You're offline. Your notes will appear when you're back online." : 'Loading…'}
-                </p>
-              )}
-            </div>
+      {notes && notes.length > 0 && (
+        <div className="relative mb-3">
+          <Search size={18} strokeWidth={2} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-text-faint" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search notes"
+            className="h-11 w-full rounded-xl bg-bg-elevated pr-10 pl-10 text-base text-text placeholder:text-text-faint focus:outline-none focus:ring-2 focus:ring-accent/25 [&::-webkit-search-cancel-button]:hidden"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              aria-label="Clear search"
+              className="absolute top-1/2 right-2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-text-faint"
+            >
+              <X size={16} strokeWidth={2} />
+            </button>
           )}
-          {notes?.length === 0 && (
-            <EmptyState
-              title="No notes yet"
-              body="Head to Home and jot something down — it'll show up here, sorted and summarised."
-              to="/"
-              cta="Log your first note"
-            />
-          )}
-          {notes && notes.length > 0 && visibleNotes.length === 0 && (
-            <p className="py-10 text-center text-[0.9375rem] text-text-muted">
-              {query ? `No notes match “${query}”.` : 'No notes in this category yet.'}
+        </div>
+      )}
+
+      {!q && <InitiativeBar counts={counts} className="mb-4" />}
+
+      {!notes && (
+        <div className="py-8 text-center">
+          {error ? (
+            <>
+              <p className="mb-3 text-[0.9375rem] text-text-muted">
+                {offline ? "You're offline, so your notes can't load right now." : "Couldn't load your notes."}
+              </p>
+              <Button size="sm" onClick={() => refetch()} disabled={isFetching}>
+                {isFetching ? 'Trying…' : 'Try again'}
+              </Button>
+            </>
+          ) : (
+            <p className="text-[0.9375rem] text-text-muted">
+              {offline ? "You're offline. Your notes will appear when you're back online." : 'Loading…'}
             </p>
           )}
+        </div>
+      )}
+      {notes?.length === 0 && (
+        <EmptyState
+          title="No notes yet"
+          body="Head to Home and jot something down — it's filed under its initiative, with any tasks ready to tick."
+          to="/"
+          cta="Log your first note"
+        />
+      )}
 
-          {sections.map(({ key, name, initiative, items }) => {
-            const style = getInitiativeStyle(initiative)
-            return (
-              <section key={key} className="mb-5">
-                <h2
-                  className="mb-2 flex items-center gap-1.5 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint"
-                  style={style ? { color: style.color } : undefined}
-                >
-                  {style && <style.Icon size={14} strokeWidth={2.2} />}
-                  {name}
-                  <span className="font-medium normal-case tracking-normal opacity-80">· {items.length}</span>
-                </h2>
-                <div className="flex flex-col gap-2.5">
-                  {items.map((note) => (
-                    <InteractionCard
-                      key={note.id}
-                      interaction={note}
-                      autoOpen={note.id === openNoteId}
-                      onClosed={
-                        note.id === openNoteId
-                          ? () =>
-                              setSearchParams(
-                                (prev) => {
-                                  prev.delete('open')
-                                  return prev
-                                },
-                                { replace: true },
-                              )
-                          : undefined
-                      }
-                    />
-                  ))}
-                </div>
-              </section>
-            )
-          })}
+      {q ? (
+        <>
+          {searchResults.length === 0 && (
+            <p className="py-10 text-center text-[0.9375rem] text-text-muted">No notes match “{query}”.</p>
+          )}
+          <div className="flex flex-col gap-2.5">
+            {searchResults.map((n) => (
+              <InteractionCard key={n.id} interaction={n} tasks={tasksByNote.get(n.id)} />
+            ))}
+          </div>
         </>
+      ) : focusId !== null ? (
+        <InitiativeView
+          key={focusId}
+          id={focusId}
+          initiative={focusInitiative}
+          notes={(groups.get(focusId) ?? empty).notes}
+          tasks={(groups.get(focusId) ?? empty).tasks}
+        />
+      ) : (
+        <div className="flex flex-col gap-3">
+          {blocks.map((b) => (
+            <InitiativeBlock
+              key={b.id}
+              id={b.id}
+              initiative={b.initiative}
+              notes={groups.get(b.id)!.notes}
+              tasks={groups.get(b.id)!.tasks}
+              onOpen={() => {
+                setFilter(b.id === 0 ? -1 : b.id)
+                document.getElementById('app-scroll')?.scrollTo({ top: 0 })
+              }}
+            />
+          ))}
+        </div>
       )}
     </div>
   )

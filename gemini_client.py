@@ -28,7 +28,11 @@ GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_M
 
 
 def available() -> bool:
-    return bool(os.environ.get("GEMINI_API_KEY"))
+    """Off unless GEMINI_FALLBACK=on as well as a key: on Gemini's FREE tier
+    Google may use submitted content to improve its models, which the app's
+    terms promise won't happen. Turn it on only with a paid (billing-enabled)
+    key, whose data isn't used that way."""
+    return bool(os.environ.get("GEMINI_API_KEY")) and os.environ.get("GEMINI_FALLBACK", "").lower() == "on"
 
 
 def generate_json(system_prompt: str, user_content: str, temperature: float = 0.2) -> str:

@@ -6,6 +6,7 @@ import { api } from './client'
 // there it goes through the same unified /api/chat send as typed text.
 export function useTranscribe() {
   return useMutation({
+    meta: { handlesOwnErrors: true }, // the chat screen shows these failures itself
     mutationFn: (audioBlob: Blob) => {
       const formData = new FormData()
       formData.append('file', audioBlob, 'recording.webm')

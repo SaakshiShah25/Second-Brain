@@ -73,7 +73,7 @@ def get_client() -> Client:
 # Content fields get encrypted before every insert/update and decrypted
 # after every select, centralized here at the row boundary rather than at
 # each of the individual call sites below - so every caller above
-# db.py (retrieval.py, extraction.py, every
+# db.py (retrieval.py, extraction.py, morning_brief.py, every
 # api/routers/*.py) keeps seeing plain Python strings, unchanged.
 #
 # Deliberately NOT encrypted: initiative.name - it is used for real
@@ -84,6 +84,8 @@ _ENCRYPTED_TEXT_FIELDS = {
     "interaction": ["raw_text", "summary", "location", "appearance", "geo_address"],
     "task": ["description"],
     "search_chunk": ["title", "text"],
+    "daily_brief": ["brief"],
+    "initiative_digest": ["digest"],
 }
 _ENCRYPTED_JSON_FIELDS = {
     "interaction": ["sentiment", "topics", "extracted_facts", "decisions", "concerns"],
@@ -242,7 +244,7 @@ def get_tasks_for_interactions(user_id: str, interaction_ids: list):
 def get_all_tasks_with_context(user_id: str, status: str = None):
     """
     Fetches every task joined with its note's date/summary/initiative - used
-    by the Tasks page so each task can show which category it
+    by the Today page and the agenda so each task can show which category it
     belongs to without a separate round-trip per task.
     Optional `status` filter ('open'/'done'); None returns all statuses.
     Ordered by due_date (nulls last).
@@ -315,6 +317,14 @@ def update_user_preference(user_id: str, **fields) -> dict:
     return resp.data[0]
 
 
+def get_user_email(user_id: str) -> str:
+    """Looks up the account's login email via the Auth admin API (not
+    stored redundantly in `user_preference`) - used by
+    morning_brief.py to know where to send the daily brief."""
+    user = get_client().auth.admin.get_user_by_id(user_id)
+    return user.user.email
+
+
 def delete_account(user_id: str) -> None:
     """Permanently deletes the account and every row of their data - the
     Play Store's required "delete my account and data" action (see
@@ -323,11 +333,21 @@ def delete_account(user_id: str) -> None:
     user_preference, initiative, ...) declares its user_id column `references auth.users(id)
     on delete cascade` in schema.sql, so Postgres cascades the rest for
     free - no per-table cleanup to keep in sync here as new tables are
-    added. Uses the Auth admin API, since deleting another auth user is an
+    added. Uses the Auth admin API (same service-role client as
+    get_user_email above), since deleting another auth user is an
     admin-only operation - a user can never do this to anyone but
     themselves, enforced by api/auth.py resolving `user_id` from their
     own verified session token, never a client-supplied value."""
     get_client().auth.admin.delete_user(user_id)
+
+
+def get_users_with_daily_brief_enabled() -> list:
+    """Every user_id that's opted into the scheduled daily-brief email
+    (see schema.sql section 19) - used by the cron-triggered
+    POST /api/brief/send-daily-emails, which has no single logged-in user
+    to scope to."""
+    resp = get_client().table("user_preference").select("user_id").eq("daily_brief_email_enabled", True).execute()
+    return [row["user_id"] for row in resp.data]
 
 
 # ---------- Initiatives (user-managed note categories - schema.sql section 20) ----------
@@ -340,12 +360,29 @@ def get_initiatives(user_id: str) -> list:
     on first read if none exist yet - same create-default-on-first-read
     shape as get_user_preference(), so this works for the existing
     account and any future signup with no separate seed step needed."""
-    resp = get_client().table("initiative").select("*").eq("user_id", user_id).order("created_at").execute()
+    query = lambda: get_client().table("initiative").select("*").eq("user_id", user_id)
+    try:
+        resp = query().order("position", nullsfirst=False).order("created_at").execute()
+    except Exception:
+        resp = query().order("created_at").execute()  # no `position` column until schema.sql section 34
     if resp.data:
         return resp.data
     rows = [{"user_id": user_id, "name": name} for name in DEFAULT_INITIATIVES]
     resp = get_client().table("initiative").insert(rows).execute()
     return resp.data
+
+
+def reorder_initiatives(user_id: str, ids: list) -> bool:
+    """Saves the user's order (ids first to last). False when the
+    `position` column isn't there yet (schema.sql section 34)."""
+    try:
+        for position, initiative_id in enumerate(ids):
+            (get_client().table("initiative").update({"position": position})
+             .eq("id", initiative_id).eq("user_id", user_id).execute())
+    except Exception as e:
+        print(f"[warn] couldn't save initiative order (run schema.sql section 34?): {e}")
+        return False
+    return True
 
 
 def get_initiative(user_id: str, initiative_id: int):
@@ -506,7 +543,88 @@ def match_search_chunks(user_id: str, query_embedding, k: int = 40, kinds=None,
     }).execute().data
 
 
-# ---------- Web Push subscriptions (schema.sql section 33, push_notify.py) ----------
+# ---------- Daily brief cache (schema.sql section 30) ----------
+
+def get_daily_brief(user_id: str, brief_date: str):
+    """The stored brief for this user and day, or None."""
+    rows = (
+        get_client().table("daily_brief").select("*")
+        .eq("user_id", user_id).eq("brief_date", brief_date).limit(1).execute().data
+    )
+    return _decrypt_row("daily_brief", rows[0]) if rows else None
+
+
+def save_daily_brief(user_id: str, brief_date: str, fingerprint: str, brief: str, written_at: str = None) -> None:
+    """One row per user per day - a re-written brief replaces the old one."""
+    row = {"user_id": user_id, "brief_date": brief_date, "fingerprint": fingerprint, "brief": brief}
+    if written_at:
+        row["created_at"] = written_at  # the column default only applies on insert, not on a rewrite
+    get_client().table("daily_brief").upsert(
+        _encrypt_fields("daily_brief", row),
+        on_conflict="user_id,brief_date",
+    ).execute()
+
+
+
+# ---------- Initiative digest cache (schema.sql section 33) ----------
+
+def get_initiative_digest(user_id: str, initiative_id: int):
+    """The stored digest row for one initiative (0 = Others), or None."""
+    rows = (
+        get_client().table("initiative_digest").select("*")
+        .eq("user_id", user_id).eq("initiative_id", initiative_id).limit(1).execute().data
+    )
+    return _decrypt_row("initiative_digest", rows[0]) if rows else None
+
+
+def save_initiative_digest(user_id: str, initiative_id: int, fingerprint: str, digest: str, written_at: str) -> None:
+    row = {"user_id": user_id, "initiative_id": initiative_id, "fingerprint": fingerprint,
+           "digest": digest, "created_at": written_at}
+    get_client().table("initiative_digest").upsert(
+        _encrypt_fields("initiative_digest", row),
+        on_conflict="user_id,initiative_id",
+    ).execute()
+
+
+# ---------- Observability events (schema.sql section 35, observability.py) ----------
+
+def insert_app_events(rows: list) -> None:
+    for start in range(0, len(rows), 500):
+        get_client().table("app_event").insert(rows[start:start + 500]).execute()
+
+
+def get_app_events(since_iso: str) -> list:
+    """Every event since `since_iso`, oldest first, paged past PostgREST's
+    1,000-row default cap."""
+    out, start = [], 0
+    while True:
+        page = (
+            get_client().table("app_event").select("*")
+            .gte("created_at", since_iso).order("created_at").range(start, start + 999).execute().data
+        )
+        out += page
+        if len(page) < 1000:
+            return out
+        start += 1000
+
+
+def delete_app_events_before(before_iso: str) -> None:
+    get_client().table("app_event").delete().lt("created_at", before_iso).execute()
+
+
+def get_all_user_emails() -> dict:
+    """{user_id: email} for every account - the admin page labels usage with it."""
+    users, page = {}, 1
+    while True:
+        batch = get_client().auth.admin.list_users(page=page, per_page=1000)
+        for u in batch:
+            users[u.id] = u.email
+        if len(batch) < 1000:
+            return users
+        page += 1
+
+
+# ---------- Web Push subscriptions (schema.sql section 36, push_notify.py) ----------
 
 MAX_PUSH_SUBSCRIPTIONS_PER_USER = 10
 

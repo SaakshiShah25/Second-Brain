@@ -6,7 +6,7 @@ import {
   MessageSquare,
   NotebookText,
   Settings as SettingsIcon,
-  ListChecks,
+  Sun,
   type LucideIcon,
 } from 'lucide-react'
 import { useUsageMode } from '../lib/usageMode'
@@ -56,22 +56,22 @@ const STEPS: Step[] = [
     path: '/',
   },
   {
-    icon: ListChecks,
-    title: 'Tasks',
-    description: 'Every to-do pulled out of your notes, grouped under your categories — tick them off, or change who owes what and by when.',
-    path: '/tasks',
+    icon: Sun,
+    title: 'Today',
+    description: 'Your morning brief, plus every task sorted by when it’s due — with a calendar for the bigger picture.',
+    path: '/digest',
   },
   {
     icon: NotebookText,
     title: 'Notes',
-    description: 'Every note lands here under its category, newest first and searchable — a meeting, a thought, an idea.',
+    description: 'Every note lands here as a few short points, with its tasks ready to tick off.',
     path: '/notes',
   },
   {
     icon: ListTree,
     title: 'Initiatives',
-    description: 'Your own categories — Job, Fitness, Personal, anything — that notes get sorted into automatically.',
-    path: '/notes?tab=initiatives',
+    description: 'Your own categories — Job, Fitness, Personal, anything. Notes are sorted into them automatically; tap one at the top of Today or Notes to see just its tasks and notes.',
+    path: '/notes',
   },
   {
     icon: SettingsIcon,

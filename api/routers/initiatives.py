@@ -8,8 +8,10 @@ db.get_user_preference()'s same create-default-on-first-read shape).
 """
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 import db
+import initiative_digest
 import search_index
 from api.auth import get_current_user_id
 from api.schemas import InitiativeCreate, InitiativeUpdate
@@ -30,6 +32,30 @@ def create_initiative(body: InitiativeCreate, user_id: str = Depends(get_current
         return db.create_initiative(user_id, name=body.name.strip(), color=body.color)
     except ValueError as e:
         raise HTTPException(409, str(e))
+
+
+class InitiativeOrder(BaseModel):
+    ids: list[int]
+
+
+@router.put("/order")
+def reorder_initiatives(body: InitiativeOrder, user_id: str = Depends(get_current_user_id)):
+    """The user's own order for their initiatives, first to last."""
+    return {"saved": db.reorder_initiatives(user_id, body.ids)}
+
+
+@router.get("/{initiative_id}/digest")
+def get_digest(initiative_id: int, user_id: str = Depends(get_current_user_id)):
+    """The initiative as one page: a one-line summary and its notes' points
+    in short sections (initiative_digest.py). 0 = notes with no initiative."""
+    if initiative_id == initiative_digest.OTHERS:
+        name = "Other notes"
+    else:
+        match = next((i for i in db.get_initiatives(user_id) if i["id"] == initiative_id), None)
+        if not match:
+            raise HTTPException(404, "No such initiative.")
+        name = match["name"]
+    return initiative_digest.get_digest(user_id, initiative_id, name)
 
 
 @router.patch("/{initiative_id}")

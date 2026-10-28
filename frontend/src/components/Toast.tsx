@@ -3,21 +3,23 @@ import { useEffect, useState } from 'react'
 // Minimal app-wide toast ("Downloaded 3 files", "Tap Share again") -
 // toast() can be called from anywhere; <Toaster/> (mounted once in
 // Layout) shows the latest message for a couple of seconds.
-type Listener = (msg: string) => void
+type Listener = (msg: string, ms: number) => void
 const listeners = new Set<Listener>()
 
-export function toast(msg: string) {
-  listeners.forEach((l) => l(msg))
+// `ms`: how long it stays - errors carry a sentence and a reference code,
+// so they stay up longer than a quick confirmation.
+export function toast(msg: string, ms = 2600) {
+  listeners.forEach((l) => l(msg, ms))
 }
 
 export default function Toaster() {
   const [msg, setMsg] = useState<string | null>(null)
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>
-    const l: Listener = (m) => {
+    const l: Listener = (m, ms) => {
       setMsg(m)
       clearTimeout(timer)
-      timer = setTimeout(() => setMsg(null), 2600)
+      timer = setTimeout(() => setMsg(null), ms)
     }
     listeners.add(l)
     return () => {

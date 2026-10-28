@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ListTodo, MapPin, MessageCircleQuestion, Mic, SquarePen, Tag, X } from 'lucide-react'
 import { useChat } from '../api/chat'
+import { ApiError } from '../api/client'
 import { useCreateInitiative, useInitiatives } from '../api/initiatives'
 import { useUpdateInteraction } from '../api/notes'
 import { useTranscribe } from '../api/voice'
@@ -18,6 +19,7 @@ import ChatInput, { type ChatInputHandle } from '../components/chat/ChatInput'
 import { useChatSession } from '../chat/ChatSessionContext'
 import { useLiveTranscript } from '../lib/useLiveTranscript'
 import { dueLabel } from '../lib/dates'
+import { notePoints } from '../lib/initiativeFilter'
 import { isOffline } from '../lib/connection'
 import { useUsageMode } from '../lib/usageMode'
 
@@ -40,7 +42,8 @@ function formatSavedMessage(result: CaptureSavedResult): string {
   // same convention as every other optional field here; the
   // suggested_initiative follow-up prompt covers that case instead.
   if (result.initiative_name) lines.push(`**Category:** ${result.initiative_name}`)
-  if (result.summary) lines.push(`**Summary:** ${result.summary}`)
+  const points = notePoints(result.summary)
+  if (points.length > 0) lines.push(points.map((p) => `- ${p}`).join('\n'))
   if (result.decisions.length > 0) {
     lines.push('**Decisions:**')
     for (const d of result.decisions) lines.push(`- ${d}`)
@@ -231,11 +234,17 @@ export default function ChatPage() {
       setPendingLocation(null) // one-shot per note, not sticky across future sends
       if (result.intent === 'capture') setSelectedInitiativeId(null) // likewise the chosen category
       handleChatResult(result, text)
+      // Not processed because the AI was unavailable - hand the text back so
+      // it can be sent again without retyping.
+      if (result.intent === 'blocked' && result.reason === 'unavailable') setInputText((cur) => cur || text)
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         appendMessage('assistant', '_Stopped._', { status: true })
       } else {
-        appendMessage('assistant', `Something went wrong: ${errorText(err)}`, { status: true })
+        // The backend's message already says where it failed (and gives a
+        // reference code for real errors); hand the text back for a retry.
+        appendMessage('assistant', err instanceof ApiError ? err.message : `Something went wrong: ${String(err)}`)
+        setInputText((cur) => cur || text)
       }
     } finally {
       setIsBusy(false)
@@ -581,7 +590,7 @@ export default function ChatPage() {
       {confirmingClear && (
         <ConfirmDialog
           title="Start a new conversation?"
-          message="This clears the chat on this device. Everything you logged stays saved in Notes and Tasks."
+          message="This clears the chat on this device. Everything you logged stays saved in Notes and Today."
           confirmLabel="Clear conversation"
           onConfirm={() => {
             setMessages([])

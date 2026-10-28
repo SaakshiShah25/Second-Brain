@@ -10,6 +10,7 @@ from datetime import date
 from typing import Awaitable, Callable, Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
+from groq import RateLimitError
 from starlette.concurrency import run_in_threadpool
 
 import db
@@ -17,6 +18,7 @@ import embeddings
 import entitlements
 import extraction
 import google_maps
+import llm_budget
 import moderation
 import search_index
 import text_utils
@@ -96,8 +98,9 @@ def _resolve_initiative(user_id: str, extracted: dict) -> Optional[int]:
 def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, interaction_date: str,
                              date_warning: Optional[str], initiative_id: Optional[int] = None,
                              geo_lat: Optional[float] = None, geo_lng: Optional[float] = None) -> dict:
-    # The model sometimes starts a line with a list marker ("- Scrum call at 10 AM").
-    summary = text_utils.strip_bullet(extracted.get("summary", "")) or ""
+    # The summary is stored as short "- " bullet points on purpose (see extraction.py); decisions,
+    # concerns and tasks are single lines, so a stray list marker at their start is dropped.
+    summary = extracted.get("summary", "") or ""
     decisions = [d for d in (text_utils.strip_bullet(x) for x in extracted.get("decisions") or []) if d]
     concerns = [c for c in (text_utils.strip_bullet(x) for x in extracted.get("concerns") or []) if c]
     with step("embedding"):
@@ -240,6 +243,8 @@ async def _capture_text_core(user_id: str, raw_text: str, geo_lat: Optional[floa
     try:
         with step("extraction"):
             extracted = await run_in_threadpool(extraction.extract_info, raw_text, None, initiative_names)
+    except RateLimitError:
+        raise HTTPException(429, llm_budget.BUSY_MESSAGE)
     except Exception as e:
         raise HTTPException(500, f"Extraction failed: {e}")
     # Extraction (the LLM call above) is the slow part of a capture - if the
@@ -297,6 +302,8 @@ async def capture_voice(
     initiative_names = [i["name"] for i in initiatives]
     try:
         extracted = extraction.extract_info(text, None, initiative_names)
+    except RateLimitError:
+        raise HTTPException(429, llm_budget.BUSY_MESSAGE)
     except Exception as e:
         raise HTTPException(500, f"Extraction failed: {e}")
 

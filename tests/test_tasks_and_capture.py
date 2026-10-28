@@ -73,9 +73,11 @@ def test_list_markers_are_stripped_from_the_saved_note():
                                    get_initiative=lambda u, i: None)
     cap.embeddings = types.SimpleNamespace(compute_embedding=lambda t, **k: None)
     cap.search_index = types.SimpleNamespace(enqueue=lambda *a, **k: None)
-    out = cap._process_extracted("u", "x", {"summary": "- Scrum call at 10 AM", "decisions": ["- Go ahead"],
+    bullets = "- Scrum call at 10 AM\n- Shipping v1.0 this week"
+    out = cap._process_extracted("u", "x", {"summary": bullets, "decisions": ["- Go ahead"],
                                             "follow_ups": [{"description": "- Join the call", "owner": "me"}]})
-    assert saved["summary"] == "Scrum call at 10 AM" and out["summary"] == "Scrum call at 10 AM"
+    # the summary is stored as "- " bullet points on purpose and must come through untouched
+    assert saved["summary"] == bullets and out["summary"] == bullets
     assert saved["decisions"] == ["Go ahead"] and saved["tasks"] == ["Join the call"]
 
 

@@ -50,7 +50,8 @@ import time
 
 from groq import RateLimitError
 
-from llm_client import FAST_MODEL_NAME, get_client
+import llm_budget
+from llm_client import FAST_MODEL_NAME
 
 MODEL_NAME = "openai/gpt-oss-safeguard-20b"
 
@@ -206,9 +207,12 @@ def _parse_verdict(content):
 
 
 def _classify_with(model_cfg: dict, text: str):
-    client = get_client().with_options(max_retries=0, timeout=_TIMEOUT_SECONDS)
-    response = client.chat.completions.create(
-        model=model_cfg["model"],
+    # Through llm_budget so the safety check's tokens count against the
+    # daily budget and show up on the admin page like every other call.
+    response = llm_budget.chat(
+        model_cfg["model"],
+        retries=0,
+        timeout=_TIMEOUT_SECONDS,
         messages=[
             {"role": "system", "content": _POLICY},
             {"role": "user", "content": f"<user_input>\n{text}\n</user_input>"},
@@ -268,8 +272,9 @@ def check(text: str) -> dict:
 
 
 UNAVAILABLE_MESSAGE = (
-    "I couldn't run my safety check just now, so I haven't saved or answered that. "
-    "Please try again in a moment."
+    "I couldn't process that just now - the AI is busy or has hit its usage limit - so "
+    "nothing was saved or answered. Your text is back in the box; please send it again "
+    "in a little while."
 )
 UNSAFE_MESSAGE = "I can't help with that request."
 

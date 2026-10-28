@@ -3,12 +3,13 @@ import { api } from './client'
 import type { ChatMessage, ChatResult } from './types'
 
 // Invalidated on every successful capture-intent save, since a note can
-// create a note/task the Tasks and Notes pages should reflect next time
+// create a note/task the Today and Notes pages should reflect next time
 // they're viewed.
 function useInvalidateOnCapture() {
   const queryClient = useQueryClient()
   return () => {
     queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    queryClient.invalidateQueries({ queryKey: ['agenda'] })
     queryClient.invalidateQueries({ queryKey: ['notes'] })
   }
 }
@@ -35,6 +36,7 @@ export interface ChatBody {
 export function useChat() {
   const invalidate = useInvalidateOnCapture()
   return useMutation({
+    meta: { handlesOwnErrors: true }, // the chat screen shows these failures itself
     mutationFn: ({
       body,
       signal,

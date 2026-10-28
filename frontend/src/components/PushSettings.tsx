@@ -74,7 +74,7 @@ export default function PushSettings() {
   if (support === 'ios-needs-install') {
     return (
       <ListGroup
-        title="Notifications"
+        title="Task reminders"
         footer="On iPhone, reminders work once MyConfía is added to your Home Screen: tap Share, then Add to Home Screen, and open it from there."
       >
         <ListRow icon={Bell} iconColor="var(--sb-text-muted)" soft label="Task reminders" detail="Add the app to your Home Screen first" />
@@ -83,7 +83,7 @@ export default function PushSettings() {
   }
   if (support === 'unsupported') {
     return (
-      <ListGroup title="Notifications">
+      <ListGroup title="Task reminders">
         <ListRow icon={Bell} iconColor="var(--sb-text-muted)" soft label="Task reminders" detail="This browser can't show notifications" />
       </ListGroup>
     )
@@ -92,7 +92,7 @@ export default function PushSettings() {
 
   return (
     <ListGroup
-      title="Notifications"
+      title="Task reminders"
       footer={
         message ? (
           <span className={message.tone === 'error' ? 'text-danger' : undefined}>{message.text}</span>

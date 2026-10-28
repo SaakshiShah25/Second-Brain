@@ -25,14 +25,9 @@ _SYSTEM_PROMPT = """You classify a message sent to a personal notes-and-tasks ch
 - "capture": the user is jotting something down - something that happened, a thought, a
   reminder, or a to-do. Written as a statement or narration, even if brief (e.g. "Met Priya
   today, she's excited about the demo", "Send the deck to Arjun by 6pm", "need to fix my sleep
-  schedule", "idea: weekend trip to Goa"). A bare instruction with no "me"/"you" in it is the
-  user talking to THEMSELVES - a to-do or a goal - not a request to the assistant, however
-  general the topic: "Understand how mutual funds work", "Learn Spanish", "Research health
-  insurance options", "Read up on index funds", "Get access to the repo by EOD", "Call the
-  bank", "Write the quarterly report by Friday", "Write to Priya about the contract". These are
-  all "capture". (A bare request for generic content - "Write a python function to reverse a
-  string", "Write a poem", "Draw a cat", "Generate a logo" - is NOT a to-do about the user's own
-  life: that is out_of_scope.)
+  schedule", "idea: weekend trip to Goa"). A bare instruction with no "you"/"can you" is the
+  user writing a to-do for THEMSELF, never a request to you - "Read chapter 5 of the bond book
+  by Sunday", "Call mom tonight", "Book flights for Diwali", "Finish the IC memo" are all capture.
 - "ask": the user is asking a question about THEIR OWN logged notes or tasks, or searching for
   something they wrote down before (e.g. "What did I note about pricing?", "What's overdue?",
   "What do I need to do this week?", "When did I last talk to Rohan?").
@@ -51,6 +46,17 @@ ambiguous between capture and out_of_scope, ALWAYS choose "capture": saving a no
 didn't want is harmless, refusing something they meant as a to-do loses their input. Only
 classify as "out_of_scope" when the message is plainly a request to the assistant itself."""
 
+
+# Phrasings aimed at an assistant. Bare verbs like "write", "tell", "draw" or
+# "summarize" are left out on purpose: "Tell Rohan the demo moved", "Write the
+# downside case", "Draw up the contract" are the user's own to-dos.
+_ASSISTANT_REQUEST = re.compile(
+    r"^\s*(please\s+)?(explain|generate|compose|translate|define|"
+    r"(write|tell|give|show|make|help|teach|find|get) me|can you|could you|would you|will you|"
+    r"what is|what are|what's|who is|who was|how do|how does|how to|how can|why is|why do|why does)\b"
+    r"|\b(joke|poem|story|essay|lyrics|recipe|code snippet|python|javascript)\b",
+    re.I,
+)
 
 _QUESTION = re.compile(r"^\s*(what|who|when|where|which|why|how|whom|whose)\b.*\?\s*$", re.I | re.S)
 
@@ -104,6 +110,12 @@ def classify(text: str) -> str:
         )
         result = json.loads(response.choices[0].message.content)
         detected = result.get("intent")
+        # Refusing a real to-do ("Ask Priya for the report by Friday") is far
+        # worse than saving an odd note, and the model does misread imperative
+        # to-dos as requests. So "out of scope" only stands when the message
+        # actually reads like a request to an assistant.
+        if detected == "out_of_scope" and not _ASSISTANT_REQUEST.search(text):
+            return "capture"
         return detected if detected in ("capture", "ask", "out_of_scope") else "capture"
     except Exception:
         return "capture"

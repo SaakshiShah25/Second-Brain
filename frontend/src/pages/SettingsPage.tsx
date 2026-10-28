@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Check, Compass, LogOut, Moon, ShieldCheck, Sun, Trash2, Type } from 'lucide-react'
+import { Activity, Check, Compass, Download, LogOut, Mail, Moon, ShieldCheck, Sun, Trash2, Type } from 'lucide-react'
+import { useIsAdmin } from '../api/admin'
+import { fetchBlob } from '../api/client'
 import { useDeleteAccount, useSettings, useUpdateSettings } from '../api/settings'
 import type { FontSize, Theme } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import AppLockSettings from '../components/AppLockSettings'
 import PushSettings from '../components/PushSettings'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { ListGroup, ListRow } from '../components/ListGroup'
+import { ListGroup, ListRow, Toggle } from '../components/ListGroup'
 import PageHeader from '../components/PageHeader'
 import Segmented from '../components/Segmented'
 import { useTour } from '../components/TourGate'
@@ -30,6 +32,25 @@ export default function SettingsPage() {
   const { user, signOut } = useAuth()
   const { startTour } = useTour()
   const deleteAccount = useDeleteAccount()
+  const isAdmin = useIsAdmin().data?.admin
+  const [exporting, setExporting] = useState(false)
+
+  async function downloadData() {
+    setExporting(true)
+    try {
+      const blob = await fetchBlob('/api/settings/export')
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `myconfia-export-${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      window.alert("Couldn't prepare your data - please try again.")
+    } finally {
+      setExporting(false)
+    }
+  }
   const navigate = useNavigate()
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const initial = (user?.email?.[0] ?? '?').toUpperCase()
@@ -54,9 +75,9 @@ export default function SettingsPage() {
           title="Using MyConfía for"
           footer={
             usage.mode === 'work'
-              ? 'Shortcuts and wording are tuned for clients, colleagues and deadlines.'
+              ? 'Shortcuts, wording and your morning brief are tuned for clients, colleagues and deadlines.'
               : usage.mode === 'personal'
-                ? 'Wording is tuned for friends, family and everyday to-dos.'
+                ? 'Wording and your morning brief are tuned for friends, family and everyday to-dos.'
                 : 'Work and personal wording side by side.'
           }
         >
@@ -134,16 +155,58 @@ export default function SettingsPage() {
         </div>
       </ListGroup>
 
+      <ListGroup
+        title="Notifications"
+        footer="What’s overdue and what’s due today — sent every morning."
+      >
+        <ListRow
+          icon={Mail}
+          iconColor="var(--sb-text-muted)"
+          soft
+          label="Morning brief by email"
+          trailing={
+            <Toggle
+              on={!!settings?.daily_brief_email_enabled}
+              onChange={() => updateSettings.mutate({ daily_brief_email_enabled: !settings?.daily_brief_email_enabled })}
+              label="Morning brief by email"
+            />
+          }
+        />
+      </ListGroup>
+
       <PushSettings />
 
       <AppLockSettings />
 
       <ListGroup
         title="Privacy"
-        footer="Your notes are encrypted at rest. To power search and AI extraction, the app decrypts your notes and shares text with our AI providers (Groq, Cohere) for that processing only. We never sell or share your data."
+        footer="Your notes are encrypted at rest. To power search, the daily brief and AI extraction, the app decrypts your notes and shares text with our AI providers (Groq, Cohere) for that processing only. We never sell or share your data."
       >
         <ListRow icon={ShieldCheck} iconColor="var(--sb-text-muted)" soft label="Encrypted at rest" />
+        <ListRow
+          icon={Download}
+          iconColor="var(--sb-text-muted)"
+          soft
+          label={exporting ? 'Preparing…' : 'Download my data'}
+          detail="Every note, task and initiative, as a file"
+          disabled={exporting}
+          onClick={downloadData}
+        />
       </ListGroup>
+
+      {isAdmin && (
+        <ListGroup title="Admin">
+          <ListRow
+            icon={Activity}
+            iconColor="var(--sb-text-muted)"
+            soft
+            label="Usage, limits & errors"
+            detail="AI budget left, per-user usage, recent errors"
+            chevron
+            onClick={() => navigate('/admin')}
+          />
+        </ListGroup>
+      )}
 
       <ListGroup title="Help">
         <ListRow icon={Compass} iconColor="var(--sb-text-muted)" soft label="Take the tour again" chevron onClick={() => startTour()} />

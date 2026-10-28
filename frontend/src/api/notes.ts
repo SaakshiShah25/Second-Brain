@@ -28,6 +28,7 @@ export function useDeleteInteraction() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notes'] })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['agenda'] })
     },
   })
 }

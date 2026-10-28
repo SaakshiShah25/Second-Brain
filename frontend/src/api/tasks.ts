@@ -18,6 +18,7 @@ export function useEditTask() {
       api.patch(`/api/tasks/${taskId}`, fields),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['agenda'] })
     },
   })
 }
@@ -49,6 +50,7 @@ export function useUpdateTaskStatus() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['agenda'] })
     },
   })
 }
@@ -71,6 +73,7 @@ export function useUpdateTaskOwner() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['agenda'] })
     },
   })
 }

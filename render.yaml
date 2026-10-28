@@ -28,8 +28,39 @@ services:
         sync: false
       - key: GOOGLE_MAPS_API_KEY
         sync: false
+      # Daily brief email, sent via Resend's HTTP API (email_client.py) -
+      # not SMTP, which Render's free tier blocks outbound. See
+      # email_client.py's docstring for full setup (a verified sending
+      # domain is required for this to actually reach real users, not
+      # just the Resend account's own email).
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: CRON_SECRET
+        sync: false
       - key: ENCRYPTION_KEY
         sync: false
+      # Production hardening (see api/main.py, api/auth.py):
+      # APP_ENV=production drops the localhost CORS origins.
+      - key: APP_ENV
+        value: production
+      # Invite-only: comma-separated emails, or "@domain.com" for a whole
+      # domain. Everyone else gets a "not on the list yet" screen.
+      - key: ALLOWED_EMAILS
+        sync: false
+      # Error tracking (Sentry free plan) - leave unset to turn it off.
+      - key: SENTRY_DSN
+        sync: false
+      # Gemini is only used as a fallback with GEMINI_FALLBACK=on AND a
+      # paid key - its free tier may use content for training.
+      - key: GEMINI_FALLBACK
+        value: "off"
+      # Observability (observability.py, api/routers/admin.py): every alert
+      # (errors, AI budget at 80% / used up, users hitting caps, uninvited
+      # sign-ins) and the daily report go here. Also the admin page's login.
+      - key: ALERT_EMAIL
+        value: sanket3shah@gmail.com
       # Task reminder push notifications (push_notify.py). Make the pair once with
       # `python scripts/generate_vapid_keys.py you@example.com` and never change it.
       - key: VAPID_PUBLIC_KEY
@@ -37,7 +68,4 @@ services:
       - key: VAPID_PRIVATE_KEY
         sync: false
       - key: VAPID_SUBJECT
-        sync: false
-      # Shared secret the scheduled job (.github/workflows/task-reminders.yml) sends.
-      - key: CRON_SECRET
         sync: false

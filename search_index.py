@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import db
+import observability
 import embeddings
 
 KINDS = ("note", "task")
@@ -168,7 +169,7 @@ def _worker() -> None:
                 if entry["prune"]:
                     prune(user_id)
             except Exception as e:  # never kill the worker; reindex_user repairs anything missed
-                print(f"[warn] search index update failed for {user_id}: {e}")
+                observability.error("search index update (background)", e, extra={"user": user_id})
 
 
 # ---------------------------------------------------------------- search

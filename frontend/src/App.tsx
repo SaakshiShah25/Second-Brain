@@ -1,12 +1,13 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Route, Routes } from 'react-router-dom'
 import RequireAuth from './auth/RequireAuth'
 import Layout from './components/Layout'
 import LoginPage from './pages/LoginPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
-import TasksPage from './pages/TasksPage'
+import DigestPage from './pages/DigestPage'
 import ChatPage from './pages/ChatPage'
 import NotesPage from './pages/NotesPage'
 import SettingsPage from './pages/SettingsPage'
+import AdminPage from './pages/AdminPage'
 import AccountDeletionInfoPage from './pages/AccountDeletionInfoPage'
 import PublicPrivacyPage from './pages/PublicPrivacyPage'
 import { ChatSessionProvider } from './chat/ChatSessionContext'
@@ -45,9 +46,9 @@ export default function App() {
         >
           <Route path="/" element={<ChatPage />} />
           <Route path="/notes" element={<NotesPage />} />
-          <Route path="/tasks" element={<TasksPage />} />
-          <Route path="/digest" element={<Navigate to="/tasks" replace />} />
+          <Route path="/digest" element={<DigestPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/admin" element={<AdminPage />} />
         </Route>
       </Route>
     </Routes>

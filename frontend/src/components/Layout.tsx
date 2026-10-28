@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Home, ListChecks, NotebookText, type LucideIcon } from 'lucide-react'
+import { Home, NotebookText, Sun, type LucideIcon } from 'lucide-react'
 import Toaster from './Toast'
 import ConnectionBanner from './ConnectionBanner'
 import { syncReminders } from '../lib/push'
@@ -9,14 +9,14 @@ import { syncReminders } from '../lib/push'
 // active tab - full class strings so Tailwind can see them.
 const tabs: { to: string; label: string; icon: LucideIcon; end: boolean; pill: string; text: string }[] = [
   { to: '/', label: 'Home', icon: Home, end: true, pill: 'bg-fun-orange/15 text-fun-orange', text: 'text-fun-orange' },
-  { to: '/tasks', label: 'Tasks', icon: ListChecks, end: false, pill: 'bg-fun-sun/15 text-fun-sun', text: 'text-fun-sun' },
+  { to: '/digest', label: 'Today', icon: Sun, end: false, pill: 'bg-fun-sun/15 text-fun-sun', text: 'text-fun-sun' },
   { to: '/notes', label: 'Notes', icon: NotebookText, end: false, pill: 'bg-fun-sky/15 text-fun-sky', text: 'text-fun-sky' },
 ]
 
 // Screens pushed on top of a tab (Settings) hide the tab bar, like a
 // native navigation stack - they have their own back button instead
 // (PageHeader's backTo).
-const TABLESS = [/^\/settings$/]
+const TABLESS = [/^\/settings$/, /^\/admin$/]
 
 // While the on-screen keyboard is up, the tab bar would ride on top of
 // it and eat a chunk of the little space left - native apps hide it, so

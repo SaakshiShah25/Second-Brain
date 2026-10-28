@@ -43,6 +43,34 @@ export function fullDate(iso: string | null | undefined): string {
   return `${weekday} ${String(d.getDate()).padStart(2, '0')}-${month}-${d.getFullYear()}`
 }
 
+/** Section header for grouping a reverse-chronological list, Apple
+ * Notes-style: Today / Yesterday / Previous 7 days / "October" /
+ * "March 2025". */
+export function dateSection(iso: string | null | undefined): string {
+  if (!iso) return 'Undated'
+  const d = parseLocal(iso)
+  if (!d) return 'Undated'
+  const diff = daysFromToday(d)
+  if (diff >= 0) return diff === 0 ? 'Today' : 'Upcoming'
+  if (diff === -1) return 'Yesterday'
+  if (diff > -7) return 'Previous 7 days'
+  if (diff > -30) return 'Previous 30 days'
+  const sameYear = d.getFullYear() === new Date().getFullYear()
+  return d.toLocaleDateString(undefined, { month: 'long', ...(sameYear ? {} : { year: 'numeric' }) })
+}
+
+/** Groups items (already sorted) into consecutive sections, preserving order. */
+export function groupBySection<T>(items: T[], getDate: (item: T) => string | null | undefined): { section: string; items: T[] }[] {
+  const groups: { section: string; items: T[] }[] = []
+  for (const item of items) {
+    const section = dateSection(getDate(item))
+    const last = groups[groups.length - 1]
+    if (last && last.section === section) last.items.push(item)
+    else groups.push({ section, items: [item] })
+  }
+  return groups
+}
+
 /** "19:00" or "19:00:00" -> "7:00 PM". */
 export function timeLabel(hhmm: string | null | undefined): string {
   if (!hhmm) return ''

@@ -10,6 +10,7 @@ get_user_preference()/update_user_preference() and schema.sql section 18.
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 
 import db
 from api.auth import get_current_user_id
@@ -38,6 +39,8 @@ def update_settings(body: UserPreferenceUpdate, user_id: str = Depends(get_curre
         if body.font_size not in _FONT_SIZES:
             raise HTTPException(400, f"font_size must be one of {sorted(_FONT_SIZES)}")
         fields["font_size"] = body.font_size
+    if body.daily_brief_email_enabled is not None:
+        fields["daily_brief_email_enabled"] = body.daily_brief_email_enabled
     if body.usage_mode is not None:
         if body.usage_mode not in _USAGE_MODES:
             raise HTTPException(400, f"usage_mode must be one of {sorted(_USAGE_MODES)}")
@@ -57,6 +60,26 @@ def complete_tour(user_id: str = Depends(get_current_user_id)):
     """Marks the onboarding tour as seen - called whether the user finished
     it or hit Skip, same binary semantics as accept_terms() above."""
     return db.update_user_preference(user_id, tour_completed_at=datetime.now(timezone.utc).isoformat())
+
+
+@router.get("/export")
+def export_data(user_id: str = Depends(get_current_user_id)):
+    """Everything the user has stored, decrypted, as one JSON download -
+    notes, tasks, initiatives and settings. Search vectors and other
+    derived data are left out; they're rebuilt from these."""
+    drop = {"embedding", "user_id"}
+    clean = lambda rows: [{k: v for k, v in r.items() if k not in drop} for r in rows]
+    tasks = [{k: v for k, v in t.items() if k != "interaction"} for t in db.get_all_tasks_with_context(user_id)]
+    body = {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "email": db.get_user_email(user_id),
+        "initiatives": clean(db.get_initiatives(user_id)),
+        "notes": clean(db.get_all_interactions_with_context(user_id)),
+        "tasks": clean(tasks),
+        "settings": {k: v for k, v in db.get_user_preference(user_id).items() if k not in drop},
+    }
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return JSONResponse(body, headers={"Content-Disposition": f'attachment; filename="myconfia-export-{stamp}.json"'})
 
 
 @router.delete("/account", status_code=204)

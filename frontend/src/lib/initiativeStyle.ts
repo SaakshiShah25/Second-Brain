@@ -51,9 +51,9 @@ const FALLBACK_STYLES: { icon: LucideIcon; color: string }[] = [
   { icon: Flag, color: '#1f9bb0' },
 ]
 
-// The swatches offered in the picker: eight clearly different hue families
-// (green, teal, blue, violet, magenta, red, orange, gold), every automatic
-// color above is drawn from this same set so nothing looks off-palette.
+// The swatches offered in the picker, and the pool every automatic color
+// is drawn from: twelve clearly different hues, so a dozen initiatives can
+// each have their own before any color repeats.
 export const PICKABLE_INITIATIVE_COLORS = [
   '#1f9d6b', // green
   '#1f9bb0', // teal
@@ -63,7 +63,54 @@ export const PICKABLE_INITIATIVE_COLORS = [
   '#d0443e', // red
   '#d9731f', // orange
   '#b8951a', // gold
+  '#5b6ee1', // indigo
+  '#6b8e23', // olive
+  '#9a6b4f', // brown
+  '#64748b', // slate
 ]
+
+// The keyword color when it's still free, else the least-used swatch.
+function pickColor(name: string, used: Map<string, number>): string {
+  const lower = name.toLowerCase()
+  const keyword = KEYWORD_STYLES.find((s) => s.keywords.some((k) => lower.includes(k)))?.color
+  if (keyword && !used.get(keyword)) return keyword
+  let best = PICKABLE_INITIATIVE_COLORS[0]
+  for (const c of PICKABLE_INITIATIVE_COLORS) if ((used.get(c) ?? 0) < (used.get(best) ?? 0)) best = c
+  return best
+}
+
+/** The color to save for a new initiative, given the ones that exist. */
+export function colorForNewInitiative(name: string, existing: { id: number; name: string; color: string | null }[]): string {
+  const used = new Map<string, number>()
+  for (const i of resolveColors(existing).values())
+    used.set(i, (used.get(i) ?? 0) + 1)
+  return pickColor(name, used)
+}
+
+// Saved colors are kept; initiatives without one (made before colors were
+// saved) get a distinct one in creation order, so no two look the same.
+function resolveColors(list: { id: number; name: string; color: string | null }[]): Map<number, string> {
+  const used = new Map<string, number>()
+  const out = new Map<number, string>()
+  for (const i of list) if (i.color) used.set(i.color, (used.get(i.color) ?? 0) + 1)
+  for (const i of [...list].sort((a, b) => a.id - b.id)) {
+    const color = i.color || pickColor(i.name, used)
+    if (!i.color) used.set(color, (used.get(color) ?? 0) + 1)
+    out.set(i.id, color)
+  }
+  return out
+}
+
+// Filled from every initiatives fetch (api/initiatives.ts), so a task or
+// calendar entry that only carries an initiative's id or name still gets
+// the same color as its chip.
+let resolvedById = new Map<number, string>()
+let resolvedByName = new Map<string, string>()
+
+export function setKnownInitiatives(list: { id: number; name: string; color: string | null }[]) {
+  resolvedById = resolveColors(list)
+  resolvedByName = new Map(list.map((i) => [i.name.toLowerCase(), resolvedById.get(i.id)!]))
+}
 
 function hashString(s: string): number {
   let h = 0
@@ -79,14 +126,17 @@ export interface InitiativeStyle {
 /** Null input (no initiative / Uncategorized) intentionally renders with
  * no icon and no color - "uncategorized" should look distinct from every
  * real category, not just be another color in the set. */
-export function getInitiativeStyle(initiative: { name: string; color?: string | null } | null | undefined): InitiativeStyle | null {
+export function getInitiativeStyle(
+  initiative: { id?: number; name: string; color?: string | null } | null | undefined,
+): InitiativeStyle | null {
   if (!initiative) return null
+  const known = (initiative.id !== undefined && resolvedById.get(initiative.id)) || resolvedByName.get(initiative.name.toLowerCase())
   const lower = initiative.name.toLowerCase()
   const matched = KEYWORD_STYLES.find((s) => s.keywords.some((k) => lower.includes(k)))
   const fallback = FALLBACK_STYLES[hashString(initiative.name) % FALLBACK_STYLES.length]
   return {
     Icon: (matched ?? fallback).icon,
-    color: initiative.color || matched?.color || fallback.color,
+    color: initiative.color || known || matched?.color || fallback.color,
   }
 }
 

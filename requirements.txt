@@ -7,5 +7,6 @@ uvicorn[standard]
 python-multipart
 requests
 slowapi
+sentry-sdk[fastapi]>=2,<3
 pywebpush
 tzdata
