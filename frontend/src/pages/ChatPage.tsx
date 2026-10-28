@@ -24,6 +24,10 @@ import { useUsageMode } from '../lib/usageMode'
 // equal-weight shortcuts, so a different hue on each only added noise.
 const STARTER_TINT = 'bg-accent-soft text-accent'
 
+// The chips sit over the scrolling chat: a see-through tint lets the words behind show through,
+// so the tint is mixed into the page colour to make an opaque one.
+const SOLID_CHIP = { background: 'color-mix(in srgb, var(--sb-accent) 14%, var(--sb-bg))' }
+
 // "Something went wrong: Error: Couldn't reach…" reads badly - just the message.
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
@@ -504,7 +508,7 @@ export default function ChatPage() {
         <div className="sticky bottom-0 -mx-4 bg-gradient-to-t from-bg from-70% to-transparent px-4 pt-4 pb-1">
           {selectedInitiative && (
             <div className="mb-2 flex">
-              <span className="flex items-center gap-1.5 rounded-full bg-accent-soft py-1 pr-1 pl-2.5 text-xs font-medium text-accent">
+              <span className="flex items-center gap-1.5 rounded-full border border-accent/30 py-1 pr-1 pl-2.5 text-xs font-medium text-accent" style={SOLID_CHIP}>
                 Category: {selectedInitiative.name}
                 <button
                   type="button"
@@ -519,7 +523,7 @@ export default function ChatPage() {
           )}
           {pendingLocation && (
             <div className="mb-2 flex">
-              <span className="flex items-center gap-1.5 rounded-full bg-accent-soft py-1 pr-1 pl-2.5 text-xs font-medium text-accent">
+              <span className="flex items-center gap-1.5 rounded-full border border-accent/30 py-1 pr-1 pl-2.5 text-xs font-medium text-accent" style={SOLID_CHIP}>
                 <MapPin size={12} strokeWidth={2} /> Location attached
                 <button
                   type="button"

@@ -26,7 +26,9 @@ export default function NotesPage() {
 
   // ?tab=initiatives deep-links straight to the Initiatives view - used
   // by the onboarding tour (Tour.tsx) so it can show the real screen.
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  // ?open=<note id> (from a task's "View the note") opens that note straight away.
+  const openNoteId = Number(searchParams.get('open')) || null
   const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'initiatives' ? 'initiatives' : 'notes')
   useEffect(() => {
     setTab(searchParams.get('tab') === 'initiatives' ? 'initiatives' : 'notes')
@@ -155,7 +157,23 @@ export default function NotesPage() {
                 </h2>
                 <div className="flex flex-col gap-2.5">
                   {items.map((note) => (
-                    <InteractionCard key={note.id} interaction={note} />
+                    <InteractionCard
+                      key={note.id}
+                      interaction={note}
+                      autoOpen={note.id === openNoteId}
+                      onClosed={
+                        note.id === openNoteId
+                          ? () =>
+                              setSearchParams(
+                                (prev) => {
+                                  prev.delete('open')
+                                  return prev
+                                },
+                                { replace: true },
+                              )
+                          : undefined
+                      }
+                    />
                   ))}
                 </div>
               </section>

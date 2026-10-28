@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ArrowLeftRight, Check, CheckCircle2, ChevronDown, TriangleAlert } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ArrowLeftRight, Check, CheckCircle2, ChevronDown, NotebookText, TriangleAlert } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { useEditTask, useTasks, useUpdateTaskOwner, useUpdateTaskStatus } from '../api/tasks'
 import type { Initiative, Task } from '../api/types'
@@ -7,9 +8,10 @@ import Button from '../components/Button'
 import { Input, Label } from '../components/fields'
 import PageHeader from '../components/PageHeader'
 import Sheet from '../components/Sheet'
-import { dueLabel, isoLocal } from '../lib/dates'
+import { dueLabel, fullDate, isoLocal } from '../lib/dates'
 import { groupByInitiative } from '../lib/groupByInitiative'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
+import { stripBullet } from '../lib/text'
 
 function isOverdue(task: Task): boolean {
   return task.status === 'open' && !!task.due_date && task.due_date < isoLocal(new Date())
@@ -139,6 +141,7 @@ function TaskSection({
 }
 
 export default function TasksPage() {
+  const navigate = useNavigate()
   const [showCompleted, setShowCompleted] = useState(false)
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('all')
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null)
@@ -238,6 +241,28 @@ export default function TasksPage() {
             {activeTask.due_date &&
               ` · ${isOverdue(activeTask) ? 'overdue, was due' : 'due'} ${dueLabel(activeTask.due_date, activeTask.due_time)}`}
           </p>
+
+          {/* Where this task came from - tap to read (and edit) that note. */}
+          {activeTask.interaction && (
+            <button
+              type="button"
+              onClick={() => navigate(`/notes?open=${activeTask.interaction!.id}`)}
+              className="pressable mb-4 flex w-full items-start gap-3 rounded-2xl border border-border bg-bg-elevated p-3.5 text-left"
+            >
+              <span className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-bg-card text-text-muted">
+                <NotebookText size={17} strokeWidth={2} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[0.75rem] font-medium uppercase tracking-wide text-text-faint">
+                  From a note · {fullDate(activeTask.interaction.date)}
+                </span>
+                <span className="mt-0.5 line-clamp-2 block text-[0.9375rem] leading-snug text-text">
+                  {stripBullet(activeTask.interaction.summary) || 'View the note'}
+                </span>
+                <span className="mt-1 block text-[0.8125rem] font-medium text-link">View the note</span>
+              </span>
+            </button>
+          )}
 
           {editing ? (
             <div className="mb-4 rounded-2xl bg-bg-elevated p-3.5">

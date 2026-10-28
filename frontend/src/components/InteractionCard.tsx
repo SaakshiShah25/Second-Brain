@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { CheckCircle2, ListChecks, MapPin, Pencil, Trash2, TriangleAlert } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { useDeleteInteraction, useUpdateInteraction } from '../api/notes'
@@ -34,10 +34,22 @@ function Section({ icon: Icon, title, items }: { icon: typeof CheckCircle2; titl
 // Delete live. Replaces the old collapsed one-line disclosure row, which
 // showed so little that every note looked the same until expanded.
 // Shown under its category's heading on the Notes page, so the card itself carries the date.
-export default function InteractionCard({ interaction }: { interaction: Interaction }) {
+//
+// `autoOpen` opens it straight away (arriving from a task's "View the note"); `onClosed` tells the
+// page the sheet was dismissed, so it can forget what it was asked to open.
+export default function InteractionCard({
+  interaction,
+  autoOpen = false,
+  onClosed,
+}: {
+  interaction: Interaction
+  autoOpen?: boolean
+  onClosed?: () => void
+}) {
   const updateInteraction = useUpdateInteraction()
   const deleteInteraction = useDeleteInteraction()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(autoOpen)
+  const cardRef = useRef<HTMLButtonElement>(null)
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   // react-query dedupes this against NotesPage's own useInitiatives()
@@ -45,6 +57,11 @@ export default function InteractionCard({ interaction }: { interaction: Interact
   const { data: initiatives } = useInitiatives()
 
   const initiativeStyle = getInitiativeStyle(interaction.initiative)
+
+  // Arriving from a task: bring the card into view behind the sheet.
+  useEffect(() => {
+    if (autoOpen) cardRef.current?.scrollIntoView({ block: 'center' })
+  }, [autoOpen])
 
   const [form, setForm] = useState({
     date: interaction.date ?? '',
@@ -68,13 +85,28 @@ export default function InteractionCard({ interaction }: { interaction: Interact
           concerns: form.concerns.split('\n').map((s) => s.trim()).filter(Boolean),
         },
       },
-      { onSuccess: () => setEditing(false) },
+      // Done: leave the note rather than landing back on its Edit / Delete buttons.
+      { onSuccess: () => close() },
     )
+  }
+
+  function startEditing() {
+    setForm({
+      date: interaction.date ?? '',
+      location: interaction.location ?? '',
+      summary: stripBullet(interaction.summary),
+      raw_text: interaction.raw_text ?? '',
+      decisions: (interaction.decisions ?? []).join('\n'),
+      concerns: (interaction.concerns ?? []).join('\n'),
+      initiative_id: interaction.initiative_id,
+    })
+    setEditing(true)
   }
 
   function close() {
     setOpen(false)
     setEditing(false)
+    onClosed?.()
   }
 
   const openTasks = (interaction.tasks ?? []).filter((t) => t.status === 'open').length
@@ -82,6 +114,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
   return (
     <>
       <button
+        ref={cardRef}
         type="button"
         onClick={() => setOpen(true)}
         className="pressable block w-full rounded-2xl border border-border bg-bg-card p-4 text-left"
@@ -185,7 +218,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
               )}
 
               <div className="mt-6 flex gap-2">
-                <Button className="flex-1" onClick={() => setEditing(true)}>
+                <Button className="flex-1" onClick={startEditing}>
                   <Pencil size={16} strokeWidth={2} /> Edit
                 </Button>
                 <Button variant="danger" className="flex-1" onClick={() => setConfirmDelete(true)}>

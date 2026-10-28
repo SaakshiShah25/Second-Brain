@@ -118,6 +118,9 @@ If an answer invents details that aren't in your notes, that is a bug — please
 
 - **Tasks tab:** grouped under your categories (Work, Personal, Learning, Health, then Others); nearest deadline first, undated last; overdue dates in red; **I owe / Others owe** filter; tick a task → moves to **Completed** (collapsed at the bottom). Tap a task → **Edit wording or deadline** (date and time), **Mark done**, **Actually, someone else owes this**.
 - **Notes tab:** notes sit under their category heading, newest first; each card shows the **real date** (e.g. "Wed 28-Oct-2026"), not Today/Yesterday; search box and category chips; tap a note → read, **Edit** (category, date, summary…), **Delete** (its tasks go with it).
+- **Task → note:** open any task → the **From a note** card shows the note it came from; tap it → the Notes tab opens with that note already open (its tasks are listed inside it, so you can go back the other way too).
+- **Editing a note:** Edit → change the category → Save → the sheet **closes** and the note appears under its new category heading (it no longer returns to Edit / Delete).
+- **Chat:** pick a category with **+** → the "Category: …" chip above the box has a solid background (nothing shows through it).
 - **Chat:** the copy button appears only under real answers/summaries (not under "Added X and tagged this note…"). Copy a saved-note reply and paste into a text file → clean lines (`Category: Work`, `Tasks:`, `- …`), no `**` marks.
 - **Login / reset password:** the eye icon shows or hides what you typed.
 - **Settings → Notifications → Task reminders:** turn on (allow notifications) → **Send me a test now** → a notification listing your tasks grouped by category. The scheduled ones arrive at **9 AM and 5 PM**, once each, only if you have open tasks. (iPhone: add the app to the Home Screen first.)
