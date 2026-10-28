@@ -6,7 +6,7 @@ A simple notes-and-tasks app you can talk or type to, with everything sorted int
 (Postgres + pgvector + Auth), **Groq** (LLMs, Whisper) and **Cohere** (embeddings + rerank).
 
 > This branch (`version/1.0`) is deliberately small. People/contacts, the Documents organizer,
-> business-card scanning and the Google Calendar/Drive integrations were removed from the UI **and**
+> business-card scanning, the Google Calendar/Drive integrations, the calendar view and the morning brief were removed from the UI **and**
 > the backend. They still exist on the `ui-revamp-pwa` branch. Production setup (invite-only access, backups,
 > alerts, the admin page) is in `PRODUCTION_SETUP.md`.
 
@@ -17,7 +17,7 @@ A simple notes-and-tasks app you can talk or type to, with everything sorted int
 | **Chat input (Home)** | One box: type, or tap the mic and talk. It works out whether you are *logging a note* (or a to-do) or *asking a question* about what you logged. Recording can be paused or cancelled; you can pick a category and optionally attach your location. |
 | **Notes** | Organised **by initiative**: a block per initiative, each opening to a page with AI-sorted sections, its notes as short bullet points, and all its tasks as tick boxes. Search shows matching notes; open a note to read, edit or delete it. Initiatives (name, colour, order) are yours to manage. |
 | **Task reminders** | Optional push notifications at **9 AM and 5 PM** (each device's own time zone) listing your open tasks grouped by category. Turn them on per device in Settings → Notifications. See "Task reminders" below. |
-| **Today** | The **morning brief** (what's overdue and due today, written once a day, optionally emailed), every task in sections (Overdue, Today, Next 7 days, Later, No date) with a **calendar** view, filterable by initiative. Tasks can have a date and a time ("send the deck by 6pm"). A task's sheet links back to the note it came from. |
+| **Tasks** | Every task pulled out of your notes, **grouped under its initiative** (never by date), with the nearest deadline first inside each. Tasks can have a date and a time ("send the deck by 6pm"); an overdue date shows in red. Tap a task to tick it off, edit its wording or deadline, flip who owes it, or jump to the note it came from. |
 
 Also: sign-in (email or Google via Supabase Auth), light/dark themes, text size, app lock, a first-run tour,
 usage mode (work / personal / both) that tunes wording, account deletion, and encrypted-at-rest content.
@@ -39,7 +39,7 @@ Search is hybrid: pgvector similarity + BM25 keywords, fused, then reranked by C
 ## API surface
 
 `/api/chat` (+`/stream`), `/api/capture` (+`/voice`), `/api/ask`, `/api/transcribe`, `/api/notes`,
-`/api/tasks`, `/api/initiatives`, `/api/agenda`, `/api/brief`, `/api/push`, `/api/settings`, `/api/admin`, `/api/health`. Swagger UI at `http://localhost:8000/docs`.
+`/api/tasks`, `/api/initiatives`, `/api/push`, `/api/settings`, `/api/admin`, `/api/health`. Swagger UI at `http://localhost:8000/docs`.
 
 ## Run it locally
 
@@ -145,5 +145,5 @@ agent can't run, a fixed pipeline answers; if the moderation models are down, me
 ## Not in this version (and where it lives)
 
 People / contacts, memory layer (birthdays, family, preferences), the Documents organizer, Google Drive, Google Calendar sync,
-business-card scanning and pre-meeting briefings: branch `ui-revamp-pwa`.
+business-card scanning, pre-meeting briefings, the calendar view and the morning brief: branch `ui-revamp-pwa`.
 Reminders timed to an individual task's due time (rather than the fixed 9 AM / 5 PM list) aren't built.

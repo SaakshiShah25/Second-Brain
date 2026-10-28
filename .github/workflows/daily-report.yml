@@ -3,7 +3,7 @@
 # is left, limits hit, and every error with its reference code. Also deletes
 # observability events older than 30 days. See api/routers/admin.py.
 #
-# Uses the same repo secrets as morning-brief.yml: RENDER_API_URL, CRON_SECRET.
+# Uses the repo secrets RENDER_API_URL and CRON_SECRET (the task-reminders workflow uses them too).
 name: Daily report
 
 on:

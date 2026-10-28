@@ -1,8 +1,8 @@
 # MyConfía — Product & Technical Overview
 
 > **Version 1.0 scope (branch `version/1.0`).** This branch keeps only: the chat input (text, voice, log a note, ask a question),
-> Notes (organised by initiative), Tasks, and the morning brief. The People/contacts CRM, memory layer, Documents organizer,
-> Google Drive/Calendar integrations and business-card scanning described below were removed and live on `ui-revamp-pwa`.
+> Notes and Tasks, both organised by initiative. The People/contacts CRM, memory layer, Documents organizer,
+> Google Drive/Calendar integrations, business-card scanning, the calendar view and the morning brief described below were removed and live on `ui-revamp-pwa`.
 > The README is the source of truth for this version; sections below that cover those features describe the full app.
 
 

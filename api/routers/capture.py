@@ -100,7 +100,7 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
                              geo_lat: Optional[float] = None, geo_lng: Optional[float] = None) -> dict:
     # The summary is stored as short "- " bullet points on purpose (see extraction.py); decisions,
     # concerns and tasks are single lines, so a stray list marker at their start is dropped.
-    summary = extracted.get("summary", "") or ""
+    summary = text_utils.as_bullets(extracted.get("summary", "") or "")
     decisions = [d for d in (text_utils.strip_bullet(x) for x in extracted.get("decisions") or []) if d]
     concerns = [c for c in (text_utils.strip_bullet(x) for x in extracted.get("concerns") or []) if c]
     with step("embedding"):

@@ -31,7 +31,7 @@ export default defineConfig({
       manifest: {
         name: 'MyConfía',
         short_name: 'MyConfía',
-        description: 'Your notes, tasks and morning brief in one place',
+        description: 'Your notes and tasks, organised by initiative',
         theme_color: '#fdfbf7',
         background_color: '#fdfbf7',
         display: 'standalone',

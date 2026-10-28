@@ -39,8 +39,6 @@ def update_settings(body: UserPreferenceUpdate, user_id: str = Depends(get_curre
         if body.font_size not in _FONT_SIZES:
             raise HTTPException(400, f"font_size must be one of {sorted(_FONT_SIZES)}")
         fields["font_size"] = body.font_size
-    if body.daily_brief_email_enabled is not None:
-        fields["daily_brief_email_enabled"] = body.daily_brief_email_enabled
     if body.usage_mode is not None:
         if body.usage_mode not in _USAGE_MODES:
             raise HTTPException(400, f"usage_mode must be one of {sorted(_USAGE_MODES)}")

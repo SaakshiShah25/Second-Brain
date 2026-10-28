@@ -36,7 +36,7 @@ import voice
 from llm_client import get_client as get_llm_client
 from api.auth import get_current_user_id
 from api.rate_limit import limiter, token_subject
-from api.routers import admin, agenda, ask, brief, capture, chat, initiatives, notes, push, settings, tasks
+from api.routers import admin, ask, capture, chat, initiatives, notes, push, settings, tasks
 
 # Error tracking (Sentry, free Developer plan) - only when SENTRY_DSN is
 # set. Notes are private, so nothing personal is sent: no request bodies,
@@ -121,8 +121,6 @@ _AREAS = [
     ("/api/notes", "your notes"),
     ("/api/tasks", "your tasks"),
     ("/api/initiatives", "your initiatives"),
-    ("/api/agenda", "your calendar"),
-    ("/api/brief", "the morning brief"),
     ("/api/settings", "your settings"),
     ("/api/admin", "the admin page"),
 ]
@@ -214,9 +212,7 @@ app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
 app.include_router(capture.router, prefix="/api/capture", tags=["capture"])
 app.include_router(ask.router, prefix="/api/ask", tags=["ask"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
-app.include_router(agenda.router, prefix="/api/agenda", tags=["agenda"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
-app.include_router(brief.router, prefix="/api/brief", tags=["brief"])
 app.include_router(initiatives.router, prefix="/api/initiatives", tags=["initiatives"])
 app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
 app.include_router(push.router, prefix="/api/push", tags=["push"])

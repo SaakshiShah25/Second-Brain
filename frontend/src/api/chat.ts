@@ -9,7 +9,6 @@ function useInvalidateOnCapture() {
   const queryClient = useQueryClient()
   return () => {
     queryClient.invalidateQueries({ queryKey: ['tasks'] })
-    queryClient.invalidateQueries({ queryKey: ['agenda'] })
     queryClient.invalidateQueries({ queryKey: ['notes'] })
   }
 }

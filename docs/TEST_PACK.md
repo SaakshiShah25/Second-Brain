@@ -13,7 +13,7 @@ slightly differently from run to run, so check the **meaning** (category, task, 
 3. Want to preview a note **without saving it**? `python scripts/try_note.py "your text"` prints the route, category,
    summary and tasks, and writes nothing to the database.
 4. A saved note shows a chat reply: *Category · Summary · Decisions · Concerns · Tasks (with due date/time)*.
-   Then check the same note on the **Notes** tab (under its initiative) and its tasks on the **Today** tab.
+   Then check the same note on the **Notes** tab (under its initiative) and its tasks on the **Tasks** tab.
 
 ---
 
@@ -22,7 +22,7 @@ slightly differently from run to run, so check the **meaning** (category, task, 
 | # | Paste this | Expect |
 |---|---|---|
 | A1 | `Met Priya from Acme today. She liked the demo but is worried about the 12-month contract. Agreed to send a revised proposal by Friday 5pm.` | **Work**. Concern: contract length. Decision: send a revised proposal. Task **"Send Priya a revised proposal" — Fri 30 Oct, 5:00 PM, me**. *(ran it)* |
-| A2 | `Rohan will send the pricing sheet by next Tuesday.` | **Work**. Task **"Rohan to send the pricing sheet" — Tue 3 Nov, owner: someone else**. It is marked as owed by someone else on the Today tab. *(ran it; this used to produce no task and was fixed)* |
+| A2 | `Rohan will send the pricing sheet by next Tuesday.` | **Work**. Task **"Rohan to send the pricing sheet" — Tue 3 Nov, owner: someone else**. It is marked as owed by someone else on the Tasks tab. *(ran it; this used to produce no task and was fixed)* |
 | A3 | `Complete the Cybersecurity course by 3rd Nov` | **Learning**. Task due **Tue 3 Nov**, no time, me. *(ran it)* |
 | A4 | `Book dentist appointment` | **Health**. Task with **no date**. *(ran it)* |
 | A5 | `Pay the electricity bill tomorrow at 10am` | **Personal**. Task due **Thu 29 Oct, 10:00 AM**. *(ran it)* |
@@ -116,9 +116,9 @@ If an answer invents details that aren't in your notes, that is a bug — please
 
 ## 4. Screens and buttons to check
 
-- **Today tab:** the morning brief on top, then your tasks in sections (Overdue, Today, Next 7 days, Later, No date, Completed) with the initiative filter, an **I owe / Others owe** switch and a **Calendar** view; overdue dates in red; tick a task to complete it. Tap a task → **Edit wording or deadline** (date and time), **Mark done**, **Actually, someone else owes this**.
+- **Tasks tab:** one block per **initiative** (Work, Personal, Learning, Health, then Others) — never Overdue / Today / Next 7 days; nearest deadline first inside each, undated last; overdue dates in red; the initiative chips at the top focus one initiative; **I owe / Others owe** switch; tick a task → it moves to **Completed**. Tap a task → the **From a note** card, **Edit wording or deadline** (date and time), **Mark done**, **Actually, someone else owes this**. There is **no** morning brief and **no** calendar.
 - **Notes tab:** one block per initiative (its notes as short bullet points with their tasks as tick boxes underneath); tap a block to open that initiative's page; search shows matching notes; each note card shows the **real date** (e.g. "Wed 28-Oct-2026"), not Today/Yesterday; tap a note → read, **Edit** (category, date, points…), **Delete** (its tasks go with it).
-- **Offline:** turn on airplane mode → a grey strip says **"You're offline"**; the Today and Notes tabs say your tasks/notes will appear when you're back online (they never claim "All clear" without having loaded them); sending a chat message keeps your text in the box and says it wasn't sent. Turn it off → a green **"Back online"** strip for a few seconds and the lists reload by themselves. (Wi-Fi with no internet, or the free server waking up, shows "Can't reach the server - trying again…" and recovers the same way.)
+- **Offline:** turn on airplane mode → a grey strip says **"You're offline"**; the Tasks and Notes tabs say your tasks/notes will appear when you're back online (they never claim "All clear" without having loaded them); sending a chat message keeps your text in the box and says it wasn't sent. Turn it off → a green **"Back online"** strip for a few seconds and the lists reload by themselves. (Wi-Fi with no internet, or the free server waking up, shows "Can't reach the server - trying again…" and recovers the same way.)
 - **Voice:** record yourself saying "Uh, I need to, umm, send the deck to Priya by Friday" → the text box (and the saved note's "What you said") reads "I need to send the deck to Priya by Friday." — no "uh" / "umm" / "hmm".
 - **Task → note:** open any task → the **From a note** card shows the note it came from; tap it → the Notes tab opens with that note already open (its tasks are listed inside it, so you can go back the other way too).
 - **Editing a note:** Edit → change the category → Save → the sheet **closes** and the note appears under its new category heading (it no longer returns to Edit / Delete).
@@ -129,5 +129,5 @@ If an answer invents details that aren't in your notes, that is a bug — please
 
 ## 5. Things v1.0 deliberately does not do
 
-People/contact profiles and birthdays, documents and files, answering general-knowledge
+People/contact profiles and birthdays, documents and files, a calendar view, the morning brief, answering general-knowledge
 questions, and reminders timed to an individual task's own due time (reminders are the fixed 9 AM / 5 PM list).

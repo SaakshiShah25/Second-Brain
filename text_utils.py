@@ -165,3 +165,19 @@ def remove_fillers(text):
     out = re.sub(r"\s{2,}", " ", out).strip(" ,;")
     out = re.sub(r"(^|[.!?]\s+)([a-z])", lambda m: m.group(1) + m.group(2).upper(), out)  # sentence starts
     return out or text.strip()
+
+
+def as_bullets(text, max_points: int = 4):
+    """A note summary as "- " bullet lines, one point per line. A summary the model already wrote as
+    bullets is only tidied (markers normalised, empty lines dropped); a plain paragraph is split into
+    its sentences so it still reads as points."""
+    if not isinstance(text, str) or not text.strip():
+        return text or ""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if any(re.match(r"^[-\u2022*]\s+", ln) for ln in lines):
+        points = [strip_bullet(ln) for ln in lines]
+    else:
+        points = [s.strip() for s in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9\"\u201c'])", " ".join(lines))]
+    points = [p for p in points if p][:max_points]
+    return "\n".join(f"- {p}" for p in points)
+

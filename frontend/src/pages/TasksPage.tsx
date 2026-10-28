@@ -1,144 +1,28 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import {
-  ArrowLeftRight,
-  CalendarDays,
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  List,
-  NotebookText,
-  Mail,
-  RefreshCw,
-  Sunrise,
-  TriangleAlert,
-} from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { useMorningBrief, useRefreshBrief, useSendBriefEmail } from '../api/brief'
+import { ArrowLeftRight, Check, CheckCircle2, ChevronDown, ChevronRight, NotebookText, TriangleAlert } from 'lucide-react'
 import { useEditTask, useTasks, useUpdateTaskOwner, useUpdateTaskStatus } from '../api/tasks'
-import type { Task } from '../api/types'
+import type { Initiative, Task } from '../api/types'
 import Button from '../components/Button'
-import { useConnection } from '../lib/connection'
-import CalendarView from '../components/CalendarView'
 import { Input, Label } from '../components/fields'
 import InitiativeBar from '../components/InitiativeBar'
-import InitiativeTag from '../components/InitiativeTag'
 import PageHeader from '../components/PageHeader'
 import Sheet from '../components/Sheet'
 import { useInitiatives } from '../api/initiatives'
 import { useNotes } from '../api/notes'
+import { useConnection } from '../lib/connection'
 import { dueLabel, fullDate, isoLocal } from '../lib/dates'
+import { groupByInitiative } from '../lib/groupByInitiative'
 import { matchesInitiative, notePoints, useInitiativeFilter } from '../lib/initiativeFilter'
-import { useUsageMode } from '../lib/usageMode'
-
-function MorningBriefCard() {
-  const { data, isLoading } = useMorningBrief()
-  const sendEmail = useSendBriefEmail()
-  const refresh = useRefreshBrief()
-  const [expanded, setExpanded] = useState(false)
-
-  return (
-    <section className="mb-6 rounded-2xl border border-border bg-bg-card p-4">
-      <div className="mb-2 flex items-center gap-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-soft text-brand-ink">
-          <Sunrise size={18} strokeWidth={2} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-[0.9375rem] font-semibold">Morning brief</h2>
-          {data?.generated_at && (
-            <p className="text-[0.75rem] leading-tight text-text-faint">
-              As of {new Date(data.generated_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-            </p>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={() => refresh.mutate()}
-          disabled={refresh.isPending}
-          aria-label="Rewrite the brief from what is true now"
-          title="Rewrite from what's true now"
-          className="pressable flex h-9 w-9 items-center justify-center rounded-full text-text-muted disabled:opacity-50"
-        >
-          <RefreshCw size={16} strokeWidth={2} className={refresh.isPending ? 'animate-spin' : ''} />
-        </button>
-        {/* Already emailed automatically each morning (Settings >
-            Notifications) - this is a manual resend. */}
-        <button
-          type="button"
-          onClick={() => sendEmail.mutate()}
-          disabled={sendEmail.isPending}
-          aria-label="Email this brief to me now"
-          className="pressable flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-link disabled:opacity-50"
-        >
-          <Mail size={16} strokeWidth={2} />
-          {sendEmail.isPending ? 'Sending…' : 'Email'}
-        </button>
-      </div>
-      {sendEmail.isSuccess && <p className="mb-2 text-[0.8125rem] text-success">Sent to {sendEmail.data.sent_to}.</p>}
-      {sendEmail.isError && (
-        <p className="mb-2 text-[0.8125rem] text-danger">
-          {sendEmail.error instanceof Error ? sendEmail.error.message : 'Could not send the email.'}
-        </p>
-      )}
-      {isLoading ? (
-        <div className="flex flex-col gap-2 py-1">
-          <span className="h-3 w-11/12 animate-pulse rounded-full bg-bg-elevated" />
-          <span className="h-3 w-4/5 animate-pulse rounded-full bg-bg-elevated" />
-          <span className="h-3 w-2/3 animate-pulse rounded-full bg-bg-elevated" />
-        </div>
-      ) : (
-        <>
-          <div
-            className={`prose-chat relative text-[0.9375rem] leading-relaxed text-text ${
-              expanded ? '' : 'max-h-40 overflow-hidden'
-            }`}
-          >
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                // "Overdue (2)" gets its own heading in the warning colour so it can't be missed.
-                h3: ({ children }) => {
-                  const overdue = /^overdue/i.test(String(children))
-                  return (
-                    <h3 className={`mt-4 mb-1.5 flex items-center gap-1.5 text-[0.9375rem] font-semibold ${overdue ? 'text-danger' : ''}`}>
-                      {overdue && <TriangleAlert size={16} strokeWidth={2.3} />}
-                      {children}
-                    </h3>
-                  )
-                },
-              }}
-            >
-              {data?.brief ?? ''}
-            </ReactMarkdown>
-            {!expanded && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-bg-card to-transparent" />
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => setExpanded((e) => !e)}
-            className="pressable mt-1 flex items-center gap-1 text-sm font-medium text-link"
-          >
-            {expanded ? 'Show less' : 'Read full brief'}
-            <ChevronDown size={16} strokeWidth={2} className={expanded ? 'rotate-180' : ''} />
-          </button>
-        </>
-      )}
-    </section>
-  )
-}
+import { getInitiativeStyle } from '../lib/initiativeStyle'
 
 function isOverdue(task: Task): boolean {
   return task.status === 'open' && !!task.due_date && task.due_date < isoLocal(new Date())
 }
 
-// What a task belongs to, for its subtitle line: the category of the note
-// it came from, or a nudge that someone else owes it.
-function taskContext(task: Task): string {
-  if (task.owner === 'them') return 'Waiting on someone else'
-  return task.interaction?.initiative?.name ?? 'Personal'
+// The initiative a task belongs to (the one its note was filed under).
+function taskInitiativeId(task: Task): number | null {
+  return task.interaction?.initiative?.id ?? null
 }
 
 type OwnerFilter = 'all' | 'me' | 'them'
@@ -207,7 +91,6 @@ function TaskRow({
           {task.description}
         </span>
         <span className="mt-1 flex items-center gap-1.5 text-[0.8125rem] text-text-muted">
-          <InitiativeTag initiative={task.interaction?.initiative} />
           {task.owner === 'them' && <span className="flex-shrink-0 text-them-task">Waiting</span>}
           {task.due_date && (
             <>
@@ -224,33 +107,32 @@ function TaskRow({
   )
 }
 
-// A heading with its count, then its rows. Empty sections are not drawn at all.
+// An initiative's heading (icon + name in its colour, with a count), then its tasks.
 function TaskSection({
   title,
+  initiative,
   tasks,
-  tone,
   ...rowProps
 }: {
   title: string
+  initiative: Initiative | null
   tasks: Task[]
-  tone?: 'danger'
   onToggle: (task: Task) => void
   onOpen: (task: Task) => void
   toggling: boolean
 }) {
-  if (tasks.length === 0) return null
+  const style = getInitiativeStyle(initiative)
   return (
     <section className="mb-5" aria-label={title}>
-      <h3 className={`mb-2 flex items-center gap-1.5 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide ${tone === 'danger' ? 'text-danger' : 'text-text-faint'}`}>
-        {tone === 'danger' && <TriangleAlert size={14} strokeWidth={2.4} />}
+      <h3
+        className="mb-2 flex items-center gap-1.5 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint"
+        style={style ? { color: style.color } : undefined}
+      >
+        {style && <style.Icon size={14} strokeWidth={2.2} />}
         {title}
         <span className="font-medium normal-case tracking-normal opacity-80">· {tasks.length}</span>
       </h3>
-      <div
-        className={`divide-y divide-border overflow-hidden rounded-2xl border bg-bg-card ${
-          tone === 'danger' ? 'border-danger/40' : 'border-border'
-        }`}
-      >
+      <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
         {tasks.map((t) => (
           <TaskRow key={t.id} task={t} {...rowProps} />
         ))}
@@ -259,37 +141,22 @@ function TaskSection({
   )
 }
 
-function todayHeading() {
-  return new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
-}
-
-export default function DigestPage() {
+export default function TasksPage() {
   const navigate = useNavigate()
   const [showCompleted, setShowCompleted] = useState(false)
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('all')
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null)
-  const [view, setView] = useState<'list' | 'calendar'>('list')
   const [editing, setEditing] = useState(false)
   const [editDesc, setEditDesc] = useState('')
   const [editDate, setEditDate] = useState('')
   const [editTime, setEditTime] = useState('')
-  const usage = useUsageMode()
-  // Wording follows what the account is used for.
-  const copy = {
-    work: { tasks: 'Tasks' },
-    personal: { tasks: 'To-dos' },
-    both: { tasks: 'Tasks' },
-  }[usage.mode]
-
   const { data, error, refetch, isFetching } = useTasks('all')
   const connection = useConnection()
   const offline = connection.offline || connection.unreachable
   const allTasks = data?.tasks ?? []
   const activeTask = allTasks.find((t) => t.id === activeTaskId) ?? null
 
-  // The list is sorted into sections by when each task is due, not filtered by tabs.
-  const todayIso = isoLocal(new Date())
-  const weekEnd = isoLocal(new Date(Date.now() + 7 * 86_400_000))
+  // Tasks are shown under their initiative, never sorted by when they are due.
   const [initiativeFilter] = useInitiativeFilter()
   const { data: initiatives } = useInitiatives()
   const { data: notes } = useNotes()
@@ -310,12 +177,8 @@ export default function DigestPage() {
   const focusNotes = (notes ?? []).filter((n) => matchesInitiative(initiativeFilter, n.initiative_id)).length
   const open = shown.filter((t) => t.status === 'open')
   const byDue = (a: Task, b: Task) =>
-    (a.due_date ?? '').localeCompare(b.due_date ?? '') || (a.due_time ?? '99').localeCompare(b.due_time ?? '99')
-  const overdueTasks = open.filter((t) => t.due_date && t.due_date < todayIso).sort(byDue)
-  const todayTasks = open.filter((t) => t.due_date === todayIso).sort(byDue)
-  const weekTasks = open.filter((t) => t.due_date && t.due_date > todayIso && t.due_date <= weekEnd).sort(byDue)
-  const laterTasks = open.filter((t) => t.due_date && t.due_date > weekEnd).sort(byDue)
-  const undatedTasks = open.filter((t) => !t.due_date)
+    (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999') || (a.due_time ?? '99').localeCompare(b.due_time ?? '99')
+  const groups = groupByInitiative(open.slice().sort(byDue), initiatives ?? [], taskInitiativeId)
   const doneTasks = shown.filter((t) => t.status === 'done').sort((a, b) => (b.due_date ?? '').localeCompare(a.due_date ?? ''))
   const editTask = useEditTask()
   const updateStatus = useUpdateTaskStatus()
@@ -335,41 +198,14 @@ export default function DigestPage() {
 
   return (
     <div>
-      <PageHeader title="Today" subtitle={todayHeading()} showProfile />
-
-      <MorningBriefCard />
-
-      <div className="mb-3 flex items-center justify-between px-1">
-        <h2 className="text-lg font-semibold tracking-tight">{copy.tasks}</h2>
-        <button
-          type="button"
-          onClick={() => setView(view === 'list' ? 'calendar' : 'list')}
-          className="pressable flex h-9 items-center gap-1.5 rounded-full bg-bg-elevated px-3 text-[0.8125rem] font-medium text-text-muted"
-        >
-          {view === 'list' ? <CalendarDays size={15} strokeWidth={2} /> : <List size={15} strokeWidth={2} />}
-          {view === 'list' ? 'Calendar' : 'List'}
-        </button>
-      </div>
+      <PageHeader title="Tasks" showProfile />
 
       <InitiativeBar counts={openCounts} className="mb-4" />
 
-      {view === 'calendar' ? (
-        <CalendarView
-          initiative={initiativeFilter === null ? undefined : initiativeFilter === -1 ? null : focusName ?? undefined}
-          onOpenTask={(id) => {
-            setActiveTaskId(id)
-            setEditing(false)
-          }}
-        />
-      ) : (
-        <>
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <p className="text-[0.9375rem] text-text-muted">
-              {!data ? '' : open.length === 0 ? 'Nothing open' : `${open.length} open`}
-              {overdueTasks.length > 0 && <span className="font-medium text-danger"> · {overdueTasks.length} overdue</span>}
-            </p>
-            <OwnerPills value={ownerFilter} onChange={setOwnerFilter} />
-          </div>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <p className="text-[0.9375rem] text-text-muted">{!data ? '' : open.length === 0 ? 'Nothing open' : `${open.length} open`}</p>
+        <OwnerPills value={ownerFilter} onChange={setOwnerFilter} />
+      </div>
 
           {/* Only say "All clear" once the tasks have actually arrived - not while loading or offline. */}
           {!data && (
@@ -407,11 +243,9 @@ export default function DigestPage() {
             }
             return (
               <>
-                <TaskSection title="Overdue" tone="danger" tasks={overdueTasks} {...rowProps} />
-                <TaskSection title="Today" tasks={todayTasks} {...rowProps} />
-                <TaskSection title="Next 7 days" tasks={weekTasks} {...rowProps} />
-                <TaskSection title="Later" tasks={laterTasks} {...rowProps} />
-                <TaskSection title="No date" tasks={undatedTasks} {...rowProps} />
+                {groups.map((g) => (
+                  <TaskSection key={g.key} title={g.name} initiative={g.initiative} tasks={g.items} {...rowProps} />
+                ))}
                 {doneTasks.length > 0 && (
                   <section className="mb-5" aria-label="Completed">
                     <button
@@ -448,15 +282,13 @@ export default function DigestPage() {
               </>
             )
           })()}
-        </>
-      )}
 
       {activeTask && (
         <Sheet onClose={() => setActiveTaskId(null)}>
           <p className="mb-1 text-[0.8125rem] font-medium uppercase tracking-wide text-text-faint">Task</p>
           <p className="mb-1 text-lg leading-snug font-semibold">{activeTask.description}</p>
           <p className="mb-5 text-[0.9375rem] text-text-muted">
-            {taskContext(activeTask)}
+            {activeTask.interaction?.initiative?.name ?? 'Others'}
             {activeTask.due_date &&
               ` · ${isOverdue(activeTask) ? 'overdue, was due' : 'due'} ${dueLabel(activeTask.due_date, activeTask.due_time)}`}
           </p>

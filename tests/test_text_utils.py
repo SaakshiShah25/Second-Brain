@@ -74,6 +74,20 @@ def test_spoken_fillers_are_removed_but_real_words_are_not():
     assert r("umm") == "umm"      # a recording of nothing but a filler is left alone rather than emptied
 
 
+def test_a_summary_is_always_stored_as_bullet_points():
+    from text_utils import as_bullets as b
+    # already bullets: tidied, not rewritten
+    assert b("- Priya liked the demo\n- Worried about the contract") == "- Priya liked the demo\n- Worried about the contract"
+    assert b("• Priya liked the demo\n\n* Worried about the contract") == "- Priya liked the demo\n- Worried about the contract"
+    # a paragraph becomes one point per sentence
+    assert b("Priya liked the demo. She is worried about the contract! Send the deck?") == \
+        "- Priya liked the demo.\n- She is worried about the contract!\n- Send the deck?"
+    # a single line is one point; empty stays empty; at most four points
+    assert b("Idea: weekend trip to Goa") == "- Idea: weekend trip to Goa"
+    assert b("") == "" and b(None) == ""
+    assert b("One. Two. Three. Four. Five. Six.").count("\n") == 3
+
+
 if __name__ == "__main__":
     tests = [(k, f) for k, f in sorted(globals().items()) if k.startswith("test_") and callable(f)]
     failed = 0
