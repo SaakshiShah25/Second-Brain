@@ -12,6 +12,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
       workbox: {
+        // The push + notification-click handlers for the task reminders (public/push-sw.js).
+        importScripts: ['push-sw.js'],
         // Geist (index.html) comes from Google Fonts - cache it so an
         // installed app keeps its typography offline.
         runtimeCaching: [

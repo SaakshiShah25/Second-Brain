@@ -99,11 +99,17 @@ def test_obvious_calls_are_just_search_plus_tasks_when_asked_about_to_dos():
     assert agent._normalise_kinds(["notes", "People", "documents", "todo"]) == ["note", "task"]
 
 
-def test_intent_routes_questions_for_free_and_never_returns_documents():
+def test_intent_routes_obvious_messages_for_free():
     import intent
     assert intent.fast_classify("What's overdue?") == "ask"
-    assert intent.fast_classify("pull my passport and photo") is None   # no document intent any more
-    assert intent.fast_classify("send Priya the deck by 6pm") is None
+    # a to-do phrased as an instruction to yourself is a note, even when the topic sounds like trivia
+    for todo in ["Understand how mutual funds work", "Learn Spanish by March", "Research health insurance options",
+                 "Send the deck to Arjun by 6pm", "Get access to the backend repository by EOD", "Call the bank"]:
+        assert intent.fast_classify(todo) == "capture", todo
+    # aimed at the assistant (or a question): left to the model / the ask path
+    for aimed in ["Tell me a joke", "Explain how mutual funds work", "Write me a poem", "Can you send me a recipe",
+                  "Send me a joke about cats", "pull my passport and photo"]:
+        assert intent.fast_classify(aimed) is None, aimed
 
 
 if __name__ == "__main__":

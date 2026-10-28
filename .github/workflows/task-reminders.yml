@@ -1,0 +1,40 @@
+# Sends the 9 AM and 5 PM task reminders (push notifications). Every 30 minutes this asks the
+# backend which devices are due one - the backend works out each device's own local time and
+# sends each reminder at most once a day (see push_notify.py), so running often is harmless.
+#
+# It also keeps the free Render service from falling asleep for long, which makes the app's
+# first request after a quiet spell much faster.
+#
+# Required repo secrets (Settings > Secrets and variables > Actions):
+#   RENDER_API_URL - the deployed backend's base URL, e.g. https://second-brain-api-ot22.onrender.com
+#   CRON_SECRET    - must match the CRON_SECRET env var set on Render
+#
+# GitHub may start scheduled runs a few minutes late; the reminder window is 90 minutes wide, so
+# that doesn't matter. (On a PRIVATE repo, 48 runs a day is about 1,450 of the 2,000 free minutes
+# a month; public repos are unlimited.)
+name: Task reminders
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch: {}  # run it by hand from the Actions tab to test
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send due reminders
+        run: |
+          # --retry covers the free server waking up from sleep (the first attempt can time out)
+          response=$(curl -s -w '\n%{http_code}' --max-time 90 --retry 3 --retry-delay 15 --retry-all-errors \
+            -X POST "${{ secrets.RENDER_API_URL }}/api/push/send-due" \
+            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}")
+          status="${response##*$'\n'}"
+          body="${response%$'\n'*}"
+          echo "HTTP status: $status"
+          echo "Response body: $body"
+          if [ "$status" -ge 400 ]; then
+            echo "::error::Request failed with status $status - $body"
+            exit 1
+          fi

@@ -7,3 +7,5 @@ uvicorn[standard]
 python-multipart
 requests
 slowapi
+pywebpush
+tzdata

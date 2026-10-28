@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import Button from '../components/Button'
 import ConfiaLogo from '../components/ConfiaLogo'
-import { Input, Label } from '../components/fields'
+import { Label, PasswordInput } from '../components/fields'
 
 // Landing page for the link emailed by resetPasswordForEmail (see
 // LoginPage.tsx). Supabase puts a one-time recovery token in the URL and
@@ -67,8 +67,7 @@ export default function ResetPasswordPage() {
             <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
               <div>
                 <Label>New password</Label>
-                <Input
-                  type="password"
+                <PasswordInput
                   required
                   minLength={6}
                   autoComplete="new-password"

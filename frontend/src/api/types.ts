@@ -111,6 +111,9 @@ export interface ChatMessage {
   // A short status line from the app itself ("Added X and tagged this note", an error) -
   // nothing worth copying, so it gets no copy button.
   status?: boolean
+  // Set on the "that's not something I can help with" reply: the original text, so it can be
+  // saved as a note instead with one tap.
+  saveAsNote?: string
 }
 
 // ---------- Unified chat (single thread, no mode tabs) ----------

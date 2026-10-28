@@ -506,6 +506,47 @@ def match_search_chunks(user_id: str, query_embedding, k: int = 40, kinds=None,
     }).execute().data
 
 
+# ---------- Web Push subscriptions (schema.sql section 33, push_notify.py) ----------
+
+MAX_PUSH_SUBSCRIPTIONS_PER_USER = 10
+
+
+def upsert_push_subscription(user_id: str, endpoint: str, p256dh: str, auth: str, timezone_name: str) -> None:
+    """One row per device endpoint. Re-subscribing from the same device updates its keys and
+    time zone (and re-assigns it if the browser is now signed in as someone else)."""
+    now = datetime.now(timezone.utc).isoformat()
+    get_client().table("push_subscription").upsert(
+        {"user_id": user_id, "endpoint": endpoint, "p256dh": p256dh, "auth": auth,
+         "timezone": timezone_name, "updated_at": now},
+        on_conflict="endpoint",
+    ).execute()
+    # Keep the newest few devices per user - an old phone that was replaced shouldn't pile up.
+    rows = (get_client().table("push_subscription").select("id")
+            .eq("user_id", user_id).order("updated_at", desc=True).execute().data)
+    stale = [r["id"] for r in rows[MAX_PUSH_SUBSCRIPTIONS_PER_USER:]]
+    if stale:
+        get_client().table("push_subscription").delete().in_("id", stale).execute()
+
+
+def delete_push_subscription(endpoint: str, user_id: Optional[str] = None) -> None:
+    q = get_client().table("push_subscription").delete().eq("endpoint", endpoint)
+    if user_id:
+        q = q.eq("user_id", user_id)
+    q.execute()
+
+
+def get_push_subscriptions(user_id: Optional[str] = None) -> list:
+    q = get_client().table("push_subscription").select("*")
+    if user_id:
+        q = q.eq("user_id", user_id)
+    return q.execute().data
+
+
+def mark_push_sent(subscription_id: int, slot: str, local_date: str) -> None:
+    """slot is '9am' or '5pm'."""
+    get_client().table("push_subscription").update({f"last_{slot}": local_date}).eq("id", subscription_id).execute()
+
+
 if __name__ == "__main__":
     # Quick connectivity check: confirms env vars are set and the tables
     # from schema.sql exist.

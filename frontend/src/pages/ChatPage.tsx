@@ -155,11 +155,15 @@ export default function ChatPage() {
     }
   }
 
-  function handleChatResult(result: ChatResult) {
+  function handleChatResult(result: ChatResult, sentText: string) {
     if (result.intent === 'blocked') {
       // Failed the safety check, or asked for something this product
       // isn't built to do (a joke, code, a story) - either way, a plain message.
-      appendMessage('assistant', result.answer, { status: true })
+      appendMessage('assistant', result.answer, {
+        status: true,
+        // Only the "not something I can help with" refusal can be a misread to-do - not a safety block.
+        ...(result.reason === 'out_of_scope' && sentText ? { saveAsNote: sentText } : {}),
+      })
     } else if (result.intent === 'capture') {
       handleSavedCapture(result)
     } else {
@@ -199,10 +203,10 @@ export default function ChatPage() {
     )
   }
 
-  async function submitText(text: string) {
+  async function submitText(text: string, asNote = false) {
     if (!text.trim() || isBusy) return
     const historyForRequest = messages.map(({ role, content }) => ({ role, content }))
-    appendMessage('user', text)
+    if (!asNote) appendMessage('user', text) // "save it as a note" re-sends text that is already on screen
     setIsBusy(true)
     const controller = new AbortController()
     abortControllerRef.current = controller
@@ -214,13 +218,14 @@ export default function ChatPage() {
           geoLat: pendingLocation?.lat,
           geoLng: pendingLocation?.lng,
           initiativeId: selectedInitiativeId,
+          asNote,
         },
         signal: controller.signal,
         onStage: setStage,
       })
       setPendingLocation(null) // one-shot per note, not sticky across future sends
       if (result.intent === 'capture') setSelectedInitiativeId(null) // likewise the chosen category
-      handleChatResult(result)
+      handleChatResult(result, text)
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         appendMessage('assistant', '_Stopped._', { status: true })
@@ -404,7 +409,11 @@ export default function ChatPage() {
         )}
 
         {messages.map((m, i) => (
-          <ChatBubble key={i} message={m} />
+          <ChatBubble
+            key={i}
+            message={m}
+            onSaveAsNote={i === messages.length - 1 && !isBusy ? (t) => submitText(t, true) : undefined}
+          />
         ))}
 
         {pendingInitiativeSuggestion && (

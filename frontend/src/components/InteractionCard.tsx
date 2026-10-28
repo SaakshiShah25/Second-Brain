@@ -3,7 +3,7 @@ import { CheckCircle2, ListChecks, MapPin, Pencil, Trash2, TriangleAlert } from 
 import { useInitiatives } from '../api/initiatives'
 import { useDeleteInteraction, useUpdateInteraction } from '../api/notes'
 import type { Interaction } from '../api/types'
-import { dueLabel, friendlyDate } from '../lib/dates'
+import { dueLabel, fullDate } from '../lib/dates'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
 import { stripBullet } from '../lib/text'
 import Button from './Button'
@@ -87,7 +87,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
         className="pressable block w-full rounded-2xl border border-border bg-bg-card p-4 text-left"
       >
         <div className="mb-1.5 flex items-center gap-2 text-[0.8125rem]">
-          <span className="flex-shrink-0 text-text-faint">{friendlyDate(interaction.date)}</span>
+          <span className="flex-shrink-0 text-text-faint">{fullDate(interaction.date)}</span>
           {openTasks > 0 && (
             <span className="ml-auto flex flex-shrink-0 items-center gap-1 rounded-full bg-bg-elevated px-2 py-0.5 text-xs font-medium text-text-muted">
               <ListChecks size={12} strokeWidth={2} /> {openTasks}
@@ -114,8 +114,7 @@ export default function InteractionCard({ interaction }: { interaction: Interact
                   </span>
                 )}
                 <span className="rounded-full bg-bg-elevated px-2.5 py-1 font-medium text-text-muted">
-                  {friendlyDate(interaction.date)}
-                  {interaction.date ? ` · ${interaction.date}` : ''}
+                  {fullDate(interaction.date)}
                 </span>
               </div>
 

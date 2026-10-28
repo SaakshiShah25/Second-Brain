@@ -30,3 +30,14 @@ services:
         sync: false
       - key: ENCRYPTION_KEY
         sync: false
+      # Task reminder push notifications (push_notify.py). Make the pair once with
+      # `python scripts/generate_vapid_keys.py you@example.com` and never change it.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
+      # Shared secret the scheduled job (.github/workflows/task-reminders.yml) sends.
+      - key: CRON_SECRET
+        sync: false

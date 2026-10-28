@@ -48,6 +48,9 @@ class ChatRequest(BaseModel):
     # The category the user picked for THIS note in the input bar. When set it is
     # used as-is instead of the model's guess; null/absent means "decide for me".
     initiative_id: Optional[int] = None
+    # "Save it as a note instead" after the app mistook a to-do for a request to the assistant:
+    # skips intent classification and logs the text as a note (moderation still applies).
+    as_note: bool = False
 
 
 class InteractionUpdate(BaseModel):
@@ -69,6 +72,22 @@ class TaskStatusUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=500)
     due_date: Optional[str] = Field(None, max_length=10)   # YYYY-MM-DD
     due_time: Optional[str] = Field(None, max_length=8)    # HH:MM
+
+
+class PushKeys(BaseModel):
+    p256dh: str = Field(..., max_length=200)
+    auth: str = Field(..., max_length=100)
+
+
+class PushSubscribeRequest(BaseModel):
+    """What the browser's PushManager.subscribe() returns, plus the device's IANA time zone."""
+    endpoint: str = Field(..., max_length=1000)
+    keys: PushKeys
+    timezone: str = Field("UTC", max_length=64)
+
+
+class PushUnsubscribeRequest(BaseModel):
+    endpoint: str = Field(..., max_length=1000)
 
 
 class UserPreferenceUpdate(BaseModel):

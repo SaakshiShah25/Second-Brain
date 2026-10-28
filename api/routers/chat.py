@@ -39,8 +39,8 @@ router = APIRouter()
 
 _OUT_OF_SCOPE_MESSAGE = (
     "That's not something I can help with here - I'm built specifically for logging and "
-    "recalling your own notes and tasks. Try jotting something down, or ask about something "
-    "you've already logged."
+    "recalling your own notes and tasks. If you meant it as a note or a to-do for yourself, "
+    "tap the button below."
 )
 
 
@@ -63,7 +63,7 @@ async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_c
         return _blocked_reply(moderation_result)
 
     with step("intent_classify"):
-        detected = await run_in_threadpool(intent.classify, body.text)
+        detected = "capture" if body.as_note else await run_in_threadpool(intent.classify, body.text)
 
     if detected == "out_of_scope":
         print(f"[timing] chat_total: {time.perf_counter() - t_start:.2f}s")
@@ -128,8 +128,11 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
             await queue.put(("result", _blocked_reply(moderation_result)))
             return
 
-        await queue.put(("stage", "classifying"))
-        detected = await run_in_threadpool(intent.classify, body.text)
+        if body.as_note:
+            detected = "capture"
+        else:
+            await queue.put(("stage", "classifying"))
+            detected = await run_in_threadpool(intent.classify, body.text)
 
         if detected == "out_of_scope":
             await queue.put((

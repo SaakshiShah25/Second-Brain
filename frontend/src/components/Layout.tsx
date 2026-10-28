@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Home, ListChecks, NotebookText, type LucideIcon } from 'lucide-react'
 import Toaster from './Toast'
+import { syncReminders } from '../lib/push'
 
 // Each tab has its own hue (index.css --sb-fun-*), shown when it's the
 // active tab - full class strings so Tailwind can see them.
@@ -81,6 +82,10 @@ function useKeyboardOpen() {
 
 export default function Layout() {
   const { pathname } = useLocation()
+  // If task reminders are on, tell the server this device's current time zone each time the app opens.
+  useEffect(() => {
+    syncReminders()
+  }, [])
   const keyboardOpen = useKeyboardOpen()
   const showTabs = !TABLESS.some((re) => re.test(pathname)) && !keyboardOpen
 

@@ -4,7 +4,7 @@ import { getAuthProviders, supabase } from '../lib/supabase'
 import { useAuth } from '../auth/AuthContext'
 import Button from '../components/Button'
 import ConfiaLogo from '../components/ConfiaLogo'
-import { Input, Label } from '../components/fields'
+import { Input, Label, PasswordInput } from '../components/fields'
 import Segmented from '../components/Segmented'
 import GoogleIcon from '../components/GoogleIcon'
 
@@ -107,7 +107,7 @@ export default function LoginPage() {
           <p className="mt-3 text-base leading-relaxed text-text-muted">
             {mode === 'forgot'
               ? "We'll email you a link to set a new password."
-              : 'Your people, notes and follow-ups — captured by voice, organised for you.'}
+              : 'Your notes and tasks — captured by voice, organised for you.'}
           </p>
         </div>
 
@@ -149,8 +149,7 @@ export default function LoginPage() {
               {mode !== 'forgot' && (
                 <div>
                   <Label>Password</Label>
-                  <Input
-                    type="password"
+                  <PasswordInput
                     required
                     minLength={6}
                     autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}

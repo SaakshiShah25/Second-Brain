@@ -20,6 +20,8 @@ export interface ChatBody {
   geoLng?: number | null
   // The category picked for this note in the input bar (null/absent: decide automatically).
   initiativeId?: number | null
+  // Skip the "note or question?" decision and save the text as a note.
+  asNote?: boolean
 }
 
 // `signal` lets the caller cancel an in-flight send (the Stop button) -
@@ -44,7 +46,7 @@ export function useChat() {
     }) =>
       api.postStream<ChatResult>(
         '/api/chat/stream',
-        { text: body.text, history: body.history, geo_lat: body.geoLat, geo_lng: body.geoLng, initiative_id: body.initiativeId ?? null },
+        { text: body.text, history: body.history, geo_lat: body.geoLat, geo_lng: body.geoLng, initiative_id: body.initiativeId ?? null, as_note: body.asNote ?? false },
         onStage ?? (() => {}),
         signal,
       ),

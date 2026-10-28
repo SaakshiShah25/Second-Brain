@@ -40,7 +40,14 @@ function Sources({ sources }: { sources: AnswerSource[] }) {
   )
 }
 
-export default function ChatBubble({ message }: { message: ChatMessage }) {
+export default function ChatBubble({
+  message,
+  onSaveAsNote,
+}: {
+  message: ChatMessage
+  // Only passed for the latest message while nothing is in flight.
+  onSaveAsNote?: (text: string) => void
+}) {
   const bodyRef = useRef<HTMLDivElement>(null)
   if (message.role === 'user') {
     // No copy button on your own message - same as every mainstream chat
@@ -62,6 +69,16 @@ export default function ChatBubble({ message }: { message: ChatMessage }) {
       <div ref={bodyRef} className="prose-chat text-[0.9375rem] leading-relaxed text-text">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
       </div>
+      {message.saveAsNote && (
+        <button
+          type="button"
+          disabled={!onSaveAsNote}
+          onClick={() => onSaveAsNote?.(message.saveAsNote!)}
+          className="pressable mt-3 rounded-full border border-border-strong bg-bg-card px-4 py-2 text-sm font-medium disabled:opacity-50"
+        >
+          Save it as a note instead
+        </button>
+      )}
       {message.sources && message.sources.length > 0 && <Sources sources={message.sources} />}
       {!message.status && (
         <div className="-ml-1.5 mt-1">
