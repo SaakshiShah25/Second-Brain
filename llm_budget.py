@@ -114,6 +114,13 @@ def chat(model: str, retries: int = 2, **kwargs):
         if rem is not None:
             s["remaining"] = int(float(rem))
             s["reset_at"] = time.time() + _seconds(raw.headers.get("x-ratelimit-reset-tokens"))
+        # Groq's own numbers for this model: tokens/minute and requests/day
+        # (limit + what's left) - the capacity report uses these rather than
+        # documented values, which differ per model and change over time.
+        for key, header in (("limit_tpm", "x-ratelimit-limit-tokens"), ("limit_rpd", "x-ratelimit-limit-requests"),
+                            ("remaining_rpd", "x-ratelimit-remaining-requests")):
+            if raw.headers.get(header) is not None:
+                s[key] = int(float(raw.headers[header]))
         usage = getattr(resp, "usage", None)
         if usage:
             cached = getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0) or 0

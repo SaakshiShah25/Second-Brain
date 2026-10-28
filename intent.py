@@ -53,7 +53,10 @@ classify as "out_of_scope" when the message is plainly a request to the assistan
 _ASSISTANT_REQUEST = re.compile(
     r"^\s*(please\s+)?(explain|generate|compose|translate|define|"
     r"(write|tell|give|show|make|help|teach|find|get) me|can you|could you|would you|will you|"
-    r"what is|what are|what's|who is|who was|how do|how does|how to|how can|why is|why do|why does)\b"
+    r"what is|what are|what's|who is|who was|how do|how does|how to|how can|why is|why do|why does|"
+    # any other question form ("who won...", "when did..."): the model only gets
+    # overruled for statements, so a question it calls out of scope stays that way
+    r"who|what|when|where|which|why|how|is|are|does|did|can|could|should|would)\b"
     r"|\b(joke|poem|story|essay|lyrics|recipe|code snippet|python|javascript)\b",
     re.I,
 )

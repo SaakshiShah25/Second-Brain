@@ -1,0 +1,146 @@
+{
+  "about": "Note extraction (extraction.extract_info) with a fixed reference date. Checks: the right initiative, the right to-dos with correct owner and resolved deadline, short bullet points that don't repeat the to-dos, no deadline words left in task text, and names capitalised.",
+  "reference_date": "2026-10-28",
+  "initiatives": [
+    "IC case study",
+    "Fixed income learning",
+    "Fitness",
+    "Work",
+    "Personal"
+  ],
+  "cases": [
+    {
+      "id": "ic-feedback",
+      "text": "Partner feedback on the IC memo: valuation is fine but the risks section is too thin. I need to add a downside case with the top client churning by Friday, and Priya will send the fuel cost report tomorrow.",
+      "initiative": [
+        "IC case study"
+      ],
+      "tasks": [
+        {
+          "match": [
+            "downside"
+          ],
+          "owner": "me",
+          "due": "2026-10-30"
+        },
+        {
+          "match": [
+            "fuel"
+          ],
+          "owner": "them",
+          "due": "2026-10-29"
+        }
+      ]
+    },
+    {
+      "id": "fi-learning",
+      "text": "Fixed income: convexity corrects duration for large rate moves. Longer maturity and lower coupon mean higher duration. Make flashcards on this by next Monday.",
+      "initiative": [
+        "Fixed income learning"
+      ],
+      "tasks": [
+        {
+          "match": [
+            "flashcard"
+          ],
+          "owner": "me",
+          "due": "2026-11-02"
+        }
+      ]
+    },
+    {
+      "id": "pure-learning",
+      "text": "Credit spread is corporate yield minus G-sec yield. AAA spreads in India are around 60-80 bps and widen when credit risk rises.",
+      "initiative": [
+        "Fixed income learning"
+      ],
+      "tasks": []
+    },
+    {
+      "id": "fitness",
+      "text": "gym with anita: deadlifts down to 3x5, add mobility twice a week. buy a foam roller this weekend",
+      "initiative": [
+        "Fitness"
+      ],
+      "tasks": [
+        {
+          "match": [
+            "foam roller"
+          ],
+          "owner": "me"
+        }
+      ],
+      "names": [
+        "Anita"
+      ],
+      "allow_extra_tasks": true
+    },
+    {
+      "id": "client-call",
+      "text": "Call with rohan from acme logistics. He liked the demo but thinks pricing is high. He'll get back to us after talking to his team next Monday. I have to send a pricing comparison by Friday 5pm.",
+      "initiative": [
+        "Work"
+      ],
+      "tasks": [
+        {
+          "match": [
+            "pricing"
+          ],
+          "owner": "me",
+          "due": "2026-10-30",
+          "time": "17:00"
+        },
+        {
+          "match": [
+            "rohan",
+            "get back"
+          ],
+          "owner": "them",
+          "due": "2026-11-02"
+        }
+      ],
+      "names": [
+        "Rohan",
+        "Acme"
+      ]
+    },
+    {
+      "id": "bare-todo",
+      "text": "renew passport before december",
+      "initiative": [
+        "Personal",
+        null
+      ],
+      "tasks": [
+        {
+          "match": [
+            "passport"
+          ],
+          "owner": "me"
+        }
+      ],
+      "todo_only": true
+    },
+    {
+      "id": "idea-only",
+      "text": "Idea: a weekly digest every Sunday of people I owe replies to, reusing the morning brief pipeline",
+      "initiative": [
+        "Work",
+        "Personal",
+        null
+      ],
+      "tasks": []
+    },
+    {
+      "id": "decision",
+      "text": "Decided with the partners to keep the base valuation at 1,350 Cr and run sensitivities on WACC 12-14%. Concern: customer concentration, top 5 clients are 46% of revenue.",
+      "initiative": [
+        "IC case study"
+      ],
+      "tasks": [],
+      "expect_decisions": true,
+      "expect_concerns": true,
+      "allow_extra_tasks": true
+    }
+  ]
+}

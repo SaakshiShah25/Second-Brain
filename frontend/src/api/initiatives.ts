@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import type { Initiative } from './types'
+import { applyLocalOrder, saveLocalOrder } from '../lib/initiativeOrder'
 import { colorForNewInitiative, setKnownInitiatives } from '../lib/initiativeStyle'
 
 export function useInitiatives() {
@@ -14,36 +15,12 @@ export function useInitiatives() {
   })
 }
 
-// The user's own order. Saved on the server (initiative.position) and
-// also on this device, so it works before schema.sql section 34 has run.
-const ORDER_KEY = 'confia.initiativeOrder'
-
-function applyLocalOrder(list: Initiative[]): Initiative[] {
-  let order: number[] = []
-  try {
-    order = JSON.parse(localStorage.getItem(ORDER_KEY) ?? '[]')
-  } catch {
-    return list
-  }
-  if (!Array.isArray(order) || order.length === 0) return list
-  const rank = new Map(order.map((id, i) => [id, i]))
-  // Ones not in the saved order (new) keep the server's order, after the rest.
-  return list
-    .map((item, i) => ({ item, key: rank.get(item.id) ?? order.length + i }))
-    .sort((a, b) => a.key - b.key)
-    .map((x) => x.item)
-}
-
 export function useReorderInitiatives() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (ids: number[]) => api.put<{ saved: boolean }>('/api/initiatives/order', { ids }),
     onMutate: (ids) => {
-      try {
-        localStorage.setItem(ORDER_KEY, JSON.stringify(ids))
-      } catch {
-        // the server copy still holds it
-      }
+      saveLocalOrder(ids)
       queryClient.setQueryData<Initiative[]>(['initiatives'], (old) => (old ? applyLocalOrder(old) : old))
     },
   })

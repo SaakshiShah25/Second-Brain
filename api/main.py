@@ -25,7 +25,6 @@ from fastapi.responses import JSONResponse
 from postgrest.exceptions import APIError
 from pydantic import BaseModel
 from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import db
@@ -35,7 +34,7 @@ import observability
 import voice
 from llm_client import get_client as get_llm_client
 from api.auth import get_current_user_id
-from api.rate_limit import limiter, token_subject
+from api.rate_limit import TOO_FAST, default_rate_limit, limiter, route_label, token_subject
 from api.routers import admin, ask, capture, chat, initiatives, notes, push, settings, tasks
 
 # Error tracking (Sentry, free Developer plan) - only when SENTRY_DSN is
@@ -83,7 +82,7 @@ async def _too_many_requests(request, exc: RateLimitExceeded):
                          detail={"route": route, "limit": str(exc.detail)})
     return JSONResponse(
         status_code=429,
-        content={"detail": "You're sending requests faster than the app allows - wait a minute and try again."},
+        content={"detail": TOO_FAST},
     )
 
 
@@ -131,9 +130,7 @@ def _area(path: str) -> str:
 
 
 def _route_name(request) -> str:
-    route = request.scope.get("route")
-    path = getattr(route, "path", None) or re.sub(r"/\d+", "/{id}", request.url.path)
-    return f"{request.method} {path}"
+    return f"{request.method} {route_label(request)}"
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -183,8 +180,6 @@ async def _observe(request, call_next):
     return response
 
 
-app.add_middleware(SlowAPIMiddleware)
-
 # Vite's default dev server port always allowed (local dev), plus the
 # next few ports it falls back to when 5173 is already taken by some
 # other project on the machine (Vite just picks the next free one rather
@@ -208,15 +203,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
-app.include_router(capture.router, prefix="/api/capture", tags=["capture"])
-app.include_router(ask.router, prefix="/api/ask", tags=["ask"])
-app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
-app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
-app.include_router(initiatives.router, prefix="/api/initiatives", tags=["initiatives"])
-app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
-app.include_router(push.router, prefix="/api/push", tags=["push"])
-app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+# Every route gets the default per-user limit (api/rate_limit.py).
+_LIMITED = [Depends(default_rate_limit)]
+app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"], dependencies=_LIMITED)
+app.include_router(capture.router, prefix="/api/capture", tags=["capture"], dependencies=_LIMITED)
+app.include_router(ask.router, prefix="/api/ask", tags=["ask"], dependencies=_LIMITED)
+app.include_router(chat.router, prefix="/api/chat", tags=["chat"], dependencies=_LIMITED)
+app.include_router(settings.router, prefix="/api/settings", tags=["settings"], dependencies=_LIMITED)
+app.include_router(initiatives.router, prefix="/api/initiatives", tags=["initiatives"], dependencies=_LIMITED)
+app.include_router(notes.router, prefix="/api/notes", tags=["notes"], dependencies=_LIMITED)
+app.include_router(push.router, prefix="/api/push", tags=["push"], dependencies=_LIMITED)
+app.include_router(admin.router, prefix="/api/admin", tags=["admin"], dependencies=_LIMITED)
 
 
 @app.get("/api/health")
@@ -272,7 +269,7 @@ def client_error(request: Request, body: ClientError, user_id: str = Depends(get
             sentry_sdk.capture_message(f"[frontend] {message}", level="error")
 
 
-@app.post("/api/transcribe")
+@app.post("/api/transcribe", dependencies=[Depends(default_rate_limit)])
 async def transcribe(file: UploadFile, user_id: str = Depends(get_current_user_id)):
     """
     Mode-agnostic voice transcription - unlike POST /api/capture/voice

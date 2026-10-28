@@ -18,7 +18,12 @@ that is the real caller, not the proxy).
 
 import base64
 import json
+import re
 
+from fastapi import HTTPException, Request
+from limits import parse
+from limits.storage import MemoryStorage
+from limits.strategies import MovingWindowRateLimiter
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -43,4 +48,38 @@ def _user_or_ip(request) -> str:
     return f"user:{sub}" if sub else f"ip:{get_remote_address(request)}"
 
 
-limiter = Limiter(key_func=_user_or_ip, default_limits=["60/minute"])
+# slowapi: only for routes with their own, stricter @limiter.limit(...)
+# (chat, voice capture, client-error).
+limiter = Limiter(key_func=_user_or_ip)
+
+TOO_FAST = "You're sending requests faster than the app allows - wait a minute and try again."
+
+# The default limit for every other API route. Applied as a dependency on
+# each router (api/main.py), i.e. AFTER routing - slowapi's middleware is
+# meant to do this, but with FastAPI's lazily included routers (0.13x+) it
+# can't find the route, treats every route as exempt, and silently limits
+# nothing (found by evals/load.py). Counted per user, per route.
+DEFAULT_LIMIT = parse("60/minute")
+_default_window = MovingWindowRateLimiter(MemoryStorage())
+
+
+def route_label(request) -> str:
+    """The URL path with ids replaced ("/api/notes/{id}"). Not the route's own
+    `path`: inside an included router that is relative ("" for a root route)."""
+    return re.sub(r"/\d+(?=/|$)", "/{id}", request.url.path)
+
+
+def default_rate_limit(request: Request) -> None:
+    route = route_label(request)
+    if not _default_window.hit(DEFAULT_LIMIT, _user_or_ip(request), request.method, route):
+        import observability
+
+        observability.record("limit", "api_rate_limit", status=429, user_id=token_subject(request),
+                             detail={"route": f"{request.method} {route}", "limit": "60 per 1 minute"})
+        raise HTTPException(429, TOO_FAST)
+
+
+def reset_limits() -> None:
+    """Clears every counter (tests)."""
+    limiter.reset()
+    _default_window.storage.reset()

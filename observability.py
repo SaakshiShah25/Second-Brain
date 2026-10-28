@@ -230,5 +230,10 @@ def alert(key: str, subject: str, body: str) -> bool:
         except Exception as e:
             print(f"[warn] alert email failed: {_clip(e, 160)}")
 
-    threading.Thread(target=send, daemon=True, name="obs-alert").start()
+    _spawn(send)
     return True
+
+
+def _spawn(fn) -> None:
+    """Runs `fn` off the request thread (tests swap this to run inline)."""
+    threading.Thread(target=fn, daemon=True, name="obs-alert").start()

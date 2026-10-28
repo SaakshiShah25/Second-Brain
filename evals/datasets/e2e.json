@@ -1,0 +1,36 @@
+{
+  "about": "End to end through the real API (auth, moderation, intent, extraction, search, agent) on a dedicated eval account that is wiped and re-seeded every run. Dates are days relative to the run day. QA checks: each 'must' group needs at least one of its words in the answer; 'must_not' words would be invented facts.",
+  "initiatives": ["IC case study", "Fixed income learning", "Fitness"],
+  "notes": [
+    {"initiative": "IC case study", "day": -9, "summary": "- Case: mid-size Indian logistics company, Series C\n- Revenue Rs 420 Cr, growing 38% YoY\n- EBITDA margin thin at 4%",
+     "tasks": [{"text": "Collect last 3 years of audited financials", "status": "done"}]},
+    {"initiative": "IC case study", "day": -7, "summary": "- Thesis: consolidation play in fragmented B2B freight\n- Moat is the route-density network, not the tech",
+     "decisions": ["Lead with route density as the core thesis"], "tasks": []},
+    {"initiative": "IC case study", "day": -5, "summary": "- Comps trade at 2.5-3x revenue\n- DCF gives Rs 1,350 Cr at 13% WACC\n- Terminal growth of 6% feels aggressive",
+     "concerns": ["Terminal growth of 6% may be too aggressive"], "tasks": [{"text": "Run DCF sensitivity on WACC and terminal growth", "due": 1}]},
+    {"initiative": "IC case study", "day": -3, "summary": "- Top 5 clients are 46% of revenue\n- Fuel cost pass-through only partial",
+     "tasks": [{"text": "Ask the founder for client contract renewal dates", "due": -2}, {"text": "Priya to share the industry fuel-cost report", "due": 2, "owner": "them"}]},
+    {"initiative": "Fixed income learning", "day": -8, "summary": "- Modified duration is the % price change per 1% yield move\n- Convexity corrects duration for large rate moves",
+     "tasks": [{"text": "Read the chapter on duration and convexity", "status": "done"}]},
+    {"initiative": "Fixed income learning", "day": -2, "summary": "- Credit spread = corporate yield minus G-sec yield\n- AAA spreads in India around 60-80 bps",
+     "tasks": [{"text": "Make flashcards for credit spread and duration terms", "due": 5}]},
+    {"initiative": "Fitness", "day": -1, "summary": "- Deadlifts down to 3x5 with coach Anita\n- Add mobility work twice a week",
+     "tasks": [{"text": "Buy a foam roller", "due": 0}]}
+  ],
+  "qa": [
+    {"q": "What is still open for the IC case study?", "must": [["sensitivity", "dcf", "wacc"], ["renewal", "contract"]], "must_not": ["audited"]},
+    {"q": "What did I learn about duration?", "must": [["price", "sensitivity", "%"], ["convexity", "yield"]]},
+    {"q": "What does Priya owe me?", "must": [["fuel"]]},
+    {"q": "What's overdue?", "must": [["renewal", "contract", "founder"]]},
+    {"q": "What valuation did the DCF give?", "must": [["1,350", "1350"]]},
+    {"q": "Which IC tasks have I finished?", "must": [["audited", "financials"]]},
+    {"q": "What did coach Anita change in my plan?", "must": [["deadlift", "3x5"]]},
+    {"q": "What did I note about crypto?", "must": [["no ", "not ", "don't", "nothing", "couldn't", "can't", "isn't"]], "must_not": ["bitcoin", "ethereum"], "tag": "no-hallucination"},
+    {"q": "What is the revenue concentration risk in the case?", "must": [["46"]]}
+  ],
+  "captures": [
+    {"text": "Ask Priya to send the updated fuel cost model by Friday", "initiative": ["IC case study", "Work"], "tasks": 1, "owners": ["me"]},
+    {"text": "Bond prices fall when yields rise; read the yield curve chapter by Sunday", "initiative": ["Fixed income learning"], "tasks": 1, "owners": ["me"]},
+    {"text": "Write me a poem about bonds", "intent": "blocked"}
+  ]
+}

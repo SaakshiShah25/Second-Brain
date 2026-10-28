@@ -304,11 +304,13 @@ def run(user_id: str, question: str, history: list, on_stage: Optional[Callable[
                     fresh.append((c, a))
             if not fresh:
                 break  # nothing new to look up - answer with what we have
+            # One copy of THIS thread's context per lookup, taken here (not in the
+            # worker, whose own context is empty), so each lookup stays attributed
+            # to this user/request; a context can't be entered by two threads at once.
+            jobs = [(contextvars.copy_context(), c, a) for c, a in fresh]
             with ThreadPoolExecutor(max_workers=4) as pool:
                 found = dict(zip([id(c) for c, _ in fresh],
-                                 # copy_context: the lookups stay attributed to this user/request
-                                 pool.map(lambda ca: contextvars.copy_context().run(rt.call, ca[0].function.name, ca[1]),
-                                          fresh)))
+                                 pool.map(lambda j: j[0].run(rt.call, j[1].function.name, j[2]), jobs)))
             for c, a in calls:
                 result = found.get(id(c), {"note": "already run - see the earlier result"})
                 messages.append({"role": "tool", "tool_call_id": c.id, "content": _compact(result)})

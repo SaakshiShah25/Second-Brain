@@ -91,6 +91,14 @@ def resolve_relative_phrase(phrase, reference_date: date = None) -> Optional[str
         return None
 
     p = phrase.strip().lower()
+    # The model is asked for a bare phrase ("Friday") but sometimes keeps the
+    # deadline wording ("by Friday", "before tomorrow", "EOD Friday") - the
+    # task then lost its due date entirely (found by evals/components.py).
+    p = re.sub(r"^(?:no later than|by|before|on|until|till|due|eod|end of day|end of)\s+", "", p).strip()
+    p = re.sub(r"^(?:eod|end of day)\s+", "", p).strip()
+    absolute = to_valid_date(p)
+    if absolute:
+        return absolute
 
     if p == "today":
         return reference_date.isoformat()
