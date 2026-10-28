@@ -56,7 +56,9 @@ something too vague to name (e.g. "buy milk", "felt tired today" should NOT get 
 it clearly does (e.g. "started training for the Mumbai marathon" when no fitness/running
 initiative exists), set "suggested_initiative" to a short, specific 2-4 word name for it, and leave
 "initiative" null. Otherwise, leave "suggested_initiative" null. Never suggest a name that
-duplicates or is a close variant of an existing initiative above. "suggested_initiative" must
+duplicates or is a close variant of an existing initiative above. A single errand or chore is NEVER a
+theme: calling the bank, paying a bill, booking an appointment, renewing a document, buying
+something, sending an email do not get a suggestion - and neither does a one-off idea. "suggested_initiative" must
 always be null whenever "initiative" is non-null - the two are mutually exclusive.
 
 IMPORTANT - for date/time references anchored to a WEEKDAY, a MONTH, or to
@@ -68,7 +70,8 @@ not compute "next month" into a date yourself, even though it looks simple; outp
 the phrase, not a date, exactly like the weekday case). Just output the phrase
 normalized to one of: "today", "tomorrow", "yesterday", "next <weekday>",
 "last <weekday>", "this <weekday>", a bare "<weekday>" with no qualifier (e.g. plain
-"Friday", meaning the upcoming one), or "next month"/"last month"/"this month" -
+"Friday", meaning the upcoming one), "this week", "next week", or
+"next month"/"last month"/"this month" -
 using the weekday name/qualifier exactly as the note implies (e.g. "he'll get back
 to us by next Monday" -> "next Monday"; "met him last Thursday" -> "last Thursday";
 "starting next month" -> "next month").
@@ -109,10 +112,11 @@ Return ONLY valid JSON (no markdown fences, no preamble) matching this exact sch
 }}
 
 Notes:
+- A promise or commitment by SOMEONE ELSE that the user is waiting on is a follow-up too, with owner "them": "Rohan will send the pricing sheet by next Tuesday" -> description "Rohan to send the pricing sheet", due_date "next Tuesday", owner "them". Do not drop it just because the user isn't the one doing it.
 - Every "follow_ups" description, "concerns" entry, and "decisions" entry should be understandable in complete isolation, without needing to cross-reference the summary or raw note - imagine someone reading only that one field months later with no other context.
 - Be faithful to the note - do not invent details that aren't stated or strongly implied.
 - If information for a field isn't present, use an empty string, empty list, or null as appropriate.
-- Stored text is read weeks later, when "tomorrow" or "next Friday" would point at the wrong day. In "summary", "concerns" and "decisions" (NOT in follow-up descriptions, which keep deadline words out entirely and carry the deadline in due_date/due_time), replace relative day words ("today", "tomorrow", "yesterday", "next week", "this Friday") with the actual calendar date worked out from today's date above, written like "October 6" (or "Friday, October 9"). The note's own wording is kept separately, so nothing is lost.
+- Stored text is read weeks later, when "today" or "tomorrow" would point at the wrong day. In "summary", "concerns" and "decisions" (NOT in follow-up descriptions, which keep deadline words out entirely and carry the deadline in due_date/due_time), replace ONLY the plain words "today", "tomorrow" and "yesterday" with the calendar date worked out from today's date above, written like "October 6". Leave every other time reference exactly as the note words it ("by Friday", "next Tuesday", "last Sunday", "next week", "in December") - do NOT turn weekdays or "next week"/"last week" into calendar dates, because weekday arithmetic is done in code (the exact dates are stored on each follow-up). Never write a weekday name together with a date you worked out yourself.
 - "initiative" only ever names one of the initiatives listed above, verbatim, or null - never a name outside that list.
 - "suggested_initiative" is the one exception to "never invent a name" above - it's specifically FOR proposing a new one, but only when "initiative" is null and the note is substantial enough to deserve its own category (see instructions above), not for every uncategorized note.
 - Always output person names and company names in proper capitalization (e.g. "David Okafor", "IBM", "Acme Corp"), regardless of how they appear in the source text - voice transcripts in particular sometimes come through in lowercase or inconsistent casing, and that's a transcription artifact, not how the name should be recorded or displayed.

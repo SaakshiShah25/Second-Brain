@@ -29,7 +29,10 @@ _SYSTEM_PROMPT = """You classify a message sent to a personal notes-and-tasks ch
   user talking to THEMSELVES - a to-do or a goal - not a request to the assistant, however
   general the topic: "Understand how mutual funds work", "Learn Spanish", "Research health
   insurance options", "Read up on index funds", "Get access to the repo by EOD", "Call the
-  bank". These are all "capture".
+  bank", "Write the quarterly report by Friday", "Write to Priya about the contract". These are
+  all "capture". (A bare request for generic content - "Write a python function to reverse a
+  string", "Write a poem", "Draw a cat", "Generate a logo" - is NOT a to-do about the user's own
+  life: that is out_of_scope.)
 - "ask": the user is asking a question about THEIR OWN logged notes or tasks, or searching for
   something they wrote down before (e.g. "What did I note about pricing?", "What's overdue?",
   "What do I need to do this week?", "When did I last talk to Rohan?").

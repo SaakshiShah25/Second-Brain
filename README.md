@@ -124,6 +124,12 @@ cd frontend && npx tsc -p tsconfig.app.json --noEmit  # frontend types
 - **Frontend → Vercel** with root directory `frontend`; `frontend/vercel.json` handles the SPA fallback.
   Set `VITE_API_URL` to the Render URL, then set `FRONTEND_URL` on Render to the Vercel URL and redeploy.
 
+### Trying it out
+
+`docs/TEST_PACK.md` is a manual test pack: notes to paste into the chat, what each should produce, questions to ask afterwards,
+and screens to check. `python scripts/try_note.py "your text"` previews how any message would be handled (route, category,
+summary, tasks) without saving anything.
+
 ### Maintenance scripts
 
 `scripts/reindex_search.py [email …]` rebuilds the search index; `scripts/view_decrypted.py` prints decrypted rows for QA;

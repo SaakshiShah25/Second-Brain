@@ -100,6 +100,9 @@ def resolve_relative_phrase(phrase, reference_date: date = None) -> Optional[str
         return (reference_date - timedelta(days=1)).isoformat()
     if p == "next week":
         return (reference_date + timedelta(weeks=1)).isoformat()
+    if p in ("this week", "end of the week", "end of week"):
+        # the Friday that closes this week - or today, once the weekend has started
+        return (reference_date + timedelta(days=max(0, 4 - reference_date.weekday()))).isoformat()
 
     m = _RELATIVE_MONTH_RE.match(p)
     if m:

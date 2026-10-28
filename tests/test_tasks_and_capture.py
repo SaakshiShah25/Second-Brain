@@ -11,6 +11,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import date_utils  # noqa: E402
 
 
+def test_week_phrases_resolve_in_code():
+    wed = date(2026, 10, 28)   # a Wednesday
+    assert date_utils.resolve_relative_phrase("next week", wed) == "2026-11-04"
+    assert date_utils.resolve_relative_phrase("this week", wed) == "2026-10-30"          # that week's Friday
+    assert date_utils.resolve_relative_phrase("this week", date(2026, 10, 31)) == "2026-10-31"   # weekend: today
+    assert date_utils.resolve_relative_phrase("next Tuesday", wed) == "2026-11-03"
+    assert date_utils.resolve_relative_phrase("last Sunday", wed) == "2026-10-25"
+
+
 def test_clock_times_are_normalised_or_dropped():
     cases = {"19:00": "19:00", "7pm": "19:00", "7:30 PM": "19:30", "12am": "00:00", "12pm": "12:00", "9 a.m.": "09:00",
              "19:30:00": "19:30", "noon": "12:00", "midnight": "00:00", "0:05": "00:05"}
