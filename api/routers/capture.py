@@ -135,10 +135,10 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
     skipped_due_dates = []
     for item in extracted.get("follow_ups", []) or []:
         if isinstance(item, dict):
-            task_desc, raw_due_date = text_utils.strip_bullet(item.get("description", "")), item.get("due_date")
+            task_desc, raw_due_date = text_utils.clean_task_text(item.get("description", "")), item.get("due_date")
             owner = item.get("owner") or "me"
         else:
-            task_desc, raw_due_date, owner = text_utils.strip_bullet(str(item)), None, "me"
+            task_desc, raw_due_date, owner = text_utils.clean_task_text(str(item)), None, "me"
         if not task_desc:
             continue
         if owner not in ("me", "them"):

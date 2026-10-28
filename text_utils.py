@@ -85,3 +85,53 @@ def strip_bullet(text):
     if not isinstance(text, str):
         return text
     return _LEADING_BULLET.sub("", text).strip()
+
+
+# "Remind me to call mom", "Add a task to remind me about X", "Don't forget to X", "I need to X" ...
+# The wrapper around a to-do is not part of the to-do; the action is.
+_TASK_WRAPPERS = [
+    re.compile(r"^(please\s+)?(add|create|make|set)\s+(me\s+)?(a|an|the)?\s*(new\s+)?(task|reminder|to-?do)\b[^,.:;]*?\b(to|about|of|that)\s+(remind\s+me\s+(to|about|of)\s+)?", re.I),
+    re.compile(r"^(please\s+)?(add|create|make|set)\s+(me\s+)?(a|an|the)?\s*(new\s+)?(task|reminder|to-?do)\s*(for\s+me\s*)?[:\-]\s*", re.I),
+    re.compile(r"^(task|reminder|to-?do)\s*[:\-]\s*", re.I),
+    re.compile(r"^(please\s+)?remind\s+me\s+(to|about|of|that)\s+", re.I),
+    re.compile(r"^(please\s+)?(don'?t|do\s+not)\s+forget\s+(to\s+)?", re.I),
+    re.compile(r"^(please\s+)?make\s+sure\s+(that\s+)?(i\s+|to\s+)?", re.I),
+    re.compile(r"^(i\s+)?(need|have|should|must|ought|want)\s+to\s+", re.I),
+    re.compile(r"^(i\s+)?(need|have|should|must)\s+", re.I),
+]
+
+
+# "remind me about STARTING a workout" -> "START a workout"
+_GERUNDS = {
+    "starting": "start", "doing": "do", "going": "go", "making": "make", "taking": "take", "buying": "buy",
+    "calling": "call", "booking": "book", "renewing": "renew", "paying": "pay", "sending": "send",
+    "learning": "learn", "studying": "study", "reading": "read", "writing": "write", "cleaning": "clean",
+    "checking": "check", "visiting": "visit", "cooking": "cook", "exercising": "exercise", "practicing": "practice",
+    "practising": "practise", "running": "run", "walking": "walk", "drinking": "drink", "eating": "eat",
+    "sleeping": "sleep", "meeting": "meet", "finishing": "finish", "submitting": "submit", "filing": "file",
+    "updating": "update", "scheduling": "schedule", "booking": "book", "applying": "apply", "emailing": "email",
+    "ordering": "order", "picking": "pick", "cancelling": "cancel", "canceling": "cancel", "planning": "plan",
+}
+
+
+def clean_task_text(text):
+    """A to-do as just the action: wrappers like "remind me to" / "add a task to" / "I need to"
+    are dropped and the first letter capitalised. If nothing would be left, the text is unchanged."""
+    if not isinstance(text, str):
+        return text
+    out = strip_bullet(text)
+    for _ in range(3):  # "Remind me to ... " can sit inside "Add a task ..."
+        changed = False
+        for pattern in _TASK_WRAPPERS:
+            trimmed = pattern.sub("", out, count=1).strip()
+            if trimmed and trimmed != out:
+                out, changed = trimmed, True
+                break
+        if not changed:
+            break
+    if out != strip_bullet(text):  # a wrapper was removed: "...about starting X" reads better as "Start X"
+        first, _, rest = out.partition(" ")
+        if first.lower() in _GERUNDS:
+            out = (_GERUNDS[first.lower()] + " " + rest).strip()
+    return out[:1].upper() + out[1:] if out else strip_bullet(text)
+

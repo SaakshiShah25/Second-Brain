@@ -39,6 +39,9 @@ slightly differently from run to run, so check the **meaning** (category, task, 
 | A16 | `- Scrum call at 10 AM` | The leading `- ` is dropped from the summary. **Work**. Usually no task (it's an event, not a to-do). *(ran it)* |
 | A17 | `Went for a 5k run this morning, knee felt a bit sore. Need to book a physio visit this week.` | **Health**. Concern: sore knee. Task "Book a physio appointment", due **Fri 30 Oct** ("this week" = that week's Friday). *(ran it)* |
 | A18 | `Call the bank about the card replacement on 2nd November at 3:30 pm` | **Personal**. Task due **Mon 2 Nov, 3:30 PM**. No "new category?" prompt for a one-off errand. *(ran it)* |
+| A19 | `It is very important to understand equity and debt mutual funds.` | Summary stays close to your words: **"It's very important to understand equity and debt mutual funds."** (not "I recognize the importance of…"). **Learning** (or Others). *(ran it)* |
+| A20 | `Add a task to remind me about starting workout, at least 10 minutes skipping every day.` | The task is just the action: **"Start workout, at least 10 minutes skipping every day"** (or the AI's own cleaner wording, e.g. "Start a daily workout: at least 10 minutes of skipping") — never "Add a task to remind me…". Recurrence is not supported: it is one task, no repeating. *(wrapper removal is unit-tested; the final wording was not re-run live because the daily AI quota was used up)* |
+| A21 | `Remind me to call mom tomorrow evening` | Task **"Call mom"**, due tomorrow, no clock time ("evening" is not guessed). *(ran it)* |
 
 **Optional extras**
 - Tap **+** before sending and pick a category (e.g. Health) → that note is filed there even if the AI would have chosen differently.

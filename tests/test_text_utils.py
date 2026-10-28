@@ -32,6 +32,26 @@ def test_existing_unicode_clean_up_still_works():
     assert n("Smith Desai") == "Smith Desai"
 
 
+def test_a_to_do_loses_its_wrapper_and_keeps_the_action():
+    from text_utils import clean_task_text as c
+    cases = {
+        "Add a task to remind me about starting workout, at least 10 minutes skipping every day": "Start workout, at least 10 minutes skipping every day",
+        "Add a reminder for me to start a daily workout of at least 10 minutes skipping": "Start a daily workout of at least 10 minutes skipping",
+        "Add a task to call the bank": "Call the bank",
+        "Remind me to call mom": "Call mom",
+        "Don't forget to renew the car insurance": "Renew the car insurance",
+        "I need to send David the new email id": "Send David the new email id",
+        "Need to fix my sleep schedule": "Fix my sleep schedule",
+        "Make sure to lock the office": "Lock the office",
+        "- Send Priya the deck": "Send Priya the deck",
+        "Send Priya the deck": "Send Priya the deck",
+        "Task: renew passport": "Renew passport",
+        "Add a task": "Add a task",          # nothing left after the wrapper -> unchanged
+    }
+    for raw, expected in cases.items():
+        assert c(raw) == expected, (raw, c(raw))
+
+
 if __name__ == "__main__":
     tests = [(k, f) for k, f in sorted(globals().items()) if k.startswith("test_") and callable(f)]
     failed = 0
