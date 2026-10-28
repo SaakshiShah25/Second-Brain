@@ -122,7 +122,7 @@ export default function ChatPage() {
       return
     }
     if (!navigator.geolocation) {
-      appendMessage('assistant', "This browser doesn't support location.")
+      appendMessage('assistant', "This browser doesn't support location.", { status: true })
       return
     }
     setLocationLoading(true)
@@ -132,7 +132,7 @@ export default function ChatPage() {
         setLocationLoading(false)
       },
       () => {
-        appendMessage('assistant', "Couldn't get your location - check your browser's location permission for this site.")
+        appendMessage('assistant', "Couldn't get your location - check your browser's location permission for this site.", { status: true })
         setLocationLoading(false)
       },
       { enableHighAccuracy: true, timeout: 10000 },
@@ -154,7 +154,7 @@ export default function ChatPage() {
     if (result.intent === 'blocked') {
       // Failed the safety check, or asked for something this product
       // isn't built to do (a joke, code, a story) - either way, a plain message.
-      appendMessage('assistant', result.answer)
+      appendMessage('assistant', result.answer, { status: true })
     } else if (result.intent === 'capture') {
       handleSavedCapture(result)
     } else {
@@ -171,7 +171,7 @@ export default function ChatPage() {
     const { name: suggestedName, interactionId } = pendingInitiativeSuggestion
     if (choice === 'decline') {
       setPendingInitiativeSuggestion(null)
-      appendMessage('assistant', `Okay, left it in Others.`)
+      appendMessage('assistant', `Okay, left it in Others.`, { status: true })
       return
     }
     const name = choice === 'custom' ? (customName ?? '').trim() : suggestedName
@@ -184,12 +184,12 @@ export default function ChatPage() {
           updateInteraction.mutate(
             { interactionId, fields: { initiative_id: initiative.id } },
             {
-              onSuccess: () => appendMessage('assistant', `Added **${initiative.name}** and tagged this note with it.`),
-              onError: () => appendMessage('assistant', `Created **${name}**, but couldn't tag this note with it - you can do that from the Notes page.`),
+              onSuccess: () => appendMessage('assistant', `Added **${initiative.name}** and tagged this note with it.`, { status: true }),
+              onError: () => appendMessage('assistant', `Created **${name}**, but couldn't tag this note with it - you can do that from the Notes page.`, { status: true }),
             },
           )
         },
-        onError: () => appendMessage('assistant', `Couldn't create that initiative - please try again from the Notes tab.`),
+        onError: () => appendMessage('assistant', `Couldn't create that initiative - please try again from the Notes tab.`, { status: true }),
       },
     )
   }
@@ -218,9 +218,9 @@ export default function ChatPage() {
       handleChatResult(result)
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        appendMessage('assistant', '_Stopped._')
+        appendMessage('assistant', '_Stopped._', { status: true })
       } else {
-        appendMessage('assistant', `Something went wrong: ${err}`)
+        appendMessage('assistant', `Something went wrong: ${err}`, { status: true })
       }
     } finally {
       setIsBusy(false)
@@ -248,6 +248,7 @@ export default function ChatPage() {
       appendMessage(
         'assistant',
         "Couldn't access your microphone - check that this app has microphone permission, then try again.",
+        { status: true },
       )
       return
     }
@@ -274,7 +275,7 @@ export default function ChatPage() {
         setInputText(transcript)
         chatInputRef.current?.focus()
       } catch (err) {
-        appendMessage('assistant', `Voice transcription failed: ${err}`)
+        appendMessage('assistant', `Voice transcription failed: ${err}`, { status: true })
       } finally {
         setIsBusy(false)
       }

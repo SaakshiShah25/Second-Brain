@@ -108,6 +108,9 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   sources?: AnswerSource[]
+  // A short status line from the app itself ("Added X and tagged this note", an error) -
+  // nothing worth copying, so it gets no copy button.
+  status?: boolean
 }
 
 // ---------- Unified chat (single thread, no mode tabs) ----------

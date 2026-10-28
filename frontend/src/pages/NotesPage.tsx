@@ -141,7 +141,7 @@ export default function NotesPage() {
               <h2 className="mb-2 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint">{section}</h2>
               <div className="flex flex-col gap-2.5">
                 {items.map((note) => (
-                  <InteractionCard key={note.id} interaction={note} />
+                  <InteractionCard key={note.id} interaction={note} hideDate={section === 'Today' || section === 'Yesterday'} />
                 ))}
               </div>
             </section>

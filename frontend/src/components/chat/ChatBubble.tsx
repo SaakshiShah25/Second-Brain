@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useNavigate } from 'react-router-dom'
@@ -40,6 +41,7 @@ function Sources({ sources }: { sources: AnswerSource[] }) {
 }
 
 export default function ChatBubble({ message }: { message: ChatMessage }) {
+  const bodyRef = useRef<HTMLDivElement>(null)
   if (message.role === 'user') {
     // No copy button on your own message - same as every mainstream chat
     // UI; you already have what you typed.
@@ -57,13 +59,15 @@ export default function ChatBubble({ message }: { message: ChatMessage }) {
   // the answer relied on.
   return (
     <div className="pr-2" style={{ animation: 'fade-in 0.2s ease-out' }}>
-      <div className="prose-chat text-[0.9375rem] leading-relaxed text-text">
+      <div ref={bodyRef} className="prose-chat text-[0.9375rem] leading-relaxed text-text">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
       </div>
       {message.sources && message.sources.length > 0 && <Sources sources={message.sources} />}
-      <div className="-ml-1.5 mt-1">
-        <CopyButton text={message.content} />
-      </div>
+      {!message.status && (
+        <div className="-ml-1.5 mt-1">
+          <CopyButton text={message.content} source={bodyRef} />
+        </div>
+      )}
     </div>
   )
 }

@@ -73,6 +73,25 @@ def test_capture_saves_the_note_and_its_tasks_without_any_person():
     assert ("note", [7]) in saved["indexed"]
 
 
+def test_list_markers_are_stripped_from_the_saved_note():
+    import text_utils
+    for raw, clean in {"- Scrum call at 10 AM": "Scrum call at 10 AM", "• Upload the doc": "Upload the doc",
+                       "  * Pay rent": "Pay rent", "Complete the course": "Complete the course", "": ""}.items():
+        assert text_utils.strip_bullet(raw) == clean, raw
+    assert text_utils.strip_bullet(None) is None
+    import api.routers.capture as cap
+    saved = {}
+    cap.db = types.SimpleNamespace(create_interaction=lambda u, **kw: saved.update(kw) or 1,
+                                   create_task=lambda u, i, d, **kw: saved.setdefault("tasks", []).append(d) or 2,
+                                   get_initiative=lambda u, i: None)
+    cap.embeddings = types.SimpleNamespace(compute_embedding=lambda t, **k: None)
+    cap.search_index = types.SimpleNamespace(enqueue=lambda *a, **k: None)
+    out = cap._process_extracted("u", "x", {"summary": "- Scrum call at 10 AM", "decisions": ["- Go ahead"],
+                                            "follow_ups": [{"description": "- Join the call", "owner": "me"}]})
+    assert saved["summary"] == "Scrum call at 10 AM" and out["summary"] == "Scrum call at 10 AM"
+    assert saved["decisions"] == ["Go ahead"] and saved["tasks"] == ["Join the call"]
+
+
 def test_the_agent_lists_tasks_with_exact_filters():
     import agent
     today = date.today()

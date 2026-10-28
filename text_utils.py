@@ -74,3 +74,14 @@ def fix_transcript_casing(text: str) -> str:
     text = _STANDALONE_I.sub("I", text)
     text = _SENTENCE_START.sub(lambda m: m.group(1) + m.group(2).upper(), text)
     return text
+
+
+_LEADING_BULLET = re.compile(r"^[\s\-\u2013\u2014\u2022*]+")
+
+
+def strip_bullet(text):
+    """Drops list-marker characters the model sometimes leaves at the start of a line
+    ("- Scrum call at 10 AM" -> "Scrum call at 10 AM"). Non-strings pass through."""
+    if not isinstance(text, str):
+        return text
+    return _LEADING_BULLET.sub("", text).strip()

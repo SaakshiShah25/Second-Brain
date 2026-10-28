@@ -19,6 +19,7 @@ import extraction
 import google_maps
 import moderation
 import search_index
+import text_utils
 import voice
 from timing import step
 from api.auth import get_current_user_id
@@ -95,6 +96,10 @@ def _resolve_initiative(user_id: str, extracted: dict) -> Optional[int]:
 def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, interaction_date: str,
                              date_warning: Optional[str], initiative_id: Optional[int] = None,
                              geo_lat: Optional[float] = None, geo_lng: Optional[float] = None) -> dict:
+    # The model sometimes starts a line with a list marker ("- Scrum call at 10 AM").
+    summary = text_utils.strip_bullet(extracted.get("summary", "")) or ""
+    decisions = [d for d in (text_utils.strip_bullet(x) for x in extracted.get("decisions") or []) if d]
+    concerns = [c for c in (text_utils.strip_bullet(x) for x in extracted.get("concerns") or []) if c]
     with step("embedding"):
         embedding = embeddings.compute_embedding(raw_text)
 
@@ -114,15 +119,15 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
         raw_text=raw_text,
         date=interaction_date,
         location=extracted.get("location"),
-        summary=extracted.get("summary", ""),
+        summary=summary,
         topics=extracted.get("topics", []),
         embedding=embedding,
         geo_lat=geo_lat,
         geo_lng=geo_lng,
         geo_address=geo_address,
         maps_url=maps_url,
-        decisions=extracted.get("decisions") or [],
-        concerns=extracted.get("concerns") or [],
+        decisions=decisions,
+        concerns=concerns,
     )
 
     tasks_created = []
@@ -130,10 +135,10 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
     skipped_due_dates = []
     for item in extracted.get("follow_ups", []) or []:
         if isinstance(item, dict):
-            task_desc, raw_due_date = item.get("description", ""), item.get("due_date")
+            task_desc, raw_due_date = text_utils.strip_bullet(item.get("description", "")), item.get("due_date")
             owner = item.get("owner") or "me"
         else:
-            task_desc, raw_due_date, owner = str(item), None, "me"
+            task_desc, raw_due_date, owner = text_utils.strip_bullet(str(item)), None, "me"
         if not task_desc:
             continue
         if owner not in ("me", "them"):
@@ -171,14 +176,14 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
         # lookup - None here means Uncategorized (initiative_id is null,
         # or the looked-up initiative no longer exists).
         "initiative_name": (db.get_initiative(user_id, initiative_id) or {}).get("name") if initiative_id else None,
-        "summary": extracted.get("summary", ""),
+        "summary": summary,
         "tasks_created": tasks_created,
         "date_warning": date_warning,
         "skipped_due_dates": skipped_due_dates,
         "geo_address": geo_address,
         "maps_url": maps_url,
-        "decisions": extracted.get("decisions") or [],
-        "concerns": extracted.get("concerns") or [],
+        "decisions": decisions,
+        "concerns": concerns,
     }
 
 
