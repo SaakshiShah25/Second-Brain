@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Check, Compass, LogOut, Mail, Moon, ShieldCheck, Sun, Trash2, Type } from 'lucide-react'
+import { Check, Compass, LogOut, Moon, ShieldCheck, Sun, Trash2, Type } from 'lucide-react'
 import { useDeleteAccount, useSettings, useUpdateSettings } from '../api/settings'
 import type { FontSize, Theme } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import AppLockSettings from '../components/AppLockSettings'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { ListGroup, ListRow, Toggle } from '../components/ListGroup'
+import { ListGroup, ListRow } from '../components/ListGroup'
 import PageHeader from '../components/PageHeader'
 import Segmented from '../components/Segmented'
 import { useTour } from '../components/TourGate'
@@ -53,9 +53,9 @@ export default function SettingsPage() {
           title="Using MyConfía for"
           footer={
             usage.mode === 'work'
-              ? 'Shortcuts, wording and your morning brief are tuned for clients, colleagues and deadlines.'
+              ? 'Shortcuts and wording are tuned for clients, colleagues and deadlines.'
               : usage.mode === 'personal'
-                ? 'Wording and your morning brief are tuned for friends, family and everyday to-dos.'
+                ? 'Wording is tuned for friends, family and everyday to-dos.'
                 : 'Work and personal wording side by side.'
           }
         >
@@ -133,30 +133,11 @@ export default function SettingsPage() {
         </div>
       </ListGroup>
 
-      <ListGroup
-        title="Notifications"
-        footer="What’s overdue and what’s due today — sent every morning."
-      >
-        <ListRow
-          icon={Mail}
-          iconColor="var(--sb-text-muted)"
-          soft
-          label="Morning brief by email"
-          trailing={
-            <Toggle
-              on={!!settings?.daily_brief_email_enabled}
-              onChange={() => updateSettings.mutate({ daily_brief_email_enabled: !settings?.daily_brief_email_enabled })}
-              label="Morning brief by email"
-            />
-          }
-        />
-      </ListGroup>
-
       <AppLockSettings />
 
       <ListGroup
         title="Privacy"
-        footer="Your notes are encrypted at rest. To power search, the daily brief and AI extraction, the app decrypts your notes and shares text with our AI providers (Groq, Cohere) for that processing only. We never sell or share your data."
+        footer="Your notes are encrypted at rest. To power search and AI extraction, the app decrypts your notes and shares text with our AI providers (Groq, Cohere) for that processing only. We never sell or share your data."
       >
         <ListRow icon={ShieldCheck} iconColor="var(--sb-text-muted)" soft label="Encrypted at rest" />
       </ListGroup>

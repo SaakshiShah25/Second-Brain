@@ -562,7 +562,7 @@ export default function ChatPage() {
       {confirmingClear && (
         <ConfirmDialog
           title="Start a new conversation?"
-          message="This clears the chat on this device. Everything you logged stays saved in Notes and Today."
+          message="This clears the chat on this device. Everything you logged stays saved in Notes and Tasks."
           confirmLabel="Clear conversation"
           onConfirm={() => {
             setMessages([])

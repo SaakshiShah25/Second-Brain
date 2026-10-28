@@ -18,7 +18,6 @@ const STAGE_LABELS: Record<string, string> = {
   reading_notes: 'Reading the relevant notes…',
   checking_tasks: 'Checking your follow-ups…',
   counting: 'Counting across your contacts…',
-  checking_calendar: 'Checking your calendar…',
   writing: 'Writing the answer…',
 }
 

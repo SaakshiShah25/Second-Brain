@@ -1,4 +1,4 @@
-"""Due times, the agenda order, saving a captured note with its tasks, and the agent's task tool.
+"""Due times, saving a captured note with its tasks, and the agent's task tool.
 Run: python tests/test_tasks_and_capture.py"""
 
 import os
@@ -18,28 +18,6 @@ def test_clock_times_are_normalised_or_dropped():
         assert date_utils.to_valid_time(raw) == expected, (raw, date_utils.to_valid_time(raw))
     for bad in ["evening", "EOD", "25:00", "7", "", None, 5, "13pm", "7:60 pm"]:
         assert date_utils.to_valid_time(bad) is None, bad
-
-
-def test_agenda_orders_timed_tasks_by_clock_then_untimed():
-    import api.routers.agenda as agenda
-    tasks = [
-        {"id": 1, "description": "no time", "due_date": "2026-10-30", "due_time": None, "status": "open", "owner": "me"},
-        {"id": 2, "description": "evening", "due_date": "2026-10-30", "due_time": "19:00:00", "status": "open", "owner": "me"},
-        {"id": 3, "description": "morning", "due_date": "2026-10-30", "due_time": "09:30:00", "status": "open", "owner": "me"},
-        {"id": 4, "description": "other day", "due_date": "2026-11-02", "due_time": None, "status": "done", "owner": "them",
-         "interaction": {"initiative": {"name": "Work"}}},
-        {"id": 5, "description": "out of range", "due_date": "2027-03-01", "due_time": None, "status": "open", "owner": "me"},
-        {"id": 6, "description": "no date", "due_date": None, "due_time": None, "status": "open", "owner": "me"},
-    ]
-    agenda.db = types.SimpleNamespace(get_all_tasks_with_context=lambda uid: tasks)
-    out = agenda.agenda("2026-10-01", "2026-11-30", "u")
-    assert [t["id"] for t in out["tasks"]] == [3, 2, 1, 4]
-    assert out["tasks"][0]["due_time"] == "09:30" and out["tasks"][3]["initiative"] == "Work"
-    assert "events" not in out
-    try:
-        agenda.agenda("2026-11-30", "2026-10-01", "u"); assert False
-    except Exception as e:
-        assert getattr(e, "status_code", None) == 400
 
 
 def test_capture_saves_the_note_and_its_tasks_without_any_person():
@@ -126,18 +104,6 @@ def test_intent_routes_questions_for_free_and_never_returns_documents():
     assert intent.fast_classify("What's overdue?") == "ask"
     assert intent.fast_classify("pull my passport and photo") is None   # no document intent any more
     assert intent.fast_classify("send Priya the deck by 6pm") is None
-
-
-def test_brief_task_line_shows_category_and_lateness():
-    import morning_brief as mb
-    today = date.today().isoformat()
-    late = (date.today() - timedelta(days=3)).isoformat()
-    line = mb._format_task_line({"description": "Email the deck", "owner": "me", "due_date": late,
-                                 "interaction": {"initiative": {"name": "Work"}}}, today)
-    assert line == f"- Email the deck (Work) [owed by you] - 3 days overdue (was due {late})"
-    timed = mb._format_task_line({"description": "Call bank", "owner": "them", "due_date": today, "due_time": "17:30:00",
-                                  "interaction": {}}, today)
-    assert timed == "- Call bank [owed by someone else] - due at 17:30"
 
 
 if __name__ == "__main__":

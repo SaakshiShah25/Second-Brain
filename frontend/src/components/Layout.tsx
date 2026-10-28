@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Home, NotebookText, Sun, type LucideIcon } from 'lucide-react'
+import { Home, ListChecks, NotebookText, type LucideIcon } from 'lucide-react'
 import Toaster from './Toast'
 
 // Each tab has its own hue (index.css --sb-fun-*), shown when it's the
 // active tab - full class strings so Tailwind can see them.
 const tabs: { to: string; label: string; icon: LucideIcon; end: boolean; pill: string; text: string }[] = [
   { to: '/', label: 'Home', icon: Home, end: true, pill: 'bg-fun-orange/15 text-fun-orange', text: 'text-fun-orange' },
-  { to: '/digest', label: 'Today', icon: Sun, end: false, pill: 'bg-fun-sun/15 text-fun-sun', text: 'text-fun-sun' },
+  { to: '/tasks', label: 'Tasks', icon: ListChecks, end: false, pill: 'bg-fun-sun/15 text-fun-sun', text: 'text-fun-sun' },
   { to: '/notes', label: 'Notes', icon: NotebookText, end: false, pill: 'bg-fun-sky/15 text-fun-sky', text: 'text-fun-sky' },
 ]
 

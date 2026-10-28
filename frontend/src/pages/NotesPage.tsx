@@ -9,7 +9,7 @@ import InitiativesManager from '../components/InitiativesManager'
 import InteractionCard from '../components/InteractionCard'
 import PageHeader from '../components/PageHeader'
 import Segmented from '../components/Segmented'
-import { groupBySection } from '../lib/dates'
+import { groupByInitiative } from '../lib/groupByInitiative'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
 
 // null = "All", -1 = "Uncategorized" (sentinel, since real initiative ids
@@ -52,7 +52,12 @@ export default function NotesPage() {
     })
   }, [notes, filter, query])
 
-  const sections = groupBySection(visibleNotes, (n) => n.date)
+  // Under their category (in the order the categories are listed), newest note first.
+  const sections = groupByInitiative(
+    visibleNotes.slice().sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.id - a.id),
+    initiatives ?? [],
+    (n) => n.initiative_id,
+  )
 
   return (
     <div>
@@ -136,16 +141,26 @@ export default function NotesPage() {
             </p>
           )}
 
-          {sections.map(({ section, items }) => (
-            <section key={section} className="mb-5">
-              <h2 className="mb-2 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint">{section}</h2>
-              <div className="flex flex-col gap-2.5">
-                {items.map((note) => (
-                  <InteractionCard key={note.id} interaction={note} hideDate={section === 'Today' || section === 'Yesterday'} />
-                ))}
-              </div>
-            </section>
-          ))}
+          {sections.map(({ key, name, initiative, items }) => {
+            const style = getInitiativeStyle(initiative)
+            return (
+              <section key={key} className="mb-5">
+                <h2
+                  className="mb-2 flex items-center gap-1.5 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint"
+                  style={style ? { color: style.color } : undefined}
+                >
+                  {style && <style.Icon size={14} strokeWidth={2.2} />}
+                  {name}
+                  <span className="font-medium normal-case tracking-normal opacity-80">· {items.length}</span>
+                </h2>
+                <div className="flex flex-col gap-2.5">
+                  {items.map((note) => (
+                    <InteractionCard key={note.id} interaction={note} />
+                  ))}
+                </div>
+              </section>
+            )
+          })}
         </>
       )}
     </div>

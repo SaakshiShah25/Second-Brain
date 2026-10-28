@@ -15,7 +15,6 @@ export function useUpdateSettings() {
     mutationFn: (body: {
       theme?: Theme
       font_size?: FontSize
-      daily_brief_email_enabled?: boolean
       usage_mode?: UsageMode
     }) =>
       api.patch<UserPreference>('/api/settings', body),

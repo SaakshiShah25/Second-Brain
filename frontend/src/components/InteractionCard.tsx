@@ -33,9 +33,8 @@ function Section({ icon: Icon, title, items }: { icon: typeof CheckCircle2; titl
 // A note as a preview card (category + date, a 3-line summary) - tapping opens the whole note in a bottom sheet, where Edit and
 // Delete live. Replaces the old collapsed one-line disclosure row, which
 // showed so little that every note looked the same until expanded.
-// `hideDate`: the list is already grouped under a Today / Yesterday heading, so the card
-// doesn't repeat it (further back, the card still names the weekday or date).
-export default function InteractionCard({ interaction, hideDate = false }: { interaction: Interaction; hideDate?: boolean }) {
+// Shown under its category's heading on the Notes page, so the card itself carries the date.
+export default function InteractionCard({ interaction }: { interaction: Interaction }) {
   const updateInteraction = useUpdateInteraction()
   const deleteInteraction = useDeleteInteraction()
   const [open, setOpen] = useState(false)
@@ -88,20 +87,7 @@ export default function InteractionCard({ interaction, hideDate = false }: { int
         className="pressable block w-full rounded-2xl border border-border bg-bg-card p-4 text-left"
       >
         <div className="mb-1.5 flex items-center gap-2 text-[0.8125rem]">
-          {initiativeStyle && interaction.initiative ? (
-            <span className="flex min-w-0 items-center gap-1 font-medium" style={{ color: initiativeStyle.color }}>
-              <initiativeStyle.Icon size={13} strokeWidth={2.2} className="flex-shrink-0" />
-              <span className="truncate">{interaction.initiative.name}</span>
-            </span>
-          ) : (
-            <span className="font-medium text-text-faint">Others</span>
-          )}
-          {!hideDate && (
-            <>
-              <span className="text-text-faint">·</span>
-              <span className="flex-shrink-0 text-text-faint">{friendlyDate(interaction.date)}</span>
-            </>
-          )}
+          <span className="flex-shrink-0 text-text-faint">{friendlyDate(interaction.date)}</span>
           {openTasks > 0 && (
             <span className="ml-auto flex flex-shrink-0 items-center gap-1 rounded-full bg-bg-elevated px-2 py-0.5 text-xs font-medium text-text-muted">
               <ListChecks size={12} strokeWidth={2} /> {openTasks}

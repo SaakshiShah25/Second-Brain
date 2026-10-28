@@ -9,9 +9,9 @@ import CopyButton from '../CopyButton'
 
 const SOURCE_ICON = { note: NotebookText, task: ListChecks }
 
-// Where a tap on a source chip goes: the Today tab for a task, Notes for a note.
+// Where a tap on a source chip goes: the Tasks tab for a task, Notes for a note.
 function sourceTarget(s: AnswerSource): string {
-  return s.kind === 'task' ? '/digest' : '/notes'
+  return s.kind === 'task' ? '/tasks' : '/notes'
 }
 
 function Sources({ sources }: { sources: AnswerSource[] }) {

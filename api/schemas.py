@@ -74,7 +74,6 @@ class TaskStatusUpdate(BaseModel):
 class UserPreferenceUpdate(BaseModel):
     theme: Optional[str] = None                        # 'dark' | 'light'
     font_size: Optional[str] = None                     # 'small' | 'default' | 'large'
-    daily_brief_email_enabled: Optional[bool] = None
     usage_mode: Optional[str] = None                    # 'work' | 'personal' | 'both'
 
 
