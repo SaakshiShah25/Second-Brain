@@ -53,6 +53,10 @@ Expect the reply to show **one coloured section per initiative** (accent bar and
 - picking a category with **+** before sending keeps the whole message together in that one initiative.
 A message about a single subject (like the Priya note) is still saved as one note.
 
+Also check **ticking a task off** on the Tasks tab: the circle turns green with a tick, the text is struck through for a moment, a note says "Task done · moved to Completed", then the row moves under **Completed**. Tapping the tick again right away puts it back.
+
+And a to-do phrased as a verb still counts as a to-do: `Discuss the fee collection system with the Synapse team` gives a **task** (not a key point), while the past-tense `Discussed the fee collection system with the Synapse team, they liked it` gives key points and no task.
+
 ### Each fact appears once (try this one)
 
 Log: `Check when the parcel from Amazon is arriving. Order something from amazon and gift it to Jeevika for her bday. Take Jeevika's address. The stock market situation doesnt really look good, sell the Jio shares asap.`

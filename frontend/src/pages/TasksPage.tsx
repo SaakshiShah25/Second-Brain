@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeftRight, Check, CheckCircle2, ChevronDown, ChevronRight, NotebookText, TriangleAlert } from 'lucide-react'
 import { useEditTask, useTasks, useUpdateTaskOwner, useUpdateTaskStatus } from '../api/tasks'
@@ -8,6 +8,7 @@ import { Input, Label } from '../components/fields'
 import InitiativeBar from '../components/InitiativeBar'
 import PageHeader from '../components/PageHeader'
 import Sheet from '../components/Sheet'
+import { toast } from '../components/Toast'
 import { useInitiatives } from '../api/initiatives'
 import { useNotes } from '../api/notes'
 import { useConnection } from '../lib/connection'
@@ -55,6 +56,9 @@ function OwnerPills({ value, onChange }: { value: OwnerFilter; onChange: (v: Own
   )
 }
 
+// How long a task you just ticked stays in its list, shown struck through, before it moves to Completed.
+const LINGER_MS = 1100
+
 function TaskRow({
   task,
   onToggle,
@@ -82,6 +86,7 @@ function TaskRow({
           className={`flex h-[1.375rem] w-[1.375rem] items-center justify-center rounded-full border-2 transition-colors ${
             done ? 'border-success bg-success text-white' : task.owner === 'them' ? 'border-them-task' : 'border-text-faint'
           }`}
+          style={done ? { animation: 'task-pop 0.3s ease-out' } : undefined}
         >
           {done && <Check size={13} strokeWidth={3} />}
         </span>
@@ -175,14 +180,57 @@ export default function TasksPage() {
   const focusName =
     initiativeFilter === null ? null : initiativeFilter === -1 ? 'Others' : initiatives?.find((i) => i.id === initiativeFilter)?.name
   const focusNotes = (notes ?? []).filter((n) => matchesInitiative(initiativeFilter, n.initiative_id)).length
+  // A task you just ticked stays in its list for a moment (struck through, green tick) so you see it get done.
+  const [lingering, setLingering] = useState<Set<number>>(new Set())
+  const lingerTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
+  useEffect(() => {
+    const timers = lingerTimers.current
+    return () => timers.forEach(clearTimeout)
+  }, [])
   const open = shown.filter((t) => t.status === 'open')
+  const openAndLingering = shown.filter((t) => t.status === 'open' || lingering.has(t.id))
   const byDue = (a: Task, b: Task) =>
     (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999') || (a.due_time ?? '99').localeCompare(b.due_time ?? '99')
-  const groups = groupByInitiative(open.slice().sort(byDue), initiatives ?? [], taskInitiativeId)
-  const doneTasks = shown.filter((t) => t.status === 'done').sort((a, b) => (b.due_date ?? '').localeCompare(a.due_date ?? ''))
+  const groups = groupByInitiative(openAndLingering.slice().sort(byDue), initiatives ?? [], taskInitiativeId)
+  const doneTasks = shown.filter((t) => t.status === 'done' && !lingering.has(t.id)).sort((a, b) => (b.due_date ?? '').localeCompare(a.due_date ?? ''))
   const editTask = useEditTask()
   const updateStatus = useUpdateTaskStatus()
   const updateOwner = useUpdateTaskOwner()
+
+  function stopLingering(taskId: number) {
+    clearTimeout(lingerTimers.current.get(taskId))
+    lingerTimers.current.delete(taskId)
+    setLingering((prev) => {
+      if (!prev.has(taskId)) return prev
+      const next = new Set(prev)
+      next.delete(taskId)
+      return next
+    })
+  }
+
+  // Ticks a task off (or reopens it) and says so: the row turns green and struck through for a moment, and a
+  // note confirms where it went. Tapping the tick again while it lingers puts it back.
+  function setTaskStatus(task: Task, status: 'open' | 'done', onSuccess?: () => void) {
+    if (status === 'done') {
+      setLingering((prev) => new Set(prev).add(task.id))
+      lingerTimers.current.set(task.id, setTimeout(() => stopLingering(task.id), LINGER_MS))
+    } else {
+      stopLingering(task.id)
+    }
+    updateStatus.mutate(
+      { taskId: task.id, status },
+      {
+        onSuccess: () => {
+          toast(status === 'done' ? 'Task done · moved to Completed' : 'Moved back to open tasks')
+          onSuccess?.()
+        },
+        onError: () => {
+          stopLingering(task.id)
+          toast("Couldn't update that task - please try again.")
+        },
+      },
+    )
+  }
 
   function openTask(task: Task) {
     setActiveTaskId(task.id)
@@ -237,7 +285,7 @@ export default function TasksPage() {
 
           {(() => {
             const rowProps = {
-              onToggle: (t: Task) => updateStatus.mutate({ taskId: t.id, status: t.status === 'done' ? 'open' : 'done' }),
+              onToggle: (t: Task) => setTaskStatus(t, t.status === 'done' ? 'open' : 'done'),
               onOpen: openTask,
               toggling: updateStatus.isPending,
             }
@@ -371,10 +419,7 @@ export default function TasksPage() {
               block
               disabled={updateStatus.isPending}
               onClick={() =>
-                updateStatus.mutate(
-                  { taskId: activeTask.id, status: activeTask.status === 'open' ? 'done' : 'open' },
-                  { onSuccess: () => setActiveTaskId(null) },
-                )
+                setTaskStatus(activeTask, activeTask.status === 'open' ? 'done' : 'open', () => setActiveTaskId(null))
               }
             >
               <Check size={18} strokeWidth={2.4} />
