@@ -57,26 +57,40 @@ def main() -> None:
 
     names = [c.strip() for c in args.categories.split(",") if c.strip()]
     ex = extraction.extract_info(text, None, names)
-    print(f"Category:   {ex.get('initiative') or 'Others (no match)'}")
-    if ex.get("suggested_initiative"):
-        print(f"Suggested new category: {ex['suggested_initiative']}")
-    print(f"Summary:    {text_utils.strip_bullet(ex.get('summary', ''))}")
     if ex.get("date_mentioned"):
         print(f"Note date:  {date_utils.resolve_relative_phrase(ex['date_mentioned']) or ex['date_mentioned']}")
-    for label, key in (("Decisions", "decisions"), ("Concerns", "concerns")):
-        for item in ex.get(key) or []:
-            print(f"{label}:  {text_utils.strip_bullet(item)}")
-    tasks = ex.get("follow_ups") or []
-    if not tasks:
-        print("Tasks:      none")
-    for t in tasks:
-        due = date_utils.resolve_relative_phrase(t.get("due_date"))
-        time_ = date_utils.to_valid_time(t.get("due_time"))
-        if time_ and not due:
-            due = date.today().isoformat()
-        when = "no date" if not due else (f"{due} ({date.fromisoformat(due).strftime('%a')})" + (f" at {time_}" if time_ else ""))
-        who = "someone else owes" if t.get("owner") == "them" else "me"
-        print(f"Task:       {text_utils.strip_bullet(t.get('description', ''))}  [{when}; {who}]")
+    parts = extraction.note_parts(text, ex)
+    print(f"Filed as {len(parts)} note{'s' if len(parts) != 1 else ''}:" if len(parts) > 1 else "")
+    for n, part in enumerate(parts, 1):
+        print(f"--- {'Part %d: ' % n if len(parts) > 1 else ''}{part.get('initiative') or 'Others (no match)'}")
+        if len(parts) > 1:
+            print(f"Raw text:   {part['raw_text']}")
+        if part.get("suggested_initiative"):
+            print(f"Suggested new category: {part['suggested_initiative']}")
+        if part.get("section"):
+            print(f"Topic:      {text_utils.clean_section(part['section']) or '-'}")
+        decisions = [text_utils.strip_bullet(x) for x in part.get("decisions") or []]
+        concerns = [text_utils.strip_bullet(x) for x in part.get("concerns") or []]
+        follow_ups = part.get("follow_ups") or []
+        tasks = [text_utils.clean_task_text(t.get("description", "") if isinstance(t, dict) else str(t)) for t in follow_ups]
+        points = text_utils.dedupe_points(text_utils.as_bullets(part.get("summary") or ""), decisions + concerns + tasks)
+        print("Key points: " + (points.replace("\n", "\n            ") if points else "none"))
+        for item in decisions:
+            print(f"Decision:   {item}")
+        for item in concerns:
+            print(f"Concern:    {item}")
+        if not follow_ups:
+            print("Tasks:      none")
+        for t in follow_ups:
+            if not isinstance(t, dict):
+                continue
+            due = date_utils.resolve_relative_phrase(t.get("due_date"))
+            time_ = date_utils.to_valid_time(t.get("due_time"))
+            if time_ and not due:
+                due = date.today().isoformat()
+            when = "no date" if not due else (f"{due} ({date.fromisoformat(due).strftime('%a')})" + (f" at {time_}" if time_ else ""))
+            who = "someone else owes" if t.get("owner") == "them" else "me"
+            print(f"Task:       {text_utils.clean_task_text(t.get('description', ''))}  [{when}; {who}]")
 
 
 if __name__ == "__main__":

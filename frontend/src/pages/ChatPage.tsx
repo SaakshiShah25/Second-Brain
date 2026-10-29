@@ -5,7 +5,7 @@ import { ApiError } from '../api/client'
 import { useCreateInitiative, useInitiatives } from '../api/initiatives'
 import { useUpdateInteraction } from '../api/notes'
 import { useTranscribe } from '../api/voice'
-import type { CaptureSavedResult, ChatMessage, ChatResult } from '../api/types'
+import type { CapturePart, CaptureSavedResult, ChatMessage, ChatResult } from '../api/types'
 import Button from '../components/Button'
 import Card from '../components/Card'
 import ConfiaLogo from '../components/ConfiaLogo'
@@ -36,29 +36,37 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-function formatSavedMessage(result: CaptureSavedResult): string {
+// What to tell the user about one part of what they logged: where it was filed, its key points, then its
+// decisions, concerns and tasks (each fact is shown once - extraction keeps them from repeating).
+function formatPart(part: CapturePart, showCategory: boolean): string {
   const lines: string[] = []
-  // Omitted entirely for Uncategorized rather than shown as "none",
-  // same convention as every other optional field here; the
-  // suggested_initiative follow-up prompt covers that case instead.
-  if (result.initiative_name) lines.push(`**Category:** ${result.initiative_name}`)
-  const points = notePoints(result.summary)
+  // "Others" is named only when the message was split, so it is clear where each piece went.
+  if (part.initiative_name) lines.push(`**Category:** ${part.initiative_name}`)
+  else if (showCategory) lines.push('**Category:** Others')
+  const points = notePoints(part.summary)
   if (points.length > 0) lines.push(points.map((p) => `- ${p}`).join('\n'))
-  if (result.decisions.length > 0) {
+  if (part.decisions.length > 0) {
     lines.push('**Decisions:**')
-    for (const d of result.decisions) lines.push(`- ${d}`)
+    for (const d of part.decisions) lines.push(`- ${d}`)
   }
-  if (result.concerns.length > 0) {
+  if (part.concerns.length > 0) {
     lines.push('**Concerns:**')
-    for (const c of result.concerns) lines.push(`- ${c}`)
+    for (const c of part.concerns) lines.push(`- ${c}`)
   }
-  if (result.tasks_created.length > 0) {
+  if (part.tasks_created.length > 0) {
     lines.push('**Tasks:**')
-    for (const t of result.tasks_created) {
+    for (const t of part.tasks_created) {
       const owner = t.owner === 'them' ? 'Someone else' : 'Me'
       lines.push(`- ${t.description}${t.due_date ? ` _(due ${dueLabel(t.due_date, t.due_time)})_` : ''} — ${owner}`)
     }
   }
+  return lines.join('\n\n')
+}
+
+function formatSavedMessage(result: CaptureSavedResult): string {
+  const split = result.parts.length > 1
+  const blocks = result.parts.map((p) => formatPart(p, split)).filter(Boolean)
+  const lines: string[] = [blocks.join('\n\n---\n\n')]
   if (result.date_warning) lines.push(`_Note: ${result.date_warning}_`)
   for (const skipped of result.skipped_due_dates) {
     lines.push(
@@ -69,7 +77,7 @@ function formatSavedMessage(result: CaptureSavedResult): string {
     const label = result.geo_address ?? 'attached location'
     lines.push(`**Location:** [${label}](${result.maps_url})`)
   }
-  return lines.join('\n\n')
+  return lines.filter(Boolean).join('\n\n') || 'Saved.'
 }
 
 export default function ChatPage() {
@@ -156,10 +164,12 @@ export default function ChatPage() {
   // new-initiative suggestion if extraction.py proposed one.
   function handleSavedCapture(result: CaptureSavedResult) {
     appendMessage('assistant', formatSavedMessage(result))
-    if (result.suggested_initiative) {
+    // One suggestion at a time: the first part that doesn't fit any initiative but reads like a theme of its own.
+    const suggesting = result.parts.find((p) => p.suggested_initiative)
+    if (suggesting?.suggested_initiative) {
       setNamingCustomInitiative(false)
       setCustomInitiativeName('')
-      setPendingInitiativeSuggestion({ name: result.suggested_initiative, interactionId: result.interaction_id })
+      setPendingInitiativeSuggestion({ name: suggesting.suggested_initiative, interactionId: suggesting.interaction_id })
     }
   }
 

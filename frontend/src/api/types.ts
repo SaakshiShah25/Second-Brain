@@ -65,26 +65,30 @@ export interface Interaction {
   extracted_facts?: { section?: string } | null
 }
 
-export interface CaptureSavedResult {
-  status: 'saved'
+// One message can cover several subjects, so it is saved as one note per part, each under its own initiative
+// (api/routers/capture.py). `parts` has one entry per note created.
+export interface CapturePart {
   interaction_id: number
   initiative_id: number | null
-  // Only ever set when initiative_id is null - a proposed name for a new
-  // initiative this note seems to be about, for the frontend to offer as
-  // "add this as a new initiative?" (see ChatPage.tsx).
+  // Only ever set when initiative_id is null - a proposed name for a new initiative this part seems to be
+  // about, for the frontend to offer as "add this as a new initiative?" (see ChatPage.tsx).
   suggested_initiative: string | null
-  // The existing initiative this note WAS tagged with, by name - null
-  // means Uncategorized. Mutually exclusive with suggested_initiative
-  // (extraction.py never sets both for the same note).
+  // The existing initiative this part WAS filed under, by name - null means Others.
   initiative_name: string | null
   summary: string
   tasks_created: { description: string; due_date: string | null; due_time?: string | null; owner: TaskOwner }[]
+  skipped_due_dates: { description: string; raw_due_date: string }[]
+  decisions: string[]
+  concerns: string[]
+}
+
+export interface CaptureSavedResult {
+  status: 'saved'
+  parts: CapturePart[]
   date_warning: string | null
   skipped_due_dates: { description: string; raw_due_date: string }[]
   geo_address: string | null
   maps_url: string | null
-  decisions: string[]
-  concerns: string[]
 }
 
 export type CaptureResult = CaptureSavedResult

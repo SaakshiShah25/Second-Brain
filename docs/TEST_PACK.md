@@ -43,6 +43,16 @@ slightly differently from run to run, so check the **meaning** (category, task, 
 | A20 | `Add a task to remind me about starting workout, at least 10 minutes skipping every day.` | The task is just the action: **"Start workout, at least 10 minutes skipping every day"** (or the AI's own cleaner wording, e.g. "Start a daily workout: at least 10 minutes of skipping") — never "Add a task to remind me…". Recurrence is not supported: it is one task, no repeating. *(wrapper removal is unit-tested; the final wording was not re-run live because the daily AI quota was used up)* |
 | A21 | `Remind me to call mom tomorrow evening` | Task **"Call mom"**, due tomorrow, no clock time ("evening" is not guessed). *(ran it)* |
 
+### One message, several initiatives (try this one)
+
+Make sure you have an initiative called `Synapse Partnership` (or any work project) and `Health`, then log:
+`Discuss about the fee collection system for teachers for the Synapse partnership. Jeevika's address is Borivali East,Mumbai. Start focusing on your diet.`
+Expect the reply to show **three blocks**: **Category: Synapse Partnership** (the fee collection), **Category: Others** (Jeevika's address as a key point) and **Category: Health** (the diet to-do). Check afterwards that:
+- the **Tasks** tab lists the diet task under **Health**, not under Synapse;
+- the **Notes** tab shows each initiative with only its own part, and **Source notes** under Health is just "Start focusing on your diet.";
+- picking a category with **+** before sending keeps the whole message together in that one initiative.
+A message about a single subject (like the Priya note) is still saved as one note.
+
 ### Each fact appears once (try this one)
 
 Log: `Check when the parcel from Amazon is arriving. Order something from amazon and gift it to Jeevika for her bday. Take Jeevika's address. The stock market situation doesnt really look good, sell the Jio shares asap.`

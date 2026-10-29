@@ -96,8 +96,12 @@ def _resolve_initiative(user_id: str, extracted: dict) -> Optional[int]:
 
 
 def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, interaction_date: str,
-                             date_warning: Optional[str], initiative_id: Optional[int] = None,
-                             geo_lat: Optional[float] = None, geo_lng: Optional[float] = None) -> dict:
+                             initiative_id: Optional[int] = None,
+                             geo_lat: Optional[float] = None, geo_lng: Optional[float] = None,
+                             geo_address: Optional[str] = None, maps_url: Optional[str] = None) -> dict:
+    """Saves ONE part of a logged message as its own note (with its own tasks) and returns what to tell the
+    user about it. `raw_text` is the part's own sentences; `extracted` holds its points, decisions, concerns and
+    follow-ups."""
     # The summary is stored as short "- " bullet points on purpose (see extraction.py); decisions,
     # concerns and tasks are single lines, so a stray list marker at their start is dropped.
     decisions = [d for d in (text_utils.strip_bullet(x) for x in extracted.get("decisions") or []) if d]
@@ -112,15 +116,6 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
     section = text_utils.clean_section(extracted.get("section"))
     with step("embedding"):
         embedding = embeddings.compute_embedding(raw_text)
-
-    # Opt-in device location (see ChatInput.tsx) - geo_address is only
-    # ever populated if a GOOGLE_MAPS_API_KEY is configured; maps_url
-    # always works (no key needed), so location capture is useful either
-    # way. Both stay None if the user didn't attach a location.
-    geo_address = maps_url = None
-    if geo_lat is not None and geo_lng is not None:
-        maps_url = google_maps.build_maps_url(geo_lat, geo_lng)
-        geo_address = google_maps.reverse_geocode(geo_lat, geo_lng)
 
     _t_db0 = time.perf_counter()
     interaction_id = db.create_interaction(
@@ -171,28 +166,17 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
     search_index.enqueue(user_id, "task", task_ids)
 
     return {
-        "status": "saved",
         "interaction_id": interaction_id,
         "initiative_id": initiative_id,
-        # Only ever non-null when initiative_id is null - extraction.py's
-        # prompt keeps the two mutually exclusive (a note that already
-        # matched an existing initiative has nothing to suggest). The
-        # frontend offers "add this as a new initiative?" off of this,
-        # and re-tags the note via PATCH /api/notes/{id} once the user says
-        # yes - accepting/declining doesn't block the note from having
-        # already saved successfully either way.
+        # Only ever non-null when initiative_id is null - extraction.py's prompt keeps the two mutually
+        # exclusive. The frontend offers "add this as a new initiative?" off of this, and re-tags the note
+        # via PATCH /api/notes/{id} once the user says yes.
         "suggested_initiative": extracted.get("suggested_initiative") or None,
-        # Name, not just the id, so the chat UI can tell the user which
-        # existing category this note landed in without a separate
-        # lookup - None here means Uncategorized (initiative_id is null,
-        # or the looked-up initiative no longer exists).
+        # Name, not just the id, so the chat UI can say where this part landed (None = Others).
         "initiative_name": (db.get_initiative(user_id, initiative_id) or {}).get("name") if initiative_id else None,
         "summary": summary,
         "tasks_created": tasks_created,
-        "date_warning": date_warning,
         "skipped_due_dates": skipped_due_dates,
-        "geo_address": geo_address,
-        "maps_url": maps_url,
         "decisions": decisions,
         "concerns": concerns,
     }
@@ -201,17 +185,46 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
 def _process_extracted(user_id: str, raw_text: str, extracted: dict,
                         geo_lat: Optional[float] = None, geo_lng: Optional[float] = None,
                         forced_initiative_id: Optional[int] = None) -> dict:
+    """Files a logged message. One message can cover several subjects, so it is saved as one note PER PART, each
+    under its own initiative and with its own tasks (extraction.note_parts). If the user picked the category
+    themselves, nothing is split: the whole message goes there."""
     interaction_date, date_warning = _resolve_interaction_date(extracted)
-    initiative_id = _resolve_initiative(user_id, extracted)
-    if forced_initiative_id is not None and db.get_initiative(user_id, forced_initiative_id):
-        # The user picked the category themselves: it wins over the model's guess,
-        # and there is nothing left to "suggest".
-        initiative_id = forced_initiative_id
-        extracted = {**extracted, "suggested_initiative": None}
-    return _finish_capture_storage(
-        user_id, raw_text, extracted, interaction_date, date_warning,
-        initiative_id=initiative_id, geo_lat=geo_lat, geo_lng=geo_lng,
-    )
+    parts = extraction.note_parts(raw_text, extracted)
+    forced = forced_initiative_id is not None and db.get_initiative(user_id, forced_initiative_id)
+    if forced:
+        parts = [extraction.collapse_parts(raw_text, parts)]
+
+    # Opt-in device location (see ChatInput.tsx) - geo_address is only ever populated if a GOOGLE_MAPS_API_KEY
+    # is configured; maps_url always works (no key needed). Looked up once, shared by every part.
+    geo_address = maps_url = None
+    if geo_lat is not None and geo_lng is not None:
+        maps_url = google_maps.build_maps_url(geo_lat, geo_lng)
+        geo_address = google_maps.reverse_geocode(geo_lat, geo_lng)
+
+    saved = []
+    for part in parts:
+        # the date and the place the message mentions apply to every part of it
+        part = {**part, "location": extracted.get("location")}
+        if forced:
+            # the user's own choice wins over the model's guess, and there is nothing left to "suggest"
+            initiative_id, part["suggested_initiative"] = forced_initiative_id, None
+        else:
+            initiative_id = _resolve_initiative(user_id, part)
+            if initiative_id is not None:
+                part["suggested_initiative"] = None
+        saved.append(_finish_capture_storage(
+            user_id, part["raw_text"], part, interaction_date, initiative_id=initiative_id,
+            geo_lat=geo_lat, geo_lng=geo_lng, geo_address=geo_address, maps_url=maps_url,
+        ))
+
+    return {
+        "status": "saved",
+        "parts": saved,
+        "date_warning": date_warning,
+        "skipped_due_dates": [d for p in saved for d in p["skipped_due_dates"]],
+        "geo_address": geo_address,
+        "maps_url": maps_url,
+    }
 
 
 # ---------- Endpoints ----------

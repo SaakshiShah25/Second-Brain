@@ -50,13 +50,15 @@ def test_capture_saves_the_note_and_its_tasks_without_any_person():
                                 {"description": "Rohan to send pricing", "due_date": None, "owner": "them"},
                                 {"description": "Fix the fan", "due_date": None, "due_time": "7pm", "owner": "nonsense"}]}
     out = cap._process_extracted("u", "email the deck by 6pm", extracted, forced_initiative_id=3)
-    assert out["status"] == "saved" and out["interaction_id"] == 7 and out["initiative_name"] == "Work"
+    one = out["parts"][0]
+    assert out["status"] == "saved" and len(out["parts"]) == 1
+    assert one["interaction_id"] == 7 and one["initiative_name"] == "Work"
     assert "person_id" not in saved["interaction"] and "person_id" not in saved["tasks"][0][2]
     (_, d1, k1), (_, d2, k2), (_, d3, k3) = saved["tasks"]
     assert (d1, k1["due_date"], k1["due_time"], k1["owner"]) == ("Email Priya the deck", date.today().isoformat(), "18:00", "me")
     assert k2["owner"] == "them" and k2["due_date"] is None
     assert k3["owner"] == "me" and k3["due_time"] == "19:00" and k3["due_date"] == date.today().isoformat()  # a time with no day means today
-    assert [t["description"] for t in out["tasks_created"]] == [d1, d2, d3]
+    assert [t["description"] for t in one["tasks_created"]] == [d1, d2, d3]
     assert ("note", [7]) in saved["indexed"]
 
 
@@ -77,7 +79,7 @@ def test_list_markers_are_stripped_from_the_saved_note():
     out = cap._process_extracted("u", "x", {"summary": bullets, "decisions": ["- Go ahead"],
                                             "follow_ups": [{"description": "- Join the call", "owner": "me"}]})
     # the summary is stored as "- " bullet points on purpose and must come through untouched
-    assert saved["summary"] == bullets and out["summary"] == bullets
+    assert saved["summary"] == bullets and out["parts"][0]["summary"] == bullets
     assert saved["decisions"] == ["Go ahead"] and saved["tasks"] == ["Join the call"]
 
 
@@ -99,13 +101,94 @@ def test_capture_stores_each_fact_once_and_the_topic_label():
     out = cap._process_extracted("u", "raw", extracted)
     # the point that restates the concern and the gift task goes; the real fact (when the birthday is) stays
     assert "Planning a birthday gift" not in saved["summary"] and "Jeevika's birthday is next week" in saved["summary"]
-    assert out["summary"] == saved["summary"]
+    assert out["parts"][0]["summary"] == saved["summary"]
     assert saved["extracted_facts"] == {"section": "Gift Ideas"}
     # a generic label is not stored; a note that is all to-dos has an empty summary
     saved.clear()
     cap._process_extracted("u", "raw", {"summary": "- Call the bank", "section": "Misc",
                                         "follow_ups": [{"description": "Call the bank", "owner": "me"}]})
     assert saved["summary"] == "" and saved["extracted_facts"] is None
+
+
+def _split_fakes():
+    import api.routers.capture as cap
+    notes, tasks = [], []
+    inits = {"Synapse Partnership": 1, "Health": 2}
+    cap.db = types.SimpleNamespace(
+        create_interaction=lambda u, **kw: notes.append(kw) or len(notes),
+        create_task=lambda u, i, d, **kw: tasks.append((i, d)) or len(tasks),
+        get_initiative=lambda u, i: {"id": i, "name": {v: k for k, v in inits.items()}.get(i, "x")},
+        get_initiative_by_name=lambda u, n: {"id": inits[n]} if n in inits else None,
+    )
+    cap.embeddings = types.SimpleNamespace(compute_embedding=lambda t, **k: None)
+    cap.search_index = types.SimpleNamespace(enqueue=lambda *a, **k: None)
+    return cap, notes, tasks
+
+
+NOTE = ("Discuss about the fee collection system for teachers for the Synapse partnership. "
+        "Jeevika's address is Borivali East,Mumbai. Start focusing on your diet.")
+
+
+def _three_part_answer():
+    return {"parts": [
+        {"sentences": [1], "initiative": "Synapse Partnership", "section": "Fees",
+         "follow_ups": [{"description": "Discuss the fee collection system for teachers", "owner": "me"}]},
+        {"sentences": [2], "initiative": None, "summary": "- Jeevika's address is Borivali East, Mumbai"},
+        {"sentences": [3], "initiative": "Health", "follow_ups": [{"description": "Start focusing on your diet", "owner": "me"}]},
+    ]}
+
+
+def test_one_message_about_three_subjects_is_filed_as_three_notes():
+    cap, notes, tasks = _split_fakes()
+    out = cap._process_extracted("u", NOTE, _three_part_answer())
+    assert [p["initiative_name"] for p in out["parts"]] == ["Synapse Partnership", None, "Health"]
+    # each note holds only its own sentences, so "Source notes" show just that part
+    assert [n["raw_text"] for n in notes] == [
+        "Discuss about the fee collection system for teachers for the Synapse partnership.",
+        "Jeevika's address is Borivali East,Mumbai.",
+        "Start focusing on your diet.",
+    ]
+    assert [n["initiative_id"] for n in notes] == [1, None, 2]
+    # each task hangs off the note (and so the initiative) it came from
+    assert tasks == [(1, "Discuss the fee collection system for teachers"), (3, "Start focusing on your diet")]
+
+
+def test_a_category_picked_by_the_user_keeps_the_whole_message_together():
+    cap, notes, tasks = _split_fakes()
+    out = cap._process_extracted("u", NOTE, _three_part_answer(), forced_initiative_id=2)
+    assert len(out["parts"]) == 1 and len(notes) == 1
+    assert notes[0]["raw_text"] == NOTE and notes[0]["initiative_id"] == 2
+    assert [d for _, d in tasks] == ["Discuss the fee collection system for teachers", "Start focusing on your diet"]
+
+
+def test_no_sentence_is_lost_duplicated_or_invented_whatever_the_model_returns():
+    import extraction
+    sents = extraction.split_sentences(NOTE)
+    assert "".join(g + t for t, g in sents) == NOTE                       # splitting is lossless
+    # a sentence the model forgot (2) follows the one before it; a sentence given twice (1) stays with the first part
+    parts = extraction.note_parts(NOTE, {"parts": [{"sentences": [1], "initiative": "A"}, {"sentences": [1, 3], "initiative": "B"}]})
+    assert [p["raw_text"] for p in parts] == [
+        "Discuss about the fee collection system for teachers for the Synapse partnership. Jeevika's address is Borivali East,Mumbai.",
+        "Start focusing on your diet.",
+    ]
+    # out-of-range numbers are ignored; two parts for the same initiative become one
+    parts = extraction.note_parts(NOTE, {"parts": [{"sentences": [1, 9], "initiative": "Health", "decisions": ["x"]},
+                                                  {"sentences": [2, 3], "initiative": "health", "decisions": ["y"]}]})
+    assert len(parts) == 1 and parts[0]["decisions"] == ["x", "y"] and parts[0]["raw_text"] == NOTE
+    # a model that ignored the format and answered with one flat object still yields one part
+    flat = extraction.note_parts(NOTE, {"initiative": "Health", "summary": "- a", "follow_ups": [{"description": "t"}]})
+    assert len(flat) == 1 and flat[0]["initiative"] == "Health" and flat[0]["raw_text"] == NOTE
+    # several parts for a one-sentence note are merged, not dropped
+    one = extraction.note_parts("Call the bank.", {"parts": [{"sentences": [1], "initiative": None, "follow_ups": [{"description": "a"}]},
+                                                             {"sentences": [1], "initiative": None, "follow_ups": [{"description": "b"}]}]})
+    assert len(one) == 1 and [f["description"] for f in one[0]["follow_ups"]] == ["a", "b"]
+
+
+def test_sentences_are_numbered_for_the_model_and_line_breaks_are_boundaries():
+    import extraction
+    assert extraction.numbered_note("Call the bank.") == "[1] Call the bank."
+    assert extraction.numbered_note("Buy milk\nCall mom. Pay rent") == "[1] Buy milk\n[2] Call mom.\n[3] Pay rent"
+    assert extraction.split_sentences("   ") == [] and extraction.numbered_note("") == ""
 
 
 def test_the_agent_lists_tasks_with_exact_filters():

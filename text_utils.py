@@ -231,7 +231,8 @@ def dedupe_points(bullets: str, others) -> str:
 
 
 # Topic labels that say nothing - such a note simply has no section.
-_GENERIC_SECTIONS = frozenset({"notes", "note", "misc", "miscellaneous", "general", "other", "others", "none", "n/a"})
+_GENERIC_SECTIONS = frozenset({"notes", "note", "misc", "miscellaneous", "general", "other", "others", "none", "n/a",
+                               "tasks", "task", "to-do", "todo", "to-dos", "todos", "reminders", "reminder"})
 
 
 def clean_section(label, max_len: int = 40) -> str:

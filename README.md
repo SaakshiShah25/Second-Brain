@@ -27,8 +27,11 @@ usage mode (work / personal / both) that tunes wording, account deletion, and en
 ```
 text / voice ──► moderation (regex → safeguard model → fallback model, fail-closed)
              ──► intent: capture | ask | out of scope
-capture ─► extraction (one LLM call: key points, topic label, category, decisions, concerns, tasks with date/time -
-           each fact lands in exactly one of those lists; repeats are also removed in code)
+capture ─► extraction (one LLM call; the note's sentences are numbered and split into PARTS, one per subject -
+           each part gets its own category, key points, topic label, decisions, concerns and tasks, and each fact
+           lands in exactly one of those lists; repeats are also removed in code)
+        ─► each part saved as its own note under its own initiative (a note about one subject stays one note;
+           picking a category yourself keeps the whole message together)
         ─► note + tasks saved, queued for the search index
 ask     ─► retrieval agent: Round 0 plain-code search (+ task list if it sounds like to-dos),
            planner (≤3 rounds, tools: search / read_notes / list_tasks), writer answers with sources
