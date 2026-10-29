@@ -81,6 +81,33 @@ def test_list_markers_are_stripped_from_the_saved_note():
     assert saved["decisions"] == ["Go ahead"] and saved["tasks"] == ["Join the call"]
 
 
+def test_capture_stores_each_fact_once_and_the_topic_label():
+    import api.routers.capture as cap
+    saved = {}
+    cap.db = types.SimpleNamespace(create_interaction=lambda u, **kw: saved.update(kw) or 1,
+                                   create_task=lambda u, i, d, **kw: 2, get_initiative=lambda u, i: None)
+    cap.embeddings = types.SimpleNamespace(compute_embedding=lambda t, **k: None)
+    cap.search_index = types.SimpleNamespace(enqueue=lambda *a, **k: None)
+    extracted = {
+        "summary": "- Amazon parcel expected soon\n- Planning a birthday gift for Jeevika\n- Jeevika's birthday is next week",
+        "concerns": ["Stock market looks poor, worry about Jio shares"],
+        "decisions": [],
+        "follow_ups": [{"description": "Check Amazon parcel arrival", "owner": "me"},
+                       {"description": "Order a birthday gift for Jeevika from Amazon", "owner": "me"}],
+        "section": "Gift Ideas",
+    }
+    out = cap._process_extracted("u", "raw", extracted)
+    # the point that restates the concern and the gift task goes; the real fact (when the birthday is) stays
+    assert "Planning a birthday gift" not in saved["summary"] and "Jeevika's birthday is next week" in saved["summary"]
+    assert out["summary"] == saved["summary"]
+    assert saved["extracted_facts"] == {"section": "Gift Ideas"}
+    # a generic label is not stored; a note that is all to-dos has an empty summary
+    saved.clear()
+    cap._process_extracted("u", "raw", {"summary": "- Call the bank", "section": "Misc",
+                                        "follow_ups": [{"description": "Call the bank", "owner": "me"}]})
+    assert saved["summary"] == "" and saved["extracted_facts"] is None
+
+
 def test_the_agent_lists_tasks_with_exact_filters():
     import agent
     today = date.today()

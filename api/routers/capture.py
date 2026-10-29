@@ -100,9 +100,16 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
                              geo_lat: Optional[float] = None, geo_lng: Optional[float] = None) -> dict:
     # The summary is stored as short "- " bullet points on purpose (see extraction.py); decisions,
     # concerns and tasks are single lines, so a stray list marker at their start is dropped.
-    summary = text_utils.as_bullets(extracted.get("summary", "") or "")
     decisions = [d for d in (text_utils.strip_bullet(x) for x in extracted.get("decisions") or []) if d]
     concerns = [c for c in (text_utils.strip_bullet(x) for x in extracted.get("concerns") or []) if c]
+    follow_ups = extracted.get("follow_ups", []) or []
+    task_texts = [text_utils.clean_task_text(i.get("description", "") if isinstance(i, dict) else str(i)) for i in follow_ups]
+    # Every fact is shown once: a point that merely restates a decision, concern or task is dropped
+    # (the extraction prompt asks for this too; this keeps it true even if the model repeats itself).
+    summary = text_utils.dedupe_points(
+        text_utils.as_bullets(extracted.get("summary", "") or ""), decisions + concerns + task_texts
+    )
+    section = text_utils.clean_section(extracted.get("section"))
     with step("embedding"):
         embedding = embeddings.compute_embedding(raw_text)
 
@@ -131,6 +138,7 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
         maps_url=maps_url,
         decisions=decisions,
         concerns=concerns,
+        extracted_facts={"section": section} if section else None,  # groups the note on its initiative's page
     )
 
     tasks_created = []

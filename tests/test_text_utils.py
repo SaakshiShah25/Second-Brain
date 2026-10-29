@@ -88,6 +88,33 @@ def test_a_summary_is_always_stored_as_bullet_points():
     assert b("One. Two. Three. Four. Five. Six.").count("\n") == 3
 
 
+def test_a_point_that_restates_a_task_or_concern_is_dropped():
+    from text_utils import dedupe_points
+    # the note from the screenshot: every point repeated a task or the concern
+    points = ("- Amazon parcel expected soon\n- Planning a birthday gift for Jeevika\n- Need Jeevika's mailing address\n"
+              "- Stock market looks poor, considering Jio shares")
+    others = ["Stock market looks poor, worry about Jio shares", "Check Amazon parcel arrival",
+              "Order a birthday gift for Jeevika from Amazon", "Obtain Jeevika's address", "Sell Jio shares"]
+    # the three that restate a task/concern go; the loosest paraphrase ("expected soon" vs "arrival") shares only half
+    # its words, which is kept on purpose - the extraction prompt is what stops the model writing that one
+    assert dedupe_points(points, others) == "- Amazon parcel expected soon"
+    # a genuinely different fact is kept
+    assert dedupe_points("- Priya liked the demo\n- Contract is 12 months", ["Send Priya a revised proposal"]) == \
+        "- Priya liked the demo\n- Contract is 12 months"
+    assert dedupe_points("", ["x"]) == ""
+    # a short line fully contained in a task is a repeat; an unrelated short line stays
+    assert dedupe_points("- Call the bank", ["Call the bank about the card"]) == ""
+    assert dedupe_points("- Call mom", ["Send the deck"]) == "- Call mom"
+
+
+def test_section_labels_are_cleaned_and_generic_ones_dropped():
+    from text_utils import clean_section as c
+    assert c("  Mutual   Funds. ") == "Mutual Funds" and c("gift_ideas") == "gift ideas"
+    for generic in ["Notes", "misc", "General", "Other", "", None, 5, "  "]:
+        assert c(generic) == "", generic
+    assert len(c("x" * 100)) == 40
+
+
 if __name__ == "__main__":
     tests = [(k, f) for k, f in sorted(globals().items()) if k.startswith("test_") and callable(f)]
     failed = 0

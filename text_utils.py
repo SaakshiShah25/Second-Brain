@@ -181,3 +181,65 @@ def as_bullets(text, max_points: int = 4):
     points = [p for p in points if p][:max_points]
     return "\n".join(f"- {p}" for p in points)
 
+
+_STOPWORDS = frozenset(
+    "a an the and or but if so of to in on at by for with from about into over as is are was were be been being am "
+    "it its this that these those i me my we our you your he she him her his hers they them their there here "
+    "not no do does did doing done have has had having will would can could should may might must just very "
+    "also then than too some any all more most up out off need needs want wants get got".split()
+)
+
+
+def _content_words(text: str) -> set:
+    """The meaningful words of a line, lowercased and crudely stemmed, for comparing two lines."""
+    words = set()
+    for w in re.findall(r"[a-z0-9]+", (text or "").lower().replace("'s", "")):
+        if len(w) < 3 or w in _STOPWORDS:
+            continue
+        for suffix in ("ing", "ed", "es", "s"):
+            if w.endswith(suffix) and len(w) - len(suffix) >= 4:
+                w = w[: -len(suffix)]
+                break
+        words.add(w)
+    return words
+
+
+def is_restatement(point: str, other: str, threshold: float = 0.6) -> bool:
+    """True when `point` mostly says what `other` already says: the meaningful words they share cover at
+    least `threshold` of the shorter line. Deliberately strict - dropping a genuine fact is worse than
+    keeping a loose paraphrase (the extraction prompt asks the model not to write those)."""
+    a, b = _content_words(point), _content_words(other)
+    smaller = min(len(a), len(b))
+    if smaller < 3:
+        # a very short line only counts as a repeat when every one of its words is in the other line
+        return smaller >= 2 and (a <= b or b <= a)
+    return len(a & b) / smaller >= threshold
+
+
+def dedupe_points(bullets: str, others) -> str:
+    """Removes the "- " lines of `bullets` that merely restate a decision, concern or task in `others`,
+    so a fact is shown once. Returns the remaining bullets (possibly empty)."""
+    if not isinstance(bullets, str) or not bullets.strip():
+        return bullets or ""
+    others = [o for o in others if isinstance(o, str) and o.strip()]
+    kept = []
+    for line in bullets.splitlines():
+        point = strip_bullet(line)
+        if point and not any(is_restatement(point, o) for o in others):
+            kept.append(f"- {point}")
+    return "\n".join(kept)
+
+
+# Topic labels that say nothing - such a note simply has no section.
+_GENERIC_SECTIONS = frozenset({"notes", "note", "misc", "miscellaneous", "general", "other", "others", "none", "n/a"})
+
+
+def clean_section(label, max_len: int = 40) -> str:
+    """The topic label for a note's section, or "" when it is empty or generic."""
+    if not isinstance(label, str):
+        return ""
+    label = " ".join(label.replace("_", " ").split()).strip(" .,:;-")
+    if not label or label.lower() in _GENERIC_SECTIONS:
+        return ""
+    return label[:max_len].strip()
+

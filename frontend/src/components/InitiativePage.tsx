@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, FileText } from 'lucide-react'
-import { useInitiativeDigest } from '../api/initiatives'
 import type { Interaction } from '../api/types'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
-import InteractionCard, { Points } from './InteractionCard'
-import { notePoints } from '../lib/initiativeFilter'
+import InteractionCard, { ItemList } from './InteractionCard'
+import { noteItems, noteSections } from '../lib/noteSections'
 
 type Ini = { id: number; name: string; color: string | null } | null
 
@@ -35,12 +34,12 @@ function Heading({ initiative, size = 'md' }: { initiative: Ini; size?: 'md' | '
 
 const PREVIEW_POINTS = 4
 
-// One initiative on the Notes overview: how many notes it holds and a glimpse of the latest points. Tapping opens the full page.
+// One initiative on the Notes overview: how many notes it holds and a glimpse of its latest points. Tapping opens the full page.
 export function InitiativeBlock({ initiative, notes, onOpen }: Props & { onOpen: () => void }) {
-  // The newest notes' points first, a handful in all.
+  // The newest notes' key points first, a handful in all - all of it extracted when the notes were logged.
   const latest = [...notes]
     .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.id - a.id)
-    .flatMap((n) => notePoints(n.summary))
+    .flatMap((n) => noteItems(n))
     .slice(0, PREVIEW_POINTS)
 
   return (
@@ -55,7 +54,7 @@ export function InitiativeBlock({ initiative, notes, onOpen }: Props & { onOpen:
         </span>
         {latest.length > 0 && (
           <span className="mt-3 block">
-            <Points points={latest} max={PREVIEW_POINTS} />
+            <ItemList items={latest} max={PREVIEW_POINTS} />
           </span>
         )}
       </button>
@@ -63,39 +62,36 @@ export function InitiativeBlock({ initiative, notes, onOpen }: Props & { onOpen:
   )
 }
 
-// The whole initiative as one page: its notes' points in the sections that fit the subject.
-export function InitiativeView({ id, initiative, notes }: Props) {
-  const digest = useInitiativeDigest(id)
-  const [showNotes, setShowNotes] = useState(false)
+// The whole initiative as one page: the key points, decisions and concerns that were extracted from its notes when
+// they were logged, grouped under each note's topic label - then the notes themselves, as written ("Source notes").
+// Nothing here calls an AI model.
+export function InitiativeView({ initiative, notes }: Props) {
+  const [showSource, setShowSource] = useState(false)
   const style = getInitiativeStyle(initiative)
-  const d = digest.data
+  const sections = noteSections(notes)
 
   return (
     <div>
       <div className="mb-4 rounded-2xl border border-border bg-bg-card p-4">
         <Heading initiative={initiative} size="lg" />
 
-        {digest.isLoading && !d ? (
-          <div className="mt-4 flex flex-col gap-2">
-            <span className="h-3 w-1/3 animate-pulse rounded-full bg-bg-elevated" />
-            <span className="h-3 w-11/12 animate-pulse rounded-full bg-bg-elevated" />
-            <span className="h-3 w-4/5 animate-pulse rounded-full bg-bg-elevated" />
-          </div>
-        ) : (
-          d?.sections.map((s) => (
-            <div key={s.title} className="mt-4">
+        {sections.map((s) => (
+          <div key={s.key} className="mt-4">
+            {s.title && (
               <h3
                 className="mb-1.5 text-[0.8125rem] font-semibold uppercase tracking-wide"
                 style={{ color: style?.color }}
               >
                 {s.title}
               </h3>
-              <Points points={s.points} />
-            </div>
-          ))
-        )}
-        {!digest.isLoading && d && d.sections.length === 0 && (
-          <p className="mt-3 text-[0.9375rem] text-text-muted">No notes here yet.</p>
+            )}
+            <ItemList items={s.items} />
+          </div>
+        ))}
+        {sections.length === 0 && (
+          <p className="mt-3 text-[0.9375rem] text-text-muted">
+            {notes.length === 0 ? 'No notes here yet.' : 'No key points were extracted - see the source notes below.'}
+          </p>
         )}
       </div>
 
@@ -103,19 +99,21 @@ export function InitiativeView({ id, initiative, notes }: Props) {
         <section>
           <button
             type="button"
-            onClick={() => setShowNotes((v) => !v)}
-            aria-expanded={showNotes}
+            onClick={() => setShowSource((v) => !v)}
+            aria-expanded={showSource}
             className="pressable mb-2 flex items-center gap-1.5 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint"
           >
-            Individual notes
+            Source notes
             <span className="font-medium normal-case tracking-normal">· {notes.length}</span>
-            <ChevronDown size={15} strokeWidth={2.2} className={showNotes ? 'rotate-180' : ''} />
+            <ChevronDown size={15} strokeWidth={2.2} className={showSource ? 'rotate-180' : ''} />
           </button>
-          {showNotes && (
+          {showSource && (
             <div className="flex flex-col gap-2.5">
-              {notes.map((n) => (
-                <InteractionCard key={n.id} interaction={n} />
-              ))}
+              {[...notes]
+                .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.id - a.id)
+                .map((n) => (
+                  <InteractionCard key={n.id} interaction={n} variant="source" />
+                ))}
             </div>
           )}
         </section>

@@ -1,0 +1,87 @@
+import type { Interaction } from '../api/types'
+import { notePoints } from './initiativeFilter'
+
+// Everything the Notes tab shows comes from what was extracted when the note was logged - no AI call
+// when you open it. A note contributes its key points, decisions and concerns (each fact once), and
+// an initiative's page groups them under the topic label the note was given at logging time.
+
+export interface NoteItem {
+  text: string
+  kind?: 'decision' | 'concern'
+}
+
+const STOP = new Set(
+  ('a an the and or but if so of to in on at by for with from about into over as is are was were be been being am it its ' +
+    'this that these those i me my we our you your he she him her his hers they them their there here not no do does did ' +
+    'doing done have has had having will would can could should may might must just very also then than too some any all ' +
+    'more most up out off need needs want wants get got').split(' '),
+)
+
+function contentWords(text: string): Set<string> {
+  const out = new Set<string>()
+  for (let w of text.toLowerCase().replace(/'s\b/g, '').match(/[a-z0-9]+/g) ?? []) {
+    if (w.length < 3 || STOP.has(w)) continue
+    for (const suffix of ['ing', 'ed', 'es', 's']) {
+      if (w.endsWith(suffix) && w.length - suffix.length >= 4) {
+        w = w.slice(0, -suffix.length)
+        break
+      }
+    }
+    out.add(w)
+  }
+  return out
+}
+
+// Same idea as text_utils.is_restatement on the server: most of the shorter line's meaningful words are
+// already in the other. Notes logged before duplicates were removed at extraction still repeat themselves.
+export function restates(a: string, b: string): boolean {
+  const wa = contentWords(a)
+  const wb = contentWords(b)
+  const smaller = Math.min(wa.size, wb.size)
+  let shared = 0
+  for (const w of wa) if (wb.has(w)) shared++
+  // a very short line only counts as a repeat when every one of its words is in the other line
+  if (smaller < 3) return smaller >= 2 && shared === smaller
+  return shared / smaller >= 0.6
+}
+
+/** The note's own points, without any that merely restate one of its decisions or concerns. */
+export function distinctPoints(n: Interaction): string[] {
+  const others = [...(n.decisions ?? []), ...(n.concerns ?? [])]
+  return notePoints(n.summary).filter((p) => !others.some((o) => restates(p, o)))
+}
+
+/** Points, then decisions, then concerns - every distinct fact of the note, once. */
+export function noteItems(n: Interaction): NoteItem[] {
+  return [
+    ...distinctPoints(n).map((text) => ({ text })),
+    ...(n.decisions ?? []).map((text): NoteItem => ({ text, kind: 'decision' })),
+    ...(n.concerns ?? []).map((text): NoteItem => ({ text, kind: 'concern' })),
+  ]
+}
+
+export interface NoteSection {
+  key: string
+  title: string // '' = no heading (the only group, and it has no label)
+  items: NoteItem[]
+}
+
+/** An initiative's notes as sections: newest notes first, grouped by the topic label each was given. */
+export function noteSections(notes: Interaction[]): NoteSection[] {
+  const newestFirst = [...notes].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.id - a.id)
+  const groups = new Map<string, NoteSection>()
+  for (const n of newestFirst) {
+    const label = (n.extracted_facts?.section ?? '').trim()
+    const key = label.toLowerCase()
+    const group = groups.get(key) ?? groups.set(key, { key: key || 'other', title: label, items: [] }).get(key)!
+    for (const item of noteItems(n)) {
+      if (!group.items.some((g) => g.kind === item.kind && g.text.toLowerCase() === item.text.toLowerCase())) group.items.push(item)
+    }
+  }
+  const sections = [...groups.values()].filter((g) => g.items.length > 0)
+  // Unlabelled notes (older ones) come last, under "Other notes" when there is anything else to tell apart.
+  const unlabelled = sections.filter((s) => s.title === '')
+  const labelled = sections.filter((s) => s.title !== '')
+  if (labelled.length > 0) for (const s of unlabelled) s.title = 'Other notes'
+  return [...labelled, ...unlabelled]
+}

@@ -84,7 +84,6 @@ _ENCRYPTED_TEXT_FIELDS = {
     "interaction": ["raw_text", "summary", "location", "appearance", "geo_address"],
     "task": ["description"],
     "search_chunk": ["title", "text"],
-    "initiative_digest": ["digest"],
 }
 _ENCRYPTED_JSON_FIELDS = {
     "interaction": ["sentiment", "topics", "extracted_facts", "decisions", "concerns"],
@@ -572,6 +571,44 @@ def get_push_subscriptions(user_id: Optional[str] = None) -> list:
 def mark_push_sent(subscription_id: int, slot: str, local_date: str) -> None:
     """slot is '9am' or '5pm'."""
     get_client().table("push_subscription").update({f"last_{slot}": local_date}).eq("id", subscription_id).execute()
+
+
+# ---------- Observability events (schema.sql section 35, observability.py) ----------
+
+def insert_app_events(rows: list) -> None:
+    for start in range(0, len(rows), 500):
+        get_client().table("app_event").insert(rows[start:start + 500]).execute()
+
+
+def get_app_events(since_iso: str) -> list:
+    """Every event since `since_iso`, oldest first, paged past PostgREST's
+    1,000-row default cap."""
+    out, start = [], 0
+    while True:
+        page = (
+            get_client().table("app_event").select("*")
+            .gte("created_at", since_iso).order("created_at").range(start, start + 999).execute().data
+        )
+        out += page
+        if len(page) < 1000:
+            return out
+        start += 1000
+
+
+def delete_app_events_before(before_iso: str) -> None:
+    get_client().table("app_event").delete().lt("created_at", before_iso).execute()
+
+
+def get_all_user_emails() -> dict:
+    """{user_id: email} for every account - the admin page labels usage with it."""
+    users, page = {}, 1
+    while True:
+        batch = get_client().auth.admin.list_users(page=page, per_page=1000)
+        for u in batch:
+            users[u.id] = u.email
+        if len(batch) < 1000:
+            return users
+        page += 1
 
 
 if __name__ == "__main__":

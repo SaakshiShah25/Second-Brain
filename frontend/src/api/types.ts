@@ -61,6 +61,8 @@ export interface Interaction {
   maps_url: string | null
   decisions: string[]
   concerns: string[]
+  // Set when the note was logged: the topic label its points are grouped under on the initiative's page.
+  extracted_facts?: { section?: string } | null
 }
 
 export interface CaptureSavedResult {

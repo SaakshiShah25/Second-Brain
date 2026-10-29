@@ -5,6 +5,7 @@ import { useDeleteInteraction, useUpdateInteraction } from '../api/notes'
 import type { Interaction } from '../api/types'
 import { fullDate } from '../lib/dates'
 import { notePoints } from '../lib/initiativeFilter'
+import { distinctPoints, noteItems, type NoteItem } from '../lib/noteSections'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
@@ -30,14 +31,26 @@ function Section({ icon: Icon, title, items }: { icon: typeof CheckCircle2; titl
   )
 }
 
-export function Points({ points, max }: { points: string[]; max?: number }) {
-  const shown = max ? points.slice(0, max) : points
+// Bullets; a decision or concern carries a small tag so it is clear what it is.
+export function ItemList({ items, max }: { items: NoteItem[]; max?: number }) {
+  const shown = max ? items.slice(0, max) : items
   return (
     <ul className="flex flex-col gap-1">
-      {shown.map((p, i) => (
+      {shown.map((it, i) => (
         <li key={i} className="flex gap-2.5 text-[0.9375rem] leading-snug">
           <span className="mt-[0.5rem] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-text-faint" />
-          <span className={max ? 'line-clamp-2' : ''}>{p}</span>
+          <span className={max ? 'line-clamp-2' : ''}>
+            {it.kind && (
+              <span
+                className={`mr-1.5 text-[0.6875rem] font-semibold uppercase tracking-wide ${
+                  it.kind === 'concern' ? 'text-danger' : 'text-success'
+                }`}
+              >
+                {it.kind}
+              </span>
+            )}
+            {it.text}
+          </span>
         </li>
       ))}
     </ul>
@@ -53,10 +66,13 @@ export default function InteractionCard({
   interaction,
   autoOpen = false,
   onClosed,
+  variant = 'points',
 }: {
   interaction: Interaction
   autoOpen?: boolean
   onClosed?: () => void
+  // 'source' shows what was actually written (the raw note) instead of its key points.
+  variant?: 'points' | 'source'
 }) {
   const updateInteraction = useUpdateInteraction()
   const deleteInteraction = useDeleteInteraction()
@@ -74,12 +90,14 @@ export default function InteractionCard({
   useEffect(() => {
     if (autoOpen) cardRef.current?.scrollIntoView({ block: 'center' })
   }, [autoOpen])
-  const points = notePoints(interaction.summary)
+  const rawPoints = notePoints(interaction.summary) // what the edit form works on
+  const points = distinctPoints(interaction) // what is shown: nothing that a decision or concern already says
+  const items = noteItems(interaction)
 
   const [form, setForm] = useState({
     date: interaction.date ?? '',
     location: interaction.location ?? '',
-    points: points.join('\n'),
+    points: rawPoints.join('\n'),
     raw_text: interaction.raw_text ?? '',
     decisions: (interaction.decisions ?? []).join('\n'),
     concerns: (interaction.concerns ?? []).join('\n'),
@@ -128,10 +146,10 @@ export default function InteractionCard({
             <span className="text-text-faint">·</span>
             <span className="flex-shrink-0 text-text-faint">{fullDate(interaction.date)}</span>
           </div>
-          {points.length > 0 ? (
-            <Points points={points} max={4} />
+          {variant === 'source' || items.length === 0 ? (
+            <p className="line-clamp-3 whitespace-pre-line text-[0.9375rem] leading-snug">{interaction.raw_text || '(empty note)'}</p>
           ) : (
-            <p className="line-clamp-2 text-[0.9375rem] leading-snug">{interaction.raw_text || '(empty note)'}</p>
+            <ItemList items={items} max={4} />
           )}
         </button>
       </div>
@@ -156,9 +174,9 @@ export default function InteractionCard({
               </div>
 
               {points.length > 0 ? (
-                <Points points={points} />
-              ) : (
-                <p className="text-[0.9375rem] text-text-muted">(no summary)</p>
+                <ItemList items={points.map((text) => ({ text }))} />
+              ) : interaction.decisions?.length || interaction.concerns?.length ? null : (
+                <p className="text-[0.9375rem] text-text-muted">No key points - see what you said below.</p>
               )}
 
               {(interaction.location || interaction.maps_url) && (

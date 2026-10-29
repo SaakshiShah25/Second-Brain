@@ -86,22 +86,3 @@ export function useDeleteInitiative() {
     },
   })
 }
-
-export interface InitiativeDigest {
-  sections: { title: string; points: string[] }[]
-  note_count: number
-  generated_at: string | null
-  organised: boolean
-}
-
-// An initiative as one page (initiative_digest.py) - 0 = Others. Keyed
-// under 'notes' so anything that refetches notes refreshes it too; the
-// server only rewrites it when that initiative's notes actually changed.
-export function useInitiativeDigest(id: number, enabled = true) {
-  return useQuery({
-    queryKey: ['notes', 'digest', id],
-    queryFn: () => api.get<InitiativeDigest>(`/api/initiatives/${id}/digest`),
-    enabled,
-    staleTime: 5 * 60_000,
-  })
-}
