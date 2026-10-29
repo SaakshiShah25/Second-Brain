@@ -30,7 +30,8 @@ text / voice ──► moderation (regex → safeguard model → fallback model,
 capture ─► extraction (one LLM call: pulls out key points, decisions, concerns and tasks and files each item under
            its own initiative; each fact lands in exactly one list, repeats are also removed in code)
         ─► one note per initiative mentioned (a note about one subject stays one note; picking a category yourself
-           keeps the whole message together); tasks follow their item's initiative
+           keeps the whole message together); tasks follow their item's initiative. The original text is stored once,
+           on the first note; the others point at it (`interaction.source_id`) and are deleted with it
         ─► reply shown as one coloured section per initiative; note + tasks saved, queued for the search index
 ask     ─► retrieval agent: Round 0 plain-code search (+ task list if it sounds like to-dos),
            planner (≤3 rounds, tools: search / read_notes / list_tasks), writer answers with sources
@@ -88,6 +89,9 @@ Needed for task times (section 32):
 alter table task add column if not exists due_time time;
 notify pgrst, 'reload schema';
 ```
+
+For a message that lands in several initiatives to store the original text once (instead of on every note),
+run `scripts/migration_37_source_note.sql` (schema.sql section 37). Without it everything still works, with a copy per note.
 
 If a note was saved with a missing-column warning, `scripts/pending_migration.sql` collects the pending changes.
 

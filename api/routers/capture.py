@@ -100,10 +100,13 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
                              initiative_id: Optional[int] = None,
                              geo_lat: Optional[float] = None, geo_lng: Optional[float] = None,
                              geo_address: Optional[str] = None, maps_url: Optional[str] = None,
-                             embedding=None, batch: Optional[str] = None) -> dict:
+                             embedding=None, batch: Optional[str] = None,
+                             source_id: Optional[int] = None) -> dict:
     """Saves ONE initiative's share of a logged message as its own note (with its own tasks) and returns what to
     tell the user about it. `raw_text` is the message as written; `extracted` holds this initiative's points,
-    decisions, concerns and follow-ups. `batch` ties together the notes that came from the same message."""
+    decisions, concerns and follow-ups. The notes that came from the same message are tied together: either by
+    `source_id` (they point at the first note, which holds the original text once) or, when that column isn't
+    available yet, by a shared `batch` id with the original text repeated on each."""
     # The summary is stored as short "- " bullet points on purpose (see extraction.py); decisions,
     # concerns and tasks are single lines, so a stray list marker at their start is dropped.
     decisions = [d for d in (text_utils.strip_bullet(x) for x in extracted.get("decisions") or []) if d]
@@ -122,6 +125,7 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
         user_id,
         initiative_id=initiative_id,
         raw_text=raw_text,
+        source_id=source_id,
         date=interaction_date,
         location=extracted.get("location"),
         summary=summary,
@@ -206,7 +210,10 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
     # The original text is the same for every note of this message, so it is embedded once.
     with step("embedding"):
         embedding = embeddings.compute_embedding((raw_text or "").strip())
-    batch = uuid.uuid4().hex[:12] if len(groups) > 1 else None
+    # A message that lands in several initiatives is saved once, with the original text on its first note; the other
+    # notes only point at it (so deleting or editing the original reaches every initiative it touches).
+    link = len(groups) > 1 and db.source_links_supported()
+    batch = uuid.uuid4().hex[:12] if len(groups) > 1 and not link else None
 
     saved = []
     for group in groups:
@@ -219,10 +226,12 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
             initiative_id = _resolve_initiative(user_id, group)
             if initiative_id is not None:
                 group["suggested_initiative"] = None
+        follower = link and bool(saved)
         saved.append(_finish_capture_storage(
-            user_id, group["raw_text"], group, interaction_date, initiative_id=initiative_id,
+            user_id, "" if follower else group["raw_text"], group, interaction_date, initiative_id=initiative_id,
             geo_lat=geo_lat, geo_lng=geo_lng, geo_address=geo_address, maps_url=maps_url,
-            embedding=embedding, batch=batch,
+            embedding=None if follower else embedding, batch=batch,
+            source_id=saved[0]["interaction_id"] if follower else None,
         ))
 
     return {

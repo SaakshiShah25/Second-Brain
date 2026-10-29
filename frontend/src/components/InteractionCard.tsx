@@ -85,6 +85,10 @@ export default function InteractionCard({
   const { data: initiatives } = useInitiatives()
 
   const initiativeStyle = getInitiativeStyle(interaction.initiative)
+  // The original text of a message that went to several initiatives lives on one note; editing or deleting it from
+  // any of them acts on that one.
+  const alsoIn = interaction.also_in ?? []
+  const originalId = interaction.source_id ?? interaction.id
 
   // Arriving from a task: bring the card into view behind the sheet.
   useEffect(() => {
@@ -107,12 +111,17 @@ export default function InteractionCard({
   function handleSave(e: FormEvent) {
     e.preventDefault()
     const lines = (text: string) => text.split('\n').map((s) => s.trim()).filter(Boolean)
-    const { points: pointText, ...rest } = form
+    const { points: pointText, raw_text: rawText, ...rest } = form
+    // The wording is shared with the other initiatives' notes, so it is saved on the original, not on this note.
+    if (originalId !== interaction.id && rawText !== (interaction.raw_text ?? '')) {
+      updateInteraction.mutate({ interactionId: originalId, fields: { raw_text: rawText } })
+    }
     updateInteraction.mutate(
       {
         interactionId: interaction.id,
         fields: {
           ...rest,
+          ...(originalId === interaction.id ? { raw_text: rawText } : {}),
           summary: lines(pointText).map((p) => `- ${p.replace(/^[-•*]\s+/, '')}`).join('\n'),
           date: form.date || null,
           decisions: lines(form.decisions),
@@ -146,6 +155,9 @@ export default function InteractionCard({
             <span className="text-text-faint">·</span>
             <span className="flex-shrink-0 text-text-faint">{fullDate(interaction.date)}</span>
           </div>
+          {variant === 'source' && alsoIn.length > 0 && (
+            <p className="mb-2 text-[0.8125rem] text-text-muted">Also in {alsoIn.join(', ')}</p>
+          )}
           {variant === 'source' || items.length === 0 ? (
             <p className="line-clamp-3 whitespace-pre-line text-[0.9375rem] leading-snug">{interaction.raw_text || '(empty note)'}</p>
           ) : (
@@ -172,6 +184,11 @@ export default function InteractionCard({
                   {fullDate(interaction.date)}
                 </span>
               </div>
+              {alsoIn.length > 0 && (
+                <p className="mb-3 text-[0.8125rem] text-text-muted">
+                  What you said also covers {alsoIn.join(', ')}.
+                </p>
+              )}
 
               {points.length > 0 ? (
                 <ItemList items={points.map((text) => ({ text }))} />
@@ -268,7 +285,7 @@ export default function InteractionCard({
                 <Textarea rows={2} value={form.concerns} onChange={(e) => setForm({ ...form, concerns: e.target.value })} />
               </div>
               <div>
-                <Label>What you said</Label>
+                <Label>{alsoIn.length > 0 ? `What you said (shared with ${alsoIn.join(', ')})` : 'What you said'}</Label>
                 <Textarea rows={4} value={form.raw_text} onChange={(e) => setForm({ ...form, raw_text: e.target.value })} />
               </div>
               <div className="mt-1 flex gap-2">
@@ -287,12 +304,16 @@ export default function InteractionCard({
       {confirmDelete && (
         <ConfirmDialog
           title="Delete this note?"
-          message="This also deletes its tasks. This cannot be undone."
+          message={
+            interaction.shared_original
+              ? `What you said covers ${alsoIn.length > 0 ? alsoIn.join(', ') + ' as well' : 'other initiatives too'}. Deleting it removes it from all of them, with all their tasks. This cannot be undone.`
+              : 'This also deletes its tasks. This cannot be undone.'
+          }
           confirmLabel="Delete note"
           busy={deleteInteraction.isPending}
           busyLabel="Deleting…"
           onConfirm={() => {
-            deleteInteraction.mutate(interaction.id, {
+            deleteInteraction.mutate(originalId, {
               onSettled: () => {
                 setConfirmDelete(false)
                 close()

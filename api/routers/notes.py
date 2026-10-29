@@ -16,9 +16,36 @@ from api.schemas import InteractionUpdate
 router = APIRouter()
 
 
+def with_sources(rows: list) -> list:
+    """Adds what the Notes page needs to treat the notes of one message as one: a note that points at the original
+    (source_id) shows the original's text, and every note lists the OTHER initiatives its message also touched
+    (`also_in`; `shared_original` is true when deleting this note also deletes the others). A message's notes are grouped by their shared source, or by a batch id on older/unlinked ones."""
+    by_id = {r["id"]: r for r in rows}
+
+    def key(r):
+        return r.get("source_id") or (r.get("extracted_facts") or {}).get("batch") or r["id"]
+
+    def label(r):
+        return (r.get("initiative") or {}).get("name") or "Others"
+
+    groups: dict = {}
+    for r in rows:
+        groups.setdefault(key(r), []).append(r)
+    sources = {r["source_id"] for r in rows if r.get("source_id")}
+    for r in rows:
+        source = by_id.get(r.get("source_id"))
+        if source is not None and not r.get("raw_text"):
+            r["raw_text"] = source.get("raw_text") or ""
+        mine = label(r)
+        # deleting the original removes the notes that point at it, so the page warns before it does
+        r["shared_original"] = bool(r.get("source_id")) or r["id"] in sources
+        r["also_in"] = sorted({label(o) for o in groups[key(r)] if o["id"] != r["id"]} - {mine})
+    return rows
+
+
 @router.get("")
 def list_notes(user_id: str = Depends(get_current_user_id)):
-    return db.get_all_interactions_with_context(user_id)
+    return with_sources(db.get_all_interactions_with_context(user_id))
 
 
 @router.patch("/{interaction_id}")

@@ -110,7 +110,7 @@ def test_capture_stores_each_fact_once_and_the_topic_label():
     assert saved["summary"] == "" and saved["extracted_facts"] is None
 
 
-def _split_fakes():
+def _split_fakes(linked=True):
     import api.routers.capture as cap
     notes, tasks = [], []
     inits = {"Synapse Partnership": 1, "Health": 2}
@@ -119,6 +119,7 @@ def _split_fakes():
         create_task=lambda u, i, d, **kw: tasks.append((i, d)) or len(tasks),
         get_initiative=lambda u, i: {"id": i, "name": {v: k for k, v in inits.items()}.get(i, "x")},
         get_initiative_by_name=lambda u, n: {"id": inits[n]} if n in inits else None,
+        source_links_supported=lambda: linked,
     )
     cap.embeddings = types.SimpleNamespace(compute_embedding=lambda t, **k: None)
     cap.search_index = types.SimpleNamespace(enqueue=lambda *a, **k: None)
@@ -141,15 +142,49 @@ def _three_group_answer():
 
 def test_one_message_about_three_subjects_is_filed_under_three_initiatives():
     cap, notes, tasks = _split_fakes()
+    cap.embeddings = types.SimpleNamespace(compute_embedding=lambda t, **k: [0.1])
     out = cap._process_extracted("u", NOTE, _three_group_answer())
     assert [p["initiative_name"] for p in out["parts"]] == ["Synapse Partnership", None, "Health"]
     assert [n["initiative_id"] for n in notes] == [1, None, 2]
     # each task hangs off the note (and so the initiative) it belongs to - this is what the Tasks tab groups by
     assert tasks == [(1, "Discuss the fee collection system for teachers"), (3, "Start focusing on your diet")]
-    # the original text is kept whole on every note (never cut up), and the notes of one message share a batch id
-    assert all(n["raw_text"] == NOTE for n in notes)
+    # the original text is stored once, whole, on the first note; the others point at it instead of repeating it
+    assert [n["raw_text"] for n in notes] == [NOTE, "", ""]
+    assert [n.get("source_id") for n in notes] == [None, 1, 1]
+    assert all("batch" not in (n["extracted_facts"] or {}) for n in notes)
+    # ... and only that first note carries the search embedding
+    assert [n["embedding"] is None for n in notes] == [False, True, True]
+
+
+def test_without_the_source_column_every_note_keeps_the_whole_text_with_a_batch_id():
+    cap, notes, tasks = _split_fakes(linked=False)
+    cap._process_extracted("u", NOTE, _three_group_answer())
+    assert all(n["raw_text"] == NOTE and n.get("source_id") is None for n in notes)
     batches = {n["extracted_facts"]["batch"] for n in notes}
     assert len(batches) == 1 and None not in batches
+
+
+def test_the_notes_page_shows_the_original_under_each_initiative_and_says_where_else_it_went():
+    from api.routers.notes import with_sources
+    rows = [
+        {"id": 1, "raw_text": NOTE, "initiative": {"name": "Synapse Partnership"}},
+        {"id": 2, "raw_text": "", "source_id": 1, "initiative": None},
+        {"id": 3, "raw_text": "", "source_id": 1, "initiative": {"name": "Health"}},
+        {"id": 4, "raw_text": "Call the bank", "initiative": {"name": "Health"}},
+    ]
+    by_id = {r["id"]: r for r in with_sources(rows)}
+    assert all(by_id[i]["raw_text"] == NOTE for i in (1, 2, 3))
+    assert by_id[1]["also_in"] == ["Health", "Others"]
+    assert by_id[3]["also_in"] == ["Others", "Synapse Partnership"]
+    assert by_id[4]["also_in"] == [] and by_id[4]["raw_text"] == "Call the bank"
+    assert [by_id[i]["shared_original"] for i in (1, 2, 3, 4)] == [True, True, True, False]
+    # unlinked notes from one message (older rows, or before the SQL was run) are tied together by their batch id
+    old = with_sources([
+        {"id": 5, "raw_text": "x", "extracted_facts": {"batch": "b"}, "initiative": {"name": "A"}},
+        {"id": 6, "raw_text": "x", "extracted_facts": {"batch": "b"}, "initiative": {"name": "B"}},
+    ])
+    assert old[0]["also_in"] == ["B"] and old[1]["also_in"] == ["A"]
+    assert not old[0]["shared_original"]
 
 
 def test_a_message_about_one_subject_is_one_note_with_no_batch():
@@ -195,7 +230,7 @@ def test_the_original_is_embedded_once_however_many_initiatives_it_touches():
     calls = []
     cap.embeddings = types.SimpleNamespace(compute_embedding=lambda t, **k: calls.append(t) or [0.1])
     cap._process_extracted("u", NOTE, _three_group_answer())
-    assert calls == [NOTE] and all(n["embedding"] == [0.1] for n in notes)
+    assert calls == [NOTE] and notes[0]["embedding"] == [0.1]
 
 
 def test_the_agent_lists_tasks_with_exact_filters():

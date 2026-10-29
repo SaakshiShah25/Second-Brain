@@ -63,6 +63,13 @@ export interface Interaction {
   concerns: string[]
   // Set when the note was logged: the topic label its points are grouped under on the initiative's page.
   extracted_facts?: { section?: string } | null
+  // One message that touched several initiatives is saved as one note per initiative; the first holds the
+  // original text and the rest point at it (`source_id`). `raw_text` is already filled in from it. `also_in` names
+  // the other initiatives the same message went to, and `shared_original` is true when deleting this note also
+  // deletes those others.
+  source_id?: number | null
+  also_in?: string[]
+  shared_original?: boolean
 }
 
 // One message can cover several subjects, so it is saved as one note per part, each under its own initiative

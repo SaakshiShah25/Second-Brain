@@ -137,8 +137,8 @@ def _decrypt_rows(table: str, rows: list) -> list:
 def create_interaction(user_id: str, raw_text="", date=None, location=None, appearance="",
                         summary="", sentiment=None, topics=None, extracted_facts=None,
                         embedding=None, geo_lat=None, geo_lng=None, geo_address=None, maps_url=None,
-                        decisions=None, concerns=None, initiative_id=None):
-    resp = get_client().table("interaction").insert(_encrypt_fields("interaction", {
+                        decisions=None, concerns=None, initiative_id=None, source_id=None):
+    row = {
         "user_id": user_id,
         "raw_text": raw_text,
         "date": date,
@@ -158,8 +158,31 @@ def create_interaction(user_id: str, raw_text="", date=None, location=None, appe
         "decisions": decisions or [],           # settled outcomes, distinct from follow-up tasks
         "concerns": concerns or [],             # specific objections/hesitations raised
         "initiative_id": initiative_id,         # which user-managed initiative this note belongs to, if any
-    })).execute()
+    }
+    if source_id is not None:
+        # One message that touched several initiatives is saved as one note per initiative; the first holds the
+        # original text and the others point at it (and are deleted with it) instead of repeating it.
+        row["source_id"] = source_id
+    resp = get_client().table("interaction").insert(_encrypt_fields("interaction", row)).execute()
     return resp.data[0]["id"]
+
+
+_source_links_ok = False
+
+
+def source_links_supported() -> bool:
+    """True once the `interaction.source_id` column exists (scripts/migration_37_source_note.sql). Until the SQL has
+    been run, a message about several initiatives keeps the original text on every note, as before. Only a yes is
+    remembered, so running the SQL takes effect without a restart."""
+    global _source_links_ok
+    if _source_links_ok:
+        return True
+    try:
+        get_client().table("interaction").select("source_id").limit(1).execute()
+    except Exception:
+        return False
+    _source_links_ok = True
+    return True
 
 
 def get_all_interactions(user_id: str):
