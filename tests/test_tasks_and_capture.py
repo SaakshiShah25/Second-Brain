@@ -129,66 +129,73 @@ NOTE = ("Discuss about the fee collection system for teachers for the Synapse pa
         "Jeevika's address is Borivali East,Mumbai. Start focusing on your diet.")
 
 
-def _three_part_answer():
-    return {"parts": [
-        {"sentences": [1], "initiative": "Synapse Partnership", "section": "Fees",
+def _three_group_answer():
+    # the model tagged each extracted item with its initiative - not each sentence
+    return {"groups": [
+        {"initiative": "Synapse Partnership", "section": "Fees",
          "follow_ups": [{"description": "Discuss the fee collection system for teachers", "owner": "me"}]},
-        {"sentences": [2], "initiative": None, "summary": "- Jeevika's address is Borivali East, Mumbai"},
-        {"sentences": [3], "initiative": "Health", "follow_ups": [{"description": "Start focusing on your diet", "owner": "me"}]},
+        {"initiative": None, "summary": "- Jeevika's address is Borivali East, Mumbai"},
+        {"initiative": "Health", "follow_ups": [{"description": "Start focusing on your diet", "owner": "me"}]},
     ]}
 
 
-def test_one_message_about_three_subjects_is_filed_as_three_notes():
+def test_one_message_about_three_subjects_is_filed_under_three_initiatives():
     cap, notes, tasks = _split_fakes()
-    out = cap._process_extracted("u", NOTE, _three_part_answer())
+    out = cap._process_extracted("u", NOTE, _three_group_answer())
     assert [p["initiative_name"] for p in out["parts"]] == ["Synapse Partnership", None, "Health"]
-    # each note holds only its own sentences, so "Source notes" show just that part
-    assert [n["raw_text"] for n in notes] == [
-        "Discuss about the fee collection system for teachers for the Synapse partnership.",
-        "Jeevika's address is Borivali East,Mumbai.",
-        "Start focusing on your diet.",
-    ]
     assert [n["initiative_id"] for n in notes] == [1, None, 2]
-    # each task hangs off the note (and so the initiative) it came from
+    # each task hangs off the note (and so the initiative) it belongs to - this is what the Tasks tab groups by
     assert tasks == [(1, "Discuss the fee collection system for teachers"), (3, "Start focusing on your diet")]
+    # the original text is kept whole on every note (never cut up), and the notes of one message share a batch id
+    assert all(n["raw_text"] == NOTE for n in notes)
+    batches = {n["extracted_facts"]["batch"] for n in notes}
+    assert len(batches) == 1 and None not in batches
+
+
+def test_a_message_about_one_subject_is_one_note_with_no_batch():
+    cap, notes, tasks = _split_fakes()
+    cap._process_extracted("u", "Call the bank", {"groups": [{"initiative": "Health", "follow_ups": [{"description": "Call the bank"}]}]})
+    assert len(notes) == 1 and "batch" not in (notes[0]["extracted_facts"] or {})
 
 
 def test_a_category_picked_by_the_user_keeps_the_whole_message_together():
     cap, notes, tasks = _split_fakes()
-    out = cap._process_extracted("u", NOTE, _three_part_answer(), forced_initiative_id=2)
+    out = cap._process_extracted("u", NOTE, _three_group_answer(), forced_initiative_id=2)
     assert len(out["parts"]) == 1 and len(notes) == 1
     assert notes[0]["raw_text"] == NOTE and notes[0]["initiative_id"] == 2
     assert [d for _, d in tasks] == ["Discuss the fee collection system for teachers", "Start focusing on your diet"]
 
 
-def test_no_sentence_is_lost_duplicated_or_invented_whatever_the_model_returns():
+def test_the_models_groups_are_validated_not_trusted():
     import extraction
-    sents = extraction.split_sentences(NOTE)
-    assert "".join(g + t for t, g in sents) == NOTE                       # splitting is lossless
-    # a sentence the model forgot (2) follows the one before it; a sentence given twice (1) stays with the first part
-    parts = extraction.note_parts(NOTE, {"parts": [{"sentences": [1], "initiative": "A"}, {"sentences": [1, 3], "initiative": "B"}]})
-    assert [p["raw_text"] for p in parts] == [
-        "Discuss about the fee collection system for teachers for the Synapse partnership. Jeevika's address is Borivali East,Mumbai.",
-        "Start focusing on your diet.",
-    ]
-    # out-of-range numbers are ignored; two parts for the same initiative become one
-    parts = extraction.note_parts(NOTE, {"parts": [{"sentences": [1, 9], "initiative": "Health", "decisions": ["x"]},
-                                                  {"sentences": [2, 3], "initiative": "health", "decisions": ["y"]}]})
-    assert len(parts) == 1 and parts[0]["decisions"] == ["x", "y"] and parts[0]["raw_text"] == NOTE
-    # a model that ignored the format and answered with one flat object still yields one part
-    flat = extraction.note_parts(NOTE, {"initiative": "Health", "summary": "- a", "follow_ups": [{"description": "t"}]})
+    # two groups for the same initiative become one (names compared ignoring case)
+    g = extraction.note_groups(NOTE, {"groups": [{"initiative": "Health", "decisions": ["x"], "follow_ups": [{"description": "a"}]},
+                                                {"initiative": "health", "decisions": ["y"], "follow_ups": [{"description": "b"}]}]})
+    assert len(g) == 1 and g[0]["decisions"] == ["x", "y"] and [f["description"] for f in g[0]["follow_ups"]] == ["a", "b"]
+    # a to-do listed under two initiatives is kept once, under the first
+    g = extraction.note_groups(NOTE, {"groups": [{"initiative": "A", "follow_ups": [{"description": "Call mom"}]},
+                                                {"initiative": "B", "follow_ups": [{"description": " call  MOM "}, {"description": "Pay rent"}]}]})
+    assert [[f["description"] for f in x["follow_ups"]] for x in g] == [["Call mom"], ["Pay rent"]]
+    # a group the model made up with nothing in it is dropped
+    g = extraction.note_groups(NOTE, {"groups": [{"initiative": "A", "summary": "- real"}, {"initiative": "B"}]})
+    assert [x["initiative"] for x in g] == ["A"]
+    # more than MAX_GROUPS are folded into the last one rather than lost
+    many = [{"initiative": f"I{i}", "decisions": [f"d{i}"]} for i in range(6)]
+    g = extraction.note_groups(NOTE, {"groups": many})
+    assert len(g) == extraction.MAX_GROUPS and sum(len(x["decisions"]) for x in g) == 6
+    # a model that ignored the format and answered with one flat object still yields one group
+    flat = extraction.note_groups(NOTE, {"initiative": "Health", "summary": "- a", "follow_ups": [{"description": "t"}]})
     assert len(flat) == 1 and flat[0]["initiative"] == "Health" and flat[0]["raw_text"] == NOTE
-    # several parts for a one-sentence note are merged, not dropped
-    one = extraction.note_parts("Call the bank.", {"parts": [{"sentences": [1], "initiative": None, "follow_ups": [{"description": "a"}]},
-                                                             {"sentences": [1], "initiative": None, "follow_ups": [{"description": "b"}]}]})
-    assert len(one) == 1 and [f["description"] for f in one[0]["follow_ups"]] == ["a", "b"]
+    # an empty answer is still one (empty) group rather than an error
+    assert len(extraction.note_groups(NOTE, {})) == 1
 
 
-def test_sentences_are_numbered_for_the_model_and_line_breaks_are_boundaries():
-    import extraction
-    assert extraction.numbered_note("Call the bank.") == "[1] Call the bank."
-    assert extraction.numbered_note("Buy milk\nCall mom. Pay rent") == "[1] Buy milk\n[2] Call mom.\n[3] Pay rent"
-    assert extraction.split_sentences("   ") == [] and extraction.numbered_note("") == ""
+def test_the_original_is_embedded_once_however_many_initiatives_it_touches():
+    cap, notes, tasks = _split_fakes()
+    calls = []
+    cap.embeddings = types.SimpleNamespace(compute_embedding=lambda t, **k: calls.append(t) or [0.1])
+    cap._process_extracted("u", NOTE, _three_group_answer())
+    assert calls == [NOTE] and all(n["embedding"] == [0.1] for n in notes)
 
 
 def test_the_agent_lists_tasks_with_exact_filters():

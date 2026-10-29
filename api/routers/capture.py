@@ -6,6 +6,7 @@ api/routers/chat.py calls for the main chat input.
 """
 
 import time
+import uuid
 from datetime import date
 from typing import Awaitable, Callable, Optional
 
@@ -98,10 +99,11 @@ def _resolve_initiative(user_id: str, extracted: dict) -> Optional[int]:
 def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, interaction_date: str,
                              initiative_id: Optional[int] = None,
                              geo_lat: Optional[float] = None, geo_lng: Optional[float] = None,
-                             geo_address: Optional[str] = None, maps_url: Optional[str] = None) -> dict:
-    """Saves ONE part of a logged message as its own note (with its own tasks) and returns what to tell the
-    user about it. `raw_text` is the part's own sentences; `extracted` holds its points, decisions, concerns and
-    follow-ups."""
+                             geo_address: Optional[str] = None, maps_url: Optional[str] = None,
+                             embedding=None, batch: Optional[str] = None) -> dict:
+    """Saves ONE initiative's share of a logged message as its own note (with its own tasks) and returns what to
+    tell the user about it. `raw_text` is the message as written; `extracted` holds this initiative's points,
+    decisions, concerns and follow-ups. `batch` ties together the notes that came from the same message."""
     # The summary is stored as short "- " bullet points on purpose (see extraction.py); decisions,
     # concerns and tasks are single lines, so a stray list marker at their start is dropped.
     decisions = [d for d in (text_utils.strip_bullet(x) for x in extracted.get("decisions") or []) if d]
@@ -114,8 +116,6 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
         text_utils.as_bullets(extracted.get("summary", "") or ""), decisions + concerns + task_texts
     )
     section = text_utils.clean_section(extracted.get("section"))
-    with step("embedding"):
-        embedding = embeddings.compute_embedding(raw_text)
 
     _t_db0 = time.perf_counter()
     interaction_id = db.create_interaction(
@@ -133,7 +133,8 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
         maps_url=maps_url,
         decisions=decisions,
         concerns=concerns,
-        extracted_facts={"section": section} if section else None,  # groups the note on its initiative's page
+        # the topic label groups the note on its initiative's page; the batch id ties the notes of one message together
+        extracted_facts={k: v for k, v in (("section", section), ("batch", batch)) if v} or None,
     )
 
     tasks_created = []
@@ -185,36 +186,43 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
 def _process_extracted(user_id: str, raw_text: str, extracted: dict,
                         geo_lat: Optional[float] = None, geo_lng: Optional[float] = None,
                         forced_initiative_id: Optional[int] = None) -> dict:
-    """Files a logged message. One message can cover several subjects, so it is saved as one note PER PART, each
-    under its own initiative and with its own tasks (extraction.note_parts). If the user picked the category
-    themselves, nothing is split: the whole message goes there."""
+    """Files a logged message. The model extracted everything in ONE call and tagged each item with the initiative
+    it is about (extraction.note_groups), so one message can land in several initiatives: one note per initiative,
+    each with its own tasks. If the user picked the category themselves, nothing is split: the whole message goes
+    there."""
     interaction_date, date_warning = _resolve_interaction_date(extracted)
-    parts = extraction.note_parts(raw_text, extracted)
+    groups = extraction.note_groups(raw_text, extracted)
     forced = forced_initiative_id is not None and db.get_initiative(user_id, forced_initiative_id)
     if forced:
-        parts = [extraction.collapse_parts(raw_text, parts)]
+        groups = [extraction.collapse_groups(raw_text, groups)]
 
     # Opt-in device location (see ChatInput.tsx) - geo_address is only ever populated if a GOOGLE_MAPS_API_KEY
-    # is configured; maps_url always works (no key needed). Looked up once, shared by every part.
+    # is configured; maps_url always works (no key needed). Looked up once, shared by every note.
     geo_address = maps_url = None
     if geo_lat is not None and geo_lng is not None:
         maps_url = google_maps.build_maps_url(geo_lat, geo_lng)
         geo_address = google_maps.reverse_geocode(geo_lat, geo_lng)
 
+    # The original text is the same for every note of this message, so it is embedded once.
+    with step("embedding"):
+        embedding = embeddings.compute_embedding((raw_text or "").strip())
+    batch = uuid.uuid4().hex[:12] if len(groups) > 1 else None
+
     saved = []
-    for part in parts:
-        # the date and the place the message mentions apply to every part of it
-        part = {**part, "location": extracted.get("location")}
+    for group in groups:
+        # the date and the place the message mentions apply to every note made from it
+        group = {**group, "location": extracted.get("location")}
         if forced:
             # the user's own choice wins over the model's guess, and there is nothing left to "suggest"
-            initiative_id, part["suggested_initiative"] = forced_initiative_id, None
+            initiative_id, group["suggested_initiative"] = forced_initiative_id, None
         else:
-            initiative_id = _resolve_initiative(user_id, part)
+            initiative_id = _resolve_initiative(user_id, group)
             if initiative_id is not None:
-                part["suggested_initiative"] = None
+                group["suggested_initiative"] = None
         saved.append(_finish_capture_storage(
-            user_id, part["raw_text"], part, interaction_date, initiative_id=initiative_id,
+            user_id, group["raw_text"], group, interaction_date, initiative_id=initiative_id,
             geo_lat=geo_lat, geo_lng=geo_lng, geo_address=geo_address, maps_url=maps_url,
+            embedding=embedding, batch=batch,
         ))
 
     return {

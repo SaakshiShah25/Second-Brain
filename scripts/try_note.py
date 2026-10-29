@@ -59,12 +59,10 @@ def main() -> None:
     ex = extraction.extract_info(text, None, names)
     if ex.get("date_mentioned"):
         print(f"Note date:  {date_utils.resolve_relative_phrase(ex['date_mentioned']) or ex['date_mentioned']}")
-    parts = extraction.note_parts(text, ex)
-    print(f"Filed as {len(parts)} note{'s' if len(parts) != 1 else ''}:" if len(parts) > 1 else "")
+    parts = extraction.note_groups(text, ex)
+    print(f"Filed under {len(parts)} initiatives:" if len(parts) > 1 else "")
     for n, part in enumerate(parts, 1):
-        print(f"--- {'Part %d: ' % n if len(parts) > 1 else ''}{part.get('initiative') or 'Others (no match)'}")
-        if len(parts) > 1:
-            print(f"Raw text:   {part['raw_text']}")
+        print(f"--- {part.get('initiative') or 'Others (no match)'}")
         if part.get("suggested_initiative"):
             print(f"Suggested new category: {part['suggested_initiative']}")
         if part.get("section"):

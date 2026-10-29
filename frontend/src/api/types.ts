@@ -120,6 +120,8 @@ export interface ChatMessage {
   // Set on the "that's not something I can help with" reply: the original text, so it can be
   // saved as a note instead with one tap.
   saveAsNote?: string
+  // The structured reply to a logged note (rendered as coloured sections); `content` keeps a plain-text copy.
+  capture?: CaptureSavedResult
 }
 
 // ---------- Unified chat (single thread, no mode tabs) ----------

@@ -6,6 +6,7 @@ import { ListChecks, NotebookText } from 'lucide-react'
 import type { AnswerSource, ChatMessage } from '../../api/types'
 import { friendlyDate } from '../../lib/dates'
 import CopyButton from '../CopyButton'
+import CaptureReply from './CaptureReply'
 
 const SOURCE_ICON = { note: NotebookText, task: ListChecks }
 
@@ -67,7 +68,11 @@ export default function ChatBubble({
   return (
     <div className="pr-2" style={{ animation: 'fade-in 0.2s ease-out' }}>
       <div ref={bodyRef} className="prose-chat text-[0.9375rem] leading-relaxed text-text">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+        {message.capture ? (
+          <CaptureReply result={message.capture} />
+        ) : (
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+        )}
       </div>
       {message.saveAsNote && (
         <button

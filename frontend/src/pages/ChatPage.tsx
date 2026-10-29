@@ -66,7 +66,7 @@ function formatPart(part: CapturePart, showCategory: boolean): string {
 function formatSavedMessage(result: CaptureSavedResult): string {
   const split = result.parts.length > 1
   const blocks = result.parts.map((p) => formatPart(p, split)).filter(Boolean)
-  const lines: string[] = [blocks.join('\n\n---\n\n')]
+  const lines: string[] = [blocks.join('\n\n')]
   if (result.date_warning) lines.push(`_Note: ${result.date_warning}_`)
   for (const skipped of result.skipped_due_dates) {
     lines.push(
@@ -163,7 +163,7 @@ export default function ChatPage() {
   // Posts the usual saved-note summary, then separately offers the
   // new-initiative suggestion if extraction.py proposed one.
   function handleSavedCapture(result: CaptureSavedResult) {
-    appendMessage('assistant', formatSavedMessage(result))
+    appendMessage('assistant', formatSavedMessage(result), { capture: result })
     // One suggestion at a time: the first part that doesn't fit any initiative but reads like a theme of its own.
     const suggesting = result.parts.find((p) => p.suggested_initiative)
     if (suggesting?.suggested_initiative) {

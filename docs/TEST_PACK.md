@@ -47,9 +47,9 @@ slightly differently from run to run, so check the **meaning** (category, task, 
 
 Make sure you have an initiative called `Synapse Partnership` (or any work project) and `Health`, then log:
 `Discuss about the fee collection system for teachers for the Synapse partnership. Jeevika's address is Borivali East,Mumbai. Start focusing on your diet.`
-Expect the reply to show **three blocks**: **Category: Synapse Partnership** (the fee collection), **Category: Others** (Jeevika's address as a key point) and **Category: Health** (the diet to-do). Check afterwards that:
+Expect the reply to show **one coloured section per initiative** (accent bar and heading in that initiative's colour, no divider lines): **Category: Synapse Partnership** (the fee collection), **Category: Others** (Jeevika's address as a key point) and **Category: Health** (the diet to-do), each with its own **Tasks:**, **Decisions:** and **Concerns:** where it has any. The model files each extracted item under its initiative in the same single call - the message is not cut up sentence by sentence, so a sentence that touches two subjects is still handled whole. Check afterwards that:
 - the **Tasks** tab lists the diet task under **Health**, not under Synapse;
-- the **Notes** tab shows each initiative with only its own part, and **Source notes** under Health is just "Start focusing on your diet.";
+- *(interim)* each initiative's note keeps the whole original text as its source, tied together by a shared batch id; the Notes tab design is still to be decided, so don't judge that page yet;
 - picking a category with **+** before sending keeps the whole message together in that one initiative.
 A message about a single subject (like the Priya note) is still saved as one note.
 

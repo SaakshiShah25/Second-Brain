@@ -27,12 +27,11 @@ usage mode (work / personal / both) that tunes wording, account deletion, and en
 ```
 text / voice ──► moderation (regex → safeguard model → fallback model, fail-closed)
              ──► intent: capture | ask | out of scope
-capture ─► extraction (one LLM call; the note's sentences are numbered and split into PARTS, one per subject -
-           each part gets its own category, key points, topic label, decisions, concerns and tasks, and each fact
-           lands in exactly one of those lists; repeats are also removed in code)
-        ─► each part saved as its own note under its own initiative (a note about one subject stays one note;
-           picking a category yourself keeps the whole message together)
-        ─► note + tasks saved, queued for the search index
+capture ─► extraction (one LLM call: pulls out key points, decisions, concerns and tasks and files each item under
+           its own initiative; each fact lands in exactly one list, repeats are also removed in code)
+        ─► one note per initiative mentioned (a note about one subject stays one note; picking a category yourself
+           keeps the whole message together); tasks follow their item's initiative
+        ─► reply shown as one coloured section per initiative; note + tasks saved, queued for the search index
 ask     ─► retrieval agent: Round 0 plain-code search (+ task list if it sounds like to-dos),
            planner (≤3 rounds, tools: search / read_notes / list_tasks), writer answers with sources
            └ if the agent can't run: embed the question → closest notes → answer (api/routers/ask.py)
