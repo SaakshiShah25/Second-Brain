@@ -19,6 +19,7 @@ quotas, so only invited people can use it. Unset = open to anyone (dev).
 import os
 
 from fastapi import Header, HTTPException
+from supabase_auth.errors import AuthApiError
 
 import db
 
@@ -36,16 +37,34 @@ def is_invited(email) -> bool:
     return any(email == a or (a.startswith("@") and email.endswith(a)) for a in allowed)
 
 
+def _verify(token: str):
+    """Asks Supabase who this token belongs to. "Invalid or expired session" (401) is only said when
+    Supabase itself rejects the token. If we simply could not reach Supabase (a stale connection after the
+    free server slept, a network blip), the session is not at fault: retry once on a fresh connection, and
+    if that fails too say so honestly (503) instead of logging a valid user out."""
+    for attempt in (1, 2):
+        try:
+            return db.get_client().auth.get_user(token)
+        except AuthApiError as e:
+            if e.status is not None and e.status < 500:
+                raise HTTPException(401, "Invalid or expired session")
+            err = e  # Supabase had a problem of its own: treated like a connection failure
+        except Exception as e:  # noqa: BLE001 - network errors, timeouts, closed connections...
+            err = e
+        if attempt == 1:
+            db.reset_client()
+    import observability
+
+    observability.record("error", "auth_check_unreachable", detail={"type": type(err).__name__, "message": str(err)[:160]})
+    raise HTTPException(503, "Couldn't verify your login just now - please try again in a moment.")
+
+
 def get_current_user_id(authorization: str = Header(None)) -> str:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "Missing or invalid Authorization header")
     token = authorization.removeprefix("Bearer ")
 
-    try:
-        response = db.get_client().auth.get_user(token)
-    except Exception:
-        raise HTTPException(401, "Invalid or expired session")
-
+    response = _verify(token)
     if not response or not response.user:
         raise HTTPException(401, "Invalid or expired session")
 

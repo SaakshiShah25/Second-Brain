@@ -53,6 +53,12 @@ import crypto_utils
 _local = threading.local()
 
 
+def reset_client() -> None:
+    """Forgets this thread's Supabase client so the next get_client() opens a fresh connection - for
+    when the old one went stale (an idle connection dropped while the free server slept)."""
+    _local.client = None
+
+
 def get_client() -> Client:
     client = getattr(_local, "client", None)
     if client is None:

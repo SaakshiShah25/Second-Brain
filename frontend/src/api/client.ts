@@ -37,20 +37,38 @@ async function send(url: string, init: RequestInit): Promise<Response> {
   }
 }
 
+// Sends a request with the signed-in user's token. A 401 means the token was rejected (it can expire while
+// the app sits in the background): get a fresh one and try once more before giving up. Only if that also
+// fails is the session really over - the user is signed out (RequireAuth then shows the login screen)
+// instead of being left with a bare "Invalid or expired session".
+const SESSION_OVER = 'Your session has expired - please sign in again.'
+
+async function authedSend(url: string, build: (token: string | null) => RequestInit): Promise<Response> {
+  const { data } = await supabase.auth.getSession()
+  const res = await send(url, build(data.session?.access_token ?? null))
+  if (res.status !== 401) return res
+
+  const refreshed = await supabase.auth.refreshSession()
+  const token = refreshed.data.session?.access_token
+  if (token) {
+    const retry = await send(url, build(token))
+    if (retry.status !== 401) return retry
+  }
+  await supabase.auth.signOut({ scope: 'local' })
+  throw new ApiError(401, SESSION_OVER)
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const isFormData = options.body instanceof FormData
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
 
-  const res = await send(`${BASE_URL}${path}`, {
+  const res = await authedSend(`${BASE_URL}${path}`, (token) => ({
     ...options,
     headers: {
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
-  })
+  }))
 
   if (!res.ok) {
     let detail = res.statusText
@@ -85,19 +103,15 @@ export async function postStream<T>(
   onStage: (stage: string) => void,
   signal?: AbortSignal,
 ): Promise<T> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-
-  const res = await send(`${BASE_URL}${path}`, {
+  const res = await authedSend(`${BASE_URL}${path}`, (token) => ({
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
     signal,
-  })
+  }))
 
   if (!res.ok || !res.body) {
     let detail = res.statusText
