@@ -5,7 +5,7 @@ import { dueLabel } from '../../lib/dates'
 import { notePoints } from '../../lib/initiativeFilter'
 import { getInitiativeStyle } from '../../lib/initiativeStyle'
 
-// The reply to a logged note: one section per initiative it touched, in that initiative's colour -
+// The reply to a logged note: ONE card, with a section per initiative it touched, in that initiative's colour -
 //   Category: <name>
 //   (key points)  Tasks:  Decisions:  Concerns:
 // Everything about one initiative sits together; nothing is repeated between the lists (extraction
@@ -24,25 +24,36 @@ function List({ items }: { items: React.ReactNode[] }) {
   )
 }
 
-function Label({ children }: { children: string }) {
-  return <p className="mt-2.5 text-[0.8125rem] font-semibold text-text-muted">{children}</p>
+// Everything shares one look: bold headings in the initiative's colour (Others in a neutral grey).
+const OTHERS_COLOR = '#78716c'
+
+function Label({ children, color }: { children: string; color: string }) {
+  return (
+    <p className="mt-3 text-[0.9375rem] font-bold" style={{ color }}>
+      {children}
+    </p>
+  )
 }
 
-function Section({ part, color, Icon }: { part: CapturePart; color?: string; Icon?: LucideIcon }) {
+function Section({ part, color, Icon }: { part: CapturePart; color: string; Icon?: LucideIcon }) {
   const points = notePoints(part.summary)
   return (
-    <section
-      className="rounded-2xl bg-bg-card py-3 pr-4 pl-3.5"
-      style={{ borderLeft: `4px solid ${color ?? 'var(--sb-border-strong, #bbb)'}` }}
-    >
-      <p className="flex items-center gap-1.5 text-[0.9375rem] font-semibold" style={color ? { color } : undefined}>
-        {Icon && <Icon size={16} strokeWidth={2.2} className="flex-shrink-0" />}
-        <span>Category: {part.initiative_name ?? 'Others'}</span>
+    <section className="py-1 pl-3.5" style={{ borderLeft: `3px solid ${color}` }}>
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[1rem] font-bold" style={{ color }}>
+        <span className="flex items-center gap-1.5">
+          {Icon && <Icon size={16} strokeWidth={2.4} className="flex-shrink-0" />}
+          Category: {part.initiative_name ?? 'Others'}
+        </span>
+        {part.new_initiative && (
+          <span className="rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold uppercase tracking-wide" style={{ background: `${color}22` }}>
+            New
+          </span>
+        )}
       </p>
       {points.length > 0 && <List items={points} />}
       {part.tasks_created.length > 0 && (
         <>
-          <Label>Tasks:</Label>
+          <Label color={color}>Tasks:</Label>
           <List
             items={part.tasks_created.map((t) => (
               <>
@@ -56,13 +67,13 @@ function Section({ part, color, Icon }: { part: CapturePart; color?: string; Ico
       )}
       {part.decisions.length > 0 && (
         <>
-          <Label>Decisions:</Label>
+          <Label color={color}>Decisions:</Label>
           <List items={part.decisions} />
         </>
       )}
       {part.concerns.length > 0 && (
         <>
-          <Label>Concerns:</Label>
+          <Label color={color}>Concerns:</Label>
           <List items={part.concerns} />
         </>
       )}
@@ -73,11 +84,11 @@ function Section({ part, color, Icon }: { part: CapturePart; color?: string; Ico
 export default function CaptureReply({ result }: { result: CaptureSavedResult }) {
   const { data: initiatives } = useInitiatives()
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="flex flex-col gap-3.5 rounded-2xl border border-border bg-bg-card px-4 py-3.5">
       {result.parts.map((part) => {
         const initiative = initiatives?.find((i) => i.id === part.initiative_id)
         const style = getInitiativeStyle(initiative ?? (part.initiative_name ? { id: part.initiative_id ?? 0, name: part.initiative_name, color: null } : null))
-        return <Section key={part.interaction_id} part={part} color={style?.color} Icon={style?.Icon} />
+        return <Section key={part.interaction_id} part={part} color={style?.color ?? OTHERS_COLOR} Icon={style?.Icon} />
       })}
       {result.date_warning && (
         <p className="flex items-start gap-1.5 text-[0.8125rem] text-text-muted">

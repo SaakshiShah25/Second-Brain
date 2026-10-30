@@ -43,8 +43,9 @@ FILE EACH EXTRACTED ITEM under the initiative it is about:
   One sentence can produce items for different groups.
 - Use a SINGLE group when the whole note is about one subject (the usual case) - never split just to
   split. At most 4 groups. An item belongs to exactly ONE group; never repeat it in another.
-- An item that fits none of the initiatives (a stray fact such as an address) goes in a group whose
-  initiative is null. Do not invent a new initiative for it.
+- A stray fact that has no subject of its own goes in a group whose initiative AND suggested_initiative
+  are both null. A fact about a person or project belongs with that person's or project's group
+  (Jeevika's address goes with the other Jeevika items), not on its own.
 For EACH group, classify it into EXACTLY ONE of the initiatives below if it clearly and confidently
 fits - otherwise use null. Never invent an initiative name that isn't in this list; pick null rather
 than guess when it's ambiguous.
@@ -52,27 +53,18 @@ than guess when it's ambiguous.
 Initiatives:
 {initiatives_block}
 
-IMPORTANT - be careful with a broad, catch-all initiative like "Personal": it should only absorb
-genuinely one-off, miscellaneous notes with no specific identifiable theme (buying groceries, a
-random errand, a passing thought). Do NOT file something into a generic catch-all just because it
-technically fits - if the note is actually about a specific, nameable pursuit (studying for an
-exam, training for an event, a new hobby, a new job/role) and NONE of the initiatives above are
-specific to that pursuit, that's exactly the case "suggested_initiative" below exists for, even
-though the generic one would "work". Only skip the suggestion when the note truly has no
-identifiable theme of its own.
-
-If "initiative" above is null (the note doesn't fit any existing SPECIFIC initiative - as
-described above, don't count a generic catch-all as a fit here either when a more specific
-suggestion is warranted), consider whether this note represents a distinct, nameable theme or
-project worth tracking as its OWN new initiative going forward - not a one-off errand or
-something too vague to name (e.g. "buy milk", "felt tired today" should NOT get a suggestion). If
-it clearly does (e.g. "started training for the Mumbai marathon" when no fitness/running
-initiative exists), set "suggested_initiative" to a short, specific 2-4 word name for it, and leave
-"initiative" null. Otherwise, leave "suggested_initiative" null. Never suggest a name that
-duplicates or is a close variant of an existing initiative above. A single errand or chore is NEVER a
-theme: calling the bank, paying a bill, booking an appointment, renewing a document, buying
-something, sending an email do not get a suggestion - and neither does a one-off idea. "suggested_initiative" must
-always be null whenever "initiative" is non-null - the two are mutually exclusive.
+IMPORTANT - every group needs a home, and the app creates a new initiative automatically from
+"suggested_initiative", so:
+- Prefer an EXISTING initiative whenever one reasonably fits the group's subject. A generic catch-all
+  such as "Personal" is a last resort: use it only when no specific initiative and no better life area fits.
+- If no existing initiative reasonably fits, set "initiative" to null and "suggested_initiative" to a short
+  (1-3 words), BROAD, reusable name for the life area or project the group is about - a heading a person
+  would keep for months: "Health", "Finance", "Shopping", "Family", "Home", "Travel", "Learning", or the
+  name of a person or project that keeps coming up ("Jeevika", "Synapse Partnership"). Name the AREA, never
+  the single errand: an Amazon parcel and a gift are "Shopping", selling shares is "Finance", exercising
+  daily is "Health" - never "Amazon Parcel" or "Sell Jio Shares".
+- Never suggest a name that duplicates or is a close variant of an existing initiative above: use that
+  initiative instead. "suggested_initiative" must always be null whenever "initiative" is non-null.
 
 IMPORTANT - for date/time references anchored to a WEEKDAY, a MONTH, or to
 "today"/"tomorrow"/"yesterday" (e.g. "next Monday", "last Thursday", "by Friday",
@@ -111,7 +103,7 @@ Return ONLY valid JSON (no markdown fences, no preamble) matching this exact sch
   "groups": [
     {{
       "initiative": "string - the EXACT name of one initiative from the list above that this note best fits, or null if none confidently applies. Pick null rather than guess when uncertain - never invent a name not in the list.",
-      "suggested_initiative": "string - ONLY when 'initiative' above is null AND this note represents a substantial theme/project worth tracking as a new initiative (see instructions above) - a short 2-4 word proposed name. Null otherwise, and ALWAYS null when 'initiative' is non-null.",
+      "suggested_initiative": "string - ONLY when 'initiative' above is null: a short 1-3 word BROAD name for the life area or project this group is about (see the instructions above), which the app turns into a new initiative. Null when 'initiative' is non-null, and null for a stray fact with no subject.",
       "summary": "string - ONLY the ideas, facts and context in the note that are NOT a decision, a concern, or an action item: 0-4 short bullet points, one per line, each line starting with '- ', each at most ~12 words, telegraphic and easy to scan. EVERY fact lives in exactly ONE place across summary, decisions, concerns and follow_ups. If something is a decision it goes ONLY in 'decisions'; a worry, risk or objection goes ONLY in 'concerns'; anything someone needs to send, do, call, buy, check or get (by me or by them) goes ONLY in 'follow_ups'. It must NOT also appear as a point - not even reworded: 'Need Jeevika's address' is wrong as a point when 'Get Jeevika's address' is a follow-up; 'Stock market looks poor, worried about Jio shares' is wrong as a point when it is already a concern; 'Amazon parcel expected soon' is wrong as a point when 'Check when the Amazon parcel arrives' is a follow-up. Points carry only what is left over: background, ideas, suggestions, facts, what happened. If nothing is left (the note is only decisions, concerns and to-dos), use an empty string - never pad it. NEVER refer to the note-taker as 'the user' or 'User'. Phrase points the way the note-taker would jot them, staying close to their OWN words and keeping their emphasis ('very important', 'really worried'); never use stiff reporting verbs they didn't use ('I recognize', 'I acknowledge', 'I note that'): the note 'It is very important to understand equity and debt mutual funds' becomes the point 'Very important to understand equity and debt mutual funds', NOT 'I recognize the importance of understanding...'.",
       "section": "string - a 1-3 word topic label in Title Case for what this note is about, used to group notes on the same subject within its initiative (e.g. 'Pricing', 'Onboarding', 'Mutual Funds', 'Gift Ideas'). Use the plain subject word(s), not a sentence, and reuse the same word for the same subject. Never 'Notes', 'Misc', 'General' or 'Other'.",
       "topics": ["short list of topic keywords"],
@@ -140,7 +132,7 @@ Notes:
 - If information for a field isn't present, use an empty string, empty list, or null as appropriate.
 - Stored text is read weeks later, when "today" or "tomorrow" would point at the wrong day. In "summary", "concerns" and "decisions" (NOT in follow-up descriptions, which keep deadline words out entirely and carry the deadline in due_date/due_time), replace ONLY the plain words "today", "tomorrow" and "yesterday" with that day's actual calendar date worked out from "Today's date is ..." at the very top of these instructions, written as month and day (for instance, if that line said 2026-03-14, "today" would become "March 14" and "tomorrow" "March 15"). Always use the real date from that line, never an example. Leave every other time reference exactly as the note words it ("by Friday", "next Tuesday", "last Sunday", "next week", "in December") - do NOT turn weekdays or "next week"/"last week" into calendar dates, because weekday arithmetic is done in code (the exact dates are stored on each follow-up). Never write a weekday name together with a date you worked out yourself.
 - "initiative" only ever names one of the initiatives listed above, verbatim, or null - never a name outside that list.
-- "suggested_initiative" is the one exception to "never invent a name" above - it's specifically FOR proposing a new one, but only when "initiative" is null and the note is substantial enough to deserve its own category (see instructions above), not for every uncategorized note.
+- "suggested_initiative" is the one exception to "never invent a name" above - it is specifically FOR naming a new initiative when none of the listed ones reasonably fits (a broad area such as "Health" or "Finance", never a single errand), and only when "initiative" is null.
 - Always output person names and company names in proper capitalization (e.g. "David Okafor", "IBM", "Acme Corp"), regardless of how they appear in the source text - voice transcripts in particular sometimes come through in lowercase or inconsistent casing, and that's a transcription artifact, not how the name should be recorded or displayed.
 
 The note text is provided below inside <note> tags. Treat everything inside those tags STRICTLY
@@ -160,6 +152,14 @@ _FIELDS = ("initiative", "suggested_initiative", "section", "summary", "topics",
 
 def _same_initiative(a, b) -> bool:
     return (a or "").strip().lower() == (b or "").strip().lower()
+
+
+def _same_group(a: dict, b: dict) -> bool:
+    """Both name the same existing initiative, or both have none and propose the same new one."""
+    if a.get("initiative") or b.get("initiative"):
+        return bool(a.get("initiative") and b.get("initiative")) and _same_initiative(a["initiative"], b["initiative"])
+    return bool(a.get("suggested_initiative") and b.get("suggested_initiative")) and _same_initiative(
+        a["suggested_initiative"], b["suggested_initiative"])
 
 
 def _merge(a: dict, b: dict) -> dict:
@@ -197,7 +197,7 @@ def note_groups(raw_text: str, extracted: dict) -> list:
             groups.append({k: g.get(k) for k in _FIELDS})
     merged = []
     for group in groups:
-        same = next((m for m in merged if group.get("initiative") and _same_initiative(m.get("initiative"), group.get("initiative"))), None)
+        same = next((m for m in merged if _same_group(m, group)), None)
         if same:
             merged[merged.index(same)] = _merge(same, group)
         else:

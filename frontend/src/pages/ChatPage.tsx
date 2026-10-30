@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { ListTodo, MapPin, MessageCircleQuestion, Mic, SquarePen, Tag, X } from 'lucide-react'
 import { useChat } from '../api/chat'
@@ -106,6 +107,7 @@ export default function ChatPage() {
   const [customInitiativeName, setCustomInitiativeName] = useState('')
   const [confirmingClear, setConfirmingClear] = useState(false)
   const usage = useUsageMode()
+  const queryClient = useQueryClient()
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -164,6 +166,8 @@ export default function ChatPage() {
   // new-initiative suggestion if extraction.py proposed one.
   function handleSavedCapture(result: CaptureSavedResult) {
     appendMessage('assistant', formatSavedMessage(result), { capture: result })
+    // A category may have been created for this note: the lists and chips need to know about it.
+    if (result.parts.some((p) => p.new_initiative)) queryClient.invalidateQueries({ queryKey: ['initiatives'] })
     // One suggestion at a time: the first part that doesn't fit any initiative but reads like a theme of its own.
     const suggesting = result.parts.find((p) => p.suggested_initiative)
     if (suggesting?.suggested_initiative) {

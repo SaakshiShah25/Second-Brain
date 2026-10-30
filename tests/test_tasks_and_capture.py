@@ -110,16 +110,21 @@ def test_capture_stores_each_fact_once_and_the_topic_label():
     assert saved["summary"] == "" and saved["extracted_facts"] is None
 
 
-def _split_fakes(linked=True):
+def _split_fakes(linked=True, inits=None):
     import api.routers.capture as cap
     notes, tasks = [], []
-    inits = {"Synapse Partnership": 1, "Health": 2}
+    inits = inits if inits is not None else {"Synapse Partnership": 1, "Health": 2}
+    def create_initiative(u, name, color=None):
+        inits[name] = max(inits.values(), default=0) + 1
+        return {"id": inits[name], "name": name}
     cap.db = types.SimpleNamespace(
         create_interaction=lambda u, **kw: notes.append(kw) or len(notes),
         create_task=lambda u, i, d, **kw: tasks.append((i, d)) or len(tasks),
         get_initiative=lambda u, i: {"id": i, "name": {v: k for k, v in inits.items()}.get(i, "x")},
-        get_initiative_by_name=lambda u, n: {"id": inits[n]} if n in inits else None,
+        get_initiative_by_name=lambda u, n: next(({"id": v} for k, v in inits.items() if k.lower() == n.lower()), None),
         source_links_supported=lambda: linked,
+        create_initiative=create_initiative,
+        get_initiatives=lambda u: [{"id": v, "name": k} for k, v in inits.items()],
     )
     cap.embeddings = types.SimpleNamespace(compute_embedding=lambda t, **k: None)
     cap.search_index = types.SimpleNamespace(enqueue=lambda *a, **k: None)
@@ -285,3 +290,36 @@ if __name__ == "__main__":
             failed += 1; print(f"  FAIL {name}: {type(e).__name__}: {e}")
     print(f"\n{len(tests) - failed}/{len(tests)} passed")
     sys.exit(1 if failed else 0)
+
+
+def test_a_group_that_fits_no_initiative_gets_a_new_one_so_its_tasks_are_not_left_in_others():
+    cap, notes, tasks = _split_fakes(inits={"Work": 1})
+    out = cap._process_extracted("u", "Sell Jio shares asap. Start exercising daily.", {"groups": [
+        {"initiative": None, "suggested_initiative": "Finance", "follow_ups": [{"description": "Sell Jio shares"}]},
+        {"initiative": None, "suggested_initiative": "health", "follow_ups": [{"description": "Start exercising daily"}]},
+        {"initiative": None, "suggested_initiative": "Health", "concerns": ["Back pain is getting worse"]},
+    ]})
+    # the two Health groups are one; each new initiative is created and the tasks hang off the note filed under it
+    assert [p["initiative_name"] for p in out["parts"]] == ["Finance", "Health"]
+    assert [p["new_initiative"] for p in out["parts"]] == [True, True]
+    assert [n["initiative_id"] for n in notes] == [2, 3]
+    assert [i for i, _ in tasks] == [1, 2]
+    # a name that already exists is reused, not created again
+    out = cap._process_extracted("u", "More shares", {"groups": [
+        {"initiative": None, "suggested_initiative": " finance. ", "follow_ups": [{"description": "Buy shares"}]}]})
+    assert out["parts"][0]["initiative_id"] == 2 and out["parts"][0]["new_initiative"] is False
+
+
+def test_new_initiatives_are_capped_and_the_rest_stay_as_suggestions():
+    cap, notes, tasks = _split_fakes(inits={"Work": 1})
+    groups = [{"initiative": None, "suggested_initiative": n, "decisions": [n]} for n in ("A", "B", "C")]
+    out = cap._process_extracted("u", "x", {"groups": groups})
+    assert [p["new_initiative"] for p in out["parts"]] == [True, True, False]
+    assert out["parts"][2]["initiative_id"] is None and out["parts"][2]["suggested_initiative"] == "C"
+    # a name that is too long to be a category is not created
+    out = cap._process_extracted("u", "x", {"groups": [{"initiative": None, "suggested_initiative": "x" * 60, "decisions": ["d"]}]})
+    assert out["parts"][0]["initiative_id"] is None
+    # the user's own category is never overridden by a suggestion
+    out = cap._process_extracted("u", "x", {"groups": [{"initiative": None, "suggested_initiative": "Zed", "decisions": ["d"]}]},
+                                 forced_initiative_id=1)
+    assert out["parts"][0]["initiative_id"] == 1 and out["parts"][0]["new_initiative"] is False

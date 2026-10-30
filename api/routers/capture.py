@@ -96,6 +96,38 @@ def _resolve_initiative(user_id: str, extracted: dict) -> Optional[int]:
     return match["id"] if match else None
 
 
+# The model proposes a broad new category when none of the user's fits (extraction.py); the app creates it so the
+# note and its tasks land somewhere meaningful instead of "Others". Kept in check so one rambling note can't
+# litter the list: a few per message, and never past a sensible total (the old "add it?" prompt covers the rest).
+MAX_NEW_INITIATIVES_PER_NOTE = 2
+MAX_INITIATIVES = 12
+MAX_INITIATIVE_NAME_CHARS = 40
+
+
+def _initiative_for_suggestion(user_id: str, group: dict, created_so_far: int):
+    """(initiative_id, created) for a group that fits none of the user's initiatives but came with a proposed
+    name: the existing initiative of that name if there is one, else a new one. (None, False) when there is no
+    usable name or the limits above are reached, leaving the suggestion for the user to accept."""
+    name = " ".join(str(group.get("suggested_initiative") or "").split()).strip(" .\"'")
+    if not name or len(name) > MAX_INITIATIVE_NAME_CHARS:
+        return None, False
+    if name.islower():
+        name = name.title()  # "health" -> "Health"
+    existing = db.get_initiative_by_name(user_id, name)
+    if existing:
+        return existing["id"], False
+    if created_so_far >= MAX_NEW_INITIATIVES_PER_NOTE or len(db.get_initiatives(user_id)) >= MAX_INITIATIVES:
+        return None, False
+    try:
+        return db.create_initiative(user_id, name=name)["id"], True
+    except ValueError:  # created a moment ago by another request
+        existing = db.get_initiative_by_name(user_id, name)
+        return (existing["id"], False) if existing else (None, False)
+    except Exception as e:
+        print(f"[warn] couldn't create the initiative '{name}': {e}")
+        return None, False
+
+
 def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, interaction_date: str,
                              initiative_id: Optional[int] = None,
                              geo_lat: Optional[float] = None, geo_lng: Optional[float] = None,
@@ -216,7 +248,9 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
     batch = uuid.uuid4().hex[:12] if len(groups) > 1 and not link else None
 
     saved = []
+    new_initiatives = 0
     for group in groups:
+        new_initiative = False
         # the date and the place the message mentions apply to every note made from it
         group = {**group, "location": extracted.get("location")}
         if forced:
@@ -224,6 +258,10 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
             initiative_id, group["suggested_initiative"] = forced_initiative_id, None
         else:
             initiative_id = _resolve_initiative(user_id, group)
+            if initiative_id is None:
+                initiative_id, created = _initiative_for_suggestion(user_id, group, new_initiatives)
+                new_initiatives += created
+                new_initiative = created
             if initiative_id is not None:
                 group["suggested_initiative"] = None
         follower = link and bool(saved)
@@ -233,6 +271,7 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
             embedding=None if follower else embedding, batch=batch,
             source_id=saved[0]["interaction_id"] if follower else None,
         ))
+        saved[-1]["new_initiative"] = new_initiative
 
     return {
         "status": "saved",

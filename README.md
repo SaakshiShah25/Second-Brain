@@ -28,7 +28,8 @@ usage mode (work / personal / both) that tunes wording, account deletion, and en
 text / voice ──► moderation (regex → safeguard model → fallback model, fail-closed)
              ──► intent: capture | ask | out of scope
 capture ─► extraction (one LLM call: pulls out key points, decisions, concerns and tasks and files each item under
-           its own initiative; each fact lands in exactly one list, repeats are also removed in code)
+           its own initiative - or names a broad new one when none fits, which is created automatically (max 2 per
+           message, 12 in total); each fact lands in exactly one list, repeats are also removed in code)
         ─► one note per initiative mentioned (a note about one subject stays one note; picking a category yourself
            keeps the whole message together); tasks follow their item's initiative. The original text is stored once,
            on the first note; the others point at it (`interaction.source_id`) and are deleted with it
