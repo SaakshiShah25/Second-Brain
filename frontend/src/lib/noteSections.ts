@@ -8,6 +8,9 @@ import { notePoints } from './initiativeFilter'
 export interface NoteItem {
   text: string
   kind?: 'decision' | 'concern'
+  // Which note it came from and when that note is dated - so an item can point back to its note.
+  noteId?: number
+  date?: string | null
 }
 
 const STOP = new Set(
@@ -54,9 +57,9 @@ export function distinctPoints(n: Interaction): string[] {
 /** Points, then decisions, then concerns - every distinct fact of the note, once. */
 export function noteItems(n: Interaction): NoteItem[] {
   return [
-    ...distinctPoints(n).map((text) => ({ text })),
-    ...(n.decisions ?? []).map((text): NoteItem => ({ text, kind: 'decision' })),
-    ...(n.concerns ?? []).map((text): NoteItem => ({ text, kind: 'concern' })),
+    ...distinctPoints(n).map((text): NoteItem => ({ text, noteId: n.id, date: n.date })),
+    ...(n.decisions ?? []).map((text): NoteItem => ({ text, kind: 'decision', noteId: n.id, date: n.date })),
+    ...(n.concerns ?? []).map((text): NoteItem => ({ text, kind: 'concern', noteId: n.id, date: n.date })),
   ]
 }
 
@@ -64,6 +67,29 @@ export interface NoteSection {
   key: string
   title: string // '' = no heading (the only group, and it has no label)
   items: NoteItem[]
+  // The same items by kind, in reading order: key points, then decisions, then concerns (empty kinds left out).
+  groups: { kind: 'point' | 'decision' | 'concern'; label: string; items: NoteItem[] }[]
+}
+
+function byKind(items: NoteItem[]): NoteSection['groups'] {
+  const groups: NoteSection['groups'] = [
+    { kind: 'point', label: 'Key points', items: items.filter((i) => !i.kind) },
+    { kind: 'decision', label: 'Decisions', items: items.filter((i) => i.kind === 'decision') },
+    { kind: 'concern', label: 'Concerns', items: items.filter((i) => i.kind === 'concern') },
+  ]
+  return groups.filter((g) => g.items.length > 0)
+}
+
+/** How much an initiative holds, for its header: "4 notes · 3 decisions · 1 concern". */
+export function noteCounts(notes: Interaction[]): string {
+  const sections = noteSections(notes)
+  const all = sections.flatMap((s) => s.items)
+  const decisions = all.filter((i) => i.kind === 'decision').length
+  const concerns = all.filter((i) => i.kind === 'concern').length
+  const parts = [`${notes.length} ${notes.length === 1 ? 'note' : 'notes'}`]
+  if (decisions) parts.push(`${decisions} ${decisions === 1 ? 'decision' : 'decisions'}`)
+  if (concerns) parts.push(`${concerns} ${concerns === 1 ? 'concern' : 'concerns'}`)
+  return parts.join(' · ')
 }
 
 /** An initiative's notes as sections: newest notes first, grouped by the topic label each was given. */
@@ -73,12 +99,13 @@ export function noteSections(notes: Interaction[]): NoteSection[] {
   for (const n of newestFirst) {
     const label = (n.extracted_facts?.section ?? '').trim()
     const key = label.toLowerCase()
-    const group = groups.get(key) ?? groups.set(key, { key: key || 'other', title: label, items: [] }).get(key)!
+    const group = groups.get(key) ?? groups.set(key, { key: key || 'other', title: label, items: [], groups: [] }).get(key)!
     for (const item of noteItems(n)) {
       if (!group.items.some((g) => g.kind === item.kind && g.text.toLowerCase() === item.text.toLowerCase())) group.items.push(item)
     }
   }
   const sections = [...groups.values()].filter((g) => g.items.length > 0)
+  for (const s of sections) s.groups = byKind(s.items)
   // Unlabelled notes (older ones) come last, under "Other notes" when there is anything else to tell apart.
   const unlabelled = sections.filter((s) => s.title === '')
   const labelled = sections.filter((s) => s.title !== '')

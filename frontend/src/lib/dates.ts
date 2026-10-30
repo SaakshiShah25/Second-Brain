@@ -32,6 +32,14 @@ export function friendlyDate(iso: string | null | undefined): string {
   return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) })
 }
 
+/** The real calendar day, short: "29 Oct" (with the year when it isn't this one). For marking when something was noted. */
+export function shortDate(iso: string | null | undefined): string {
+  const d = iso ? parseLocal(iso) : null
+  if (!d) return ''
+  const sameYear = d.getFullYear() === new Date().getFullYear()
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) })
+}
+
 /** The full calendar date for a due date: "Fri 30-Oct-2026". A to-do keeps its
  * own wording ("by Friday"); this is the exact day underneath it. */
 export function fullDate(iso: string | null | undefined): string {

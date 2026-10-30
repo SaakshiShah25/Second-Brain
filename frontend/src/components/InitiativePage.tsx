@@ -3,7 +3,8 @@ import { ChevronDown, ChevronRight, FileText } from 'lucide-react'
 import type { Interaction } from '../api/types'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
 import InteractionCard, { ItemList } from './InteractionCard'
-import { noteItems, noteSections } from '../lib/noteSections'
+import { noteCounts, noteItems, noteSections } from '../lib/noteSections'
+import { shortDate } from '../lib/dates'
 
 type Ini = { id: number; name: string; color: string | null } | null
 
@@ -50,7 +51,7 @@ export function InitiativeBlock({ initiative, notes, onOpen }: Props & { onOpen:
           <ChevronRight size={18} strokeWidth={2} className="ml-auto flex-shrink-0 text-text-faint" />
         </span>
         <span className="mt-1.5 block pl-[2.625rem] text-[0.8125rem] text-text-faint">
-          {notes.length} {notes.length === 1 ? 'note' : 'notes'}
+          {noteCounts(notes)}
         </span>
         {latest.length > 0 && (
           <span className="mt-3 block">
@@ -67,6 +68,9 @@ export function InitiativeBlock({ initiative, notes, onOpen }: Props & { onOpen:
 // Nothing here calls an AI model.
 export function InitiativeView({ initiative, notes }: Props) {
   const [showSource, setShowSource] = useState(false)
+  // Tapping an item opens the note it came from.
+  const [openNoteId, setOpenNoteId] = useState<number | null>(null)
+  const openNote = notes.find((n) => n.id === openNoteId) ?? null
   const style = getInitiativeStyle(initiative)
   const sections = noteSections(notes)
 
@@ -75,17 +79,42 @@ export function InitiativeView({ initiative, notes }: Props) {
       <div className="mb-4 rounded-2xl border border-border bg-bg-card p-4">
         <Heading initiative={initiative} size="lg" />
 
+        <p className="mt-2 pl-[3.125rem] text-[0.8125rem] text-text-faint">{noteCounts(notes)}</p>
+
         {sections.map((s) => (
-          <div key={s.key} className="mt-4">
+          <div key={s.key} className="mt-5">
             {s.title && (
               <h3
-                className="mb-1.5 text-[0.8125rem] font-semibold uppercase tracking-wide"
+                className="mb-2 text-[0.8125rem] font-semibold uppercase tracking-wide"
                 style={{ color: style?.color }}
               >
                 {s.title}
               </h3>
             )}
-            <ItemList items={s.items} />
+            {s.groups.map((g) => (
+              <div key={g.kind} className="mb-2.5 last:mb-0">
+                {g.kind !== 'point' && (
+                  <p className="mb-1 text-[0.9375rem] font-bold" style={{ color: style?.color }}>
+                    {g.label}:
+                  </p>
+                )}
+                <ul className="flex flex-col gap-1">
+                  {g.items.map((it, i) => (
+                    <li key={i}>
+                      <button
+                        type="button"
+                        onClick={() => it.noteId && setOpenNoteId(it.noteId)}
+                        className="pressable flex w-full items-baseline gap-2.5 text-left text-[0.9375rem] leading-snug"
+                      >
+                        <span className="mt-[0.5rem] h-1.5 w-1.5 flex-shrink-0 translate-y-[-0.1rem] rounded-full bg-text-faint" />
+                        <span className="min-w-0 flex-1">{it.text}</span>
+                        {it.date && <span className="flex-shrink-0 text-[0.75rem] text-text-faint">{shortDate(it.date)}</span>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
         ))}
         {sections.length === 0 && (
@@ -94,6 +123,13 @@ export function InitiativeView({ initiative, notes }: Props) {
           </p>
         )}
       </div>
+
+      {openNote && (
+        // The note's sheet floats above the page, so the card itself stays out of sight.
+        <div hidden>
+          <InteractionCard key={openNote.id} interaction={openNote} autoOpen onClosed={() => setOpenNoteId(null)} />
+        </div>
+      )}
 
       {notes.length > 0 && (
         <section>
