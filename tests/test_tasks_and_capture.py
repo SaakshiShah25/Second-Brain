@@ -323,3 +323,19 @@ def test_new_initiatives_are_capped_and_the_rest_stay_as_suggestions():
     out = cap._process_extracted("u", "x", {"groups": [{"initiative": None, "suggested_initiative": "Zed", "decisions": ["d"]}]},
                                  forced_initiative_id=1)
     assert out["parts"][0]["initiative_id"] == 1 and out["parts"][0]["new_initiative"] is False
+
+
+def test_an_instruction_to_the_app_is_not_saved_as_a_task_decision_or_point():
+    import extraction
+    g = extraction.note_groups("x", {"groups": [{
+        "initiative": None, "suggested_initiative": "Reading",
+        "summary": "- Create a new initiative called reading\n- Book is about stakeholder capitalism",
+        "decisions": ["Decided to add a task to connect with Pratik Bhai"],
+        "follow_ups": [{"description": "Create a new initiative called reading"}, {"description": "Read Conscious Capitalism by John Mackey"},
+                       {"description": "Add a task to connect with Pratik Bhai"}],
+    }]})
+    assert g[0]["suggested_initiative"] == "Reading"
+    assert g[0]["summary"] == "- Book is about stakeholder capitalism"
+    assert g[0]["decisions"] == []
+    # the real to-dos stay (the wrapper on "Add a task to ..." is stripped later, when the task is saved)
+    assert [f["description"] for f in g[0]["follow_ups"]] == ["Read Conscious Capitalism by John Mackey", "Add a task to connect with Pratik Bhai"]

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
+import { firstName } from '../lib/displayName'
 
 function timeGreeting(): string {
   const hour = new Date().getHours()
@@ -9,20 +10,10 @@ function timeGreeting(): string {
   return 'Good evening'
 }
 
-// There's no display-name field at signup (email + password only), so the
-// email's local part is the best identifier available - lightly cleaned
-// up (strip digits/dots, capitalize) rather than shown raw.
-function nameFromEmail(email: string | undefined): string {
-  if (!email) return ''
-  const local = email.split('@')[0] ?? ''
-  const cleaned = local.replace(/[0-9._-]+/g, ' ').trim()
-  const first = cleaned.split(' ')[0] || local
-  return first.charAt(0).toUpperCase() + first.slice(1)
-}
-
 export default function Greeting() {
   const { user } = useAuth()
-  const name = nameFromEmail(user?.email)
+  // The name the person gave (signup, Settings or Google) - never guessed from the email address.
+  const name = firstName(user)
   // timeGreeting() only reflects the moment this ran - with no timer,
   // that's just the moment this component last happened to render, which
   // can be hours ago if the empty-state Chat screen was left open and

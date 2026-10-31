@@ -62,6 +62,12 @@ And a to-do phrased as a verb still counts as a to-do: `Discuss the fee collecti
 With no Health category, log: `Start exercising daily, focus on AI and ML concepts and complete the cybersecurity learning by 3rd Nov`
 Expect **one card** with **Category: Learning** (the two study tasks, the second due Tue 3 Nov) and **Category: Health** with a small **NEW** tag (the exercise task) - Health is created for you, and its task shows under Health on the Tasks tab. The headings (Category / Tasks / Decisions / Concerns) are bold and in that category's colour; a fact that fits nothing sits under a grey **Category: Others**.
 
+### Instructions to the app, and pronouns
+
+- `Create a new initiative called reading. Read conscious capitalism by john mackey.` creates **Reading** (tagged NEW) with **one** task, "Read Conscious Capitalism by John Mackey" - no task called "Create a new initiative...".
+- A note that says "him" / "her" / "they" after naming someone must come out with the **name** in its bullets and tasks (e.g. "Chat with Pratik Bhai about ideas"), never a bare "him".
+- The home greeting says just "Good evening" until you give a name (asked once after sign-in, or Settings → Your name).
+
 ### Each fact appears once (try this one)
 
 Log: `Check when the parcel from Amazon is arriving. Order something from amazon and gift it to Jeevika for her bday. Take Jeevika's address. The stock market situation doesnt really look good, sell the Jio shares asap.`

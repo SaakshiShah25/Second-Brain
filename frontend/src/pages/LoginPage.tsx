@@ -19,6 +19,7 @@ export default function LoginPage() {
   }, [])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [name, setName] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [signupDone, setSignupDone] = useState(false)
@@ -74,7 +75,11 @@ export default function LoginPage() {
         const { error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: `${window.location.origin}/login` },
+          options: {
+            emailRedirectTo: `${window.location.origin}/login`,
+            // what to call them in the greeting (an email address is rarely a name)
+            ...(name.trim() ? { data: { full_name: name.trim(), name_prompt_done: true } } : {}),
+          },
         })
         if (error) throw error
         setSignupDone(true)
@@ -135,6 +140,12 @@ export default function LoginPage() {
             </p>
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
+              {mode === 'signup' && (
+                <div>
+                  <Label>What should we call you?</Label>
+                  <Input autoComplete="given-name" maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />
+                </div>
+              )}
               <div>
                 <Label>Email</Label>
                 <Input

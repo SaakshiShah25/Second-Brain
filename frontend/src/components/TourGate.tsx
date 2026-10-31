@@ -1,6 +1,9 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { useCompleteTour, useSettings } from '../api/settings'
+import { useAuth } from '../auth/AuthContext'
+import { shouldAskName } from '../lib/displayName'
 import { useUsageMode } from '../lib/usageMode'
+import NameSheet from './NameSheet'
 import Tour from './Tour'
 import UsageModeSheet from './UsageModeSheet'
 import WelcomePrompt from './WelcomePrompt'
@@ -37,6 +40,8 @@ export function useTour() {
 export default function TourGate({ children }: { children: ReactNode }) {
   const { data: settings } = useSettings()
   const completeTour = useCompleteTour()
+  const { user } = useAuth()
+  const [nameAnswered, setNameAnswered] = useState(false)
   const [manualOpen, setManualOpen] = useState(false)
   const [welcomeAccepted, setWelcomeAccepted] = useState(false)
   // Tracks "the first-time flow is done" independently of the server
@@ -68,12 +73,16 @@ export default function TourGate({ children }: { children: ReactNode }) {
     }
   }
 
+  // Asked once, after the first-run questions and the tour are out of the way.
+  const askName = !!settings && !needsChoice && !showWelcome && !showTour && !nameAnswered && shouldAskName(user)
+
   return (
     <TourContext.Provider value={{ startTour: () => setManualOpen(true) }}>
       {children}
       {needsChoice && <UsageModeSheet />}
       {showWelcome && <WelcomePrompt onStart={() => setWelcomeAccepted(true)} onSkip={handleDone} />}
       {showTour && <Tour onDone={handleDone} />}
+      {askName && <NameSheet asking onClose={() => setNameAnswered(true)} />}
     </TourContext.Provider>
   )
 }

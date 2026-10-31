@@ -125,3 +125,13 @@ if __name__ == "__main__":
             failed += 1; print(f"  FAIL {name}: {e}")
     print(f"\n{len(tests) - failed}/{len(tests)} passed")
     sys.exit(1 if failed else 0)
+
+
+def test_instructions_to_the_app_are_recognised_but_real_to_dos_are_not():
+    import text_utils
+    for text in ("Create a new initiative called reading", "Add a task to connect with Pratik Bhai", "Decided to add a task to connect with Pratik Bhai",
+                 "Make a new category for health", "Set up a reminder for the rent"):
+        assert text_utils.is_app_instruction(text), text
+    for text in ("Read Conscious Capitalism by John Mackey", "Add the new feature to the roadmap", "Create the pricing deck for Rohan",
+                 "Start exercising daily", "Connect with Pratik Bhai"):
+        assert not text_utils.is_app_instruction(text), text

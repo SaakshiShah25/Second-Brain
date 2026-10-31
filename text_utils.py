@@ -137,6 +137,20 @@ def clean_task_text(text):
 
 
 # Spoken hesitations only (never real words): "uh", "um", "umm", "uhm", "erm", "hmm", "mm", "mhm".
+# A line that is an instruction TO THE APP ("Create a new initiative called Reading", "Add a task ...", "Decided to add
+# a reminder ...") rather than something about the note-taker's life. The model is told not to record these; this is
+# the safety net for when it does anyway.
+_APP_INSTRUCTION = re.compile(
+    r"^\s*(?:(?:decided|need|needs|want|wants|going|plan|plans)\s+to\s+)?(?:add|create|make|set\s+up|start)\s+"
+    r"(?:a\s+|an\s+|the\s+|my\s+)?(?:new\s+|another\s+)?(?:initiative|category|folder|task|reminder|to-?do)\b",
+    re.I,
+)
+
+
+def is_app_instruction(text) -> bool:
+    return bool(_APP_INSTRUCTION.match(str(text or "")))
+
+
 _FILLER = re.compile(
     r"(?<![\w'-])(?:u+h+m*|u+m+|u+h+m+|e+r+m+|h+m+|m{2,}|m+h+m+)(?![\w'-])[,.;:…\-]*\s*",
     re.I,

@@ -19,7 +19,7 @@ A simple notes-and-tasks app you can talk or type to, with everything sorted int
 | **Task reminders** | Optional push notifications at **9 AM and 5 PM** (each device's own time zone) listing your open tasks grouped by category. Turn them on per device in Settings → Notifications. See "Task reminders" below. |
 | **Tasks** | Every task pulled out of your notes, **grouped under its initiative** (never by date), with the nearest deadline first inside each. Tasks can have a date and a time ("send the deck by 6pm"); an overdue date shows in red. Tap a task to tick it off, edit its wording or deadline, flip who owes it, or jump to the note it came from. |
 
-Also: sign-in (email or Google via Supabase Auth), light/dark themes, text size, app lock, a first-run tour,
+Also: a name for the greeting (typed at signup, asked once after sign-in, editable in Settings → Your name; kept in the Supabase account's metadata, never guessed from the email), sign-in (email or Google via Supabase Auth), light/dark themes, text size, app lock, a first-run tour,
 usage mode (work / personal / both) that tunes wording, account deletion, and encrypted-at-rest content.
 
 ## How a message flows

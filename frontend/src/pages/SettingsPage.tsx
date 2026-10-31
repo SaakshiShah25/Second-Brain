@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Activity, Check, Compass, Download, LogOut, Moon, ShieldCheck, Sun, Trash2, Type } from 'lucide-react'
+import { Activity, Check, Compass, Download, LogOut, Moon, ShieldCheck, Sun, Trash2, Type, UserRound } from 'lucide-react'
 import { useIsAdmin } from '../api/admin'
 import { fetchBlob } from '../api/client'
 import { useDeleteAccount, useSettings, useUpdateSettings } from '../api/settings'
@@ -10,9 +10,11 @@ import AppLockSettings from '../components/AppLockSettings'
 import PushSettings from '../components/PushSettings'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { ListGroup, ListRow } from '../components/ListGroup'
+import NameSheet from '../components/NameSheet'
 import PageHeader from '../components/PageHeader'
 import Segmented from '../components/Segmented'
 import { useTour } from '../components/TourGate'
+import { savedName } from '../lib/displayName'
 import { USAGE_MODE_OPTIONS, useUsageMode } from '../lib/usageMode'
 
 const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Sun }[] = [
@@ -53,7 +55,9 @@ export default function SettingsPage() {
   }
   const navigate = useNavigate()
   const [confirmingDelete, setConfirmingDelete] = useState(false)
-  const initial = (user?.email?.[0] ?? '?').toUpperCase()
+  const [editingName, setEditingName] = useState(false)
+  const name = savedName(user)
+  const initial = (name[0] ?? user?.email?.[0] ?? '?').toUpperCase()
   const usage = useUsageMode()
 
   return (
@@ -65,10 +69,15 @@ export default function SettingsPage() {
           {initial}
         </span>
         <div className="min-w-0">
-          <p className="truncate text-base font-semibold">{user?.email}</p>
-          <p className="text-sm text-text-muted">Signed in</p>
+          <p className="truncate text-base font-semibold">{name || user?.email}</p>
+          <p className="truncate text-sm text-text-muted">{name ? user?.email : 'Signed in'}</p>
         </div>
       </div>
+
+      <ListGroup title="Your name" footer="Used to greet you on the home screen.">
+        <ListRow icon={UserRound} iconColor="var(--sb-text-muted)" soft label="Name" detail={name || 'Not set'} chevron onClick={() => setEditingName(true)} />
+      </ListGroup>
+      {editingName && <NameSheet initial={name} onClose={() => setEditingName(false)} />}
 
       {usage.available && (
         <ListGroup
