@@ -13,6 +13,22 @@ export interface NoteItem {
   date?: string | null
 }
 
+// A line that is an instruction TO THE APP ("Create a new initiative called Reading", "I decided to name the
+// initiative 'Case Studies'") rather than part of the note. New notes don't keep these (text_utils.is_app_instruction
+// on the server - keep the two in step); this also hides ones saved before that.
+const LEAD = String.raw`^\s*(?:(?:i|we)\s+)?(?:(?:decided|decide|need|needs|want|wants|going|plan|plans|have|had|would\s+like|like)\s+(?:to\s+)?)*`
+const MAKE = String.raw`(?:add|create|make|set\s+up|start)`
+const ART = String.raw`(?:a\s+|an\s+|the\s+|my\s+)?(?:new\s+|another\s+)?`
+const APP_INSTRUCTION = [
+  new RegExp(`${LEAD}${MAKE}\\s+${ART}(?:task|reminder|to-?do)\\b`, 'i'),
+  new RegExp(`${LEAD}${MAKE}\\s+${ART}(?:category|folder)\\b`, 'i'),
+  new RegExp(`${LEAD}${MAKE}\\s+${ART}initiative\\s+(?:called|named|titled)\\b`, 'i'),
+  new RegExp(`${LEAD}(?:name|call|rename|title)\\s+(?:the\\s+|this\\s+|my\\s+|a\\s+|an\\s+)?(?:new\\s+)?(?:initiative|category|folder)\\b`, 'i'),
+]
+export function isAppInstruction(text: string): boolean {
+  return APP_INSTRUCTION.some((re) => re.test(text))
+}
+
 const STOP = new Set(
   ('a an the and or but if so of to in on at by for with from about into over as is are was were be been being am it its ' +
     'this that these those i me my we our you your he she him her his hers they them their there here not no do does did ' +
@@ -51,15 +67,15 @@ export function restates(a: string, b: string): boolean {
 /** The note's own points, without any that merely restate one of its decisions or concerns. */
 export function distinctPoints(n: Interaction): string[] {
   const others = [...(n.decisions ?? []), ...(n.concerns ?? [])]
-  return notePoints(n.summary).filter((p) => !others.some((o) => restates(p, o)))
+  return notePoints(n.summary).filter((p) => !isAppInstruction(p) && !others.some((o) => restates(p, o)))
 }
 
 /** Points, then decisions, then concerns - every distinct fact of the note, once. */
 export function noteItems(n: Interaction): NoteItem[] {
   return [
     ...distinctPoints(n).map((text): NoteItem => ({ text, noteId: n.id, date: n.date })),
-    ...(n.decisions ?? []).map((text): NoteItem => ({ text, kind: 'decision', noteId: n.id, date: n.date })),
-    ...(n.concerns ?? []).map((text): NoteItem => ({ text, kind: 'concern', noteId: n.id, date: n.date })),
+    ...(n.decisions ?? []).filter((t) => !isAppInstruction(t)).map((text): NoteItem => ({ text, kind: 'decision', noteId: n.id, date: n.date })),
+    ...(n.concerns ?? []).filter((t) => !isAppInstruction(t)).map((text): NoteItem => ({ text, kind: 'concern', noteId: n.id, date: n.date })),
   ]
 }
 

@@ -140,15 +140,23 @@ def clean_task_text(text):
 # A line that is an instruction TO THE APP ("Create a new initiative called Reading", "Add a task ...", "Decided to add
 # a reminder ...") rather than something about the note-taker's life. The model is told not to record these; this is
 # the safety net for when it does anyway.
-_APP_INSTRUCTION = re.compile(
-    r"^\s*(?:(?:decided|need|needs|want|wants|going|plan|plans)\s+to\s+)?(?:add|create|make|set\s+up|start)\s+"
-    r"(?:a\s+|an\s+|the\s+|my\s+)?(?:new\s+|another\s+)?(?:initiative|category|folder|task|reminder|to-?do)\b",
-    re.I,
-)
+_LEAD = r"^\s*(?:(?:i|we)\s+)?(?:(?:decided|decide|need|needs|want|wants|going|plan|plans|have|had|would\s+like|like)\s+(?:to\s+)?)*"
+_MAKE = r"(?:add|create|make|set\s+up|start)"
+_ART = r"(?:a\s+|an\s+|the\s+|my\s+)?(?:new\s+|another\s+)?"
+_APP_INSTRUCTION = [
+    # "Add a task ...", "Create a reminder ...", "Decided to add a to-do ..."
+    re.compile(rf"{_LEAD}{_MAKE}\s+{_ART}(?:task|reminder|to-?do)\b", re.I),
+    # "Create a new category / folder ..." (and "initiative" only when it is given a name: a business initiative is real content)
+    re.compile(rf"{_LEAD}{_MAKE}\s+{_ART}(?:category|folder)\b", re.I),
+    re.compile(rf"{_LEAD}{_MAKE}\s+{_ART}initiative\s+(?:called|named|titled)\b", re.I),
+    # "Name the initiative 'Case Studies'", "Call this category Reading", "Rename the folder ..."
+    re.compile(rf"{_LEAD}(?:name|call|rename|title)\s+(?:the\s+|this\s+|my\s+|a\s+|an\s+)?(?:new\s+)?(?:initiative|category|folder)\b", re.I),
+]
 
 
 def is_app_instruction(text) -> bool:
-    return bool(_APP_INSTRUCTION.match(str(text or "")))
+    text = str(text or "")
+    return any(p.match(text) for p in _APP_INSTRUCTION)
 
 
 _FILLER = re.compile(
