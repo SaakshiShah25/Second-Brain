@@ -87,6 +87,22 @@ Supabase → **Authentication → URL Configuration**:
 
 Without this, sign-up confirmation and password-reset links point to the wrong place.
 
+### 6b. Supabase: sign-up emails
+
+Create account sends a confirmation link (Supabase → Authentication → Providers → Email → "Confirm email" is on). Supabase's built-in
+mailer is for testing only: it sends a handful of emails an hour and, on many plans, only to your own team's addresses, so real users may
+never get the link. For real sign-ups set up your own SMTP: **Authentication → Emails → SMTP Settings** (Resend, Brevo or Gmail all work).
+Note the app is invite-only (`ALLOWED_EMAILS`): someone can create and confirm an account, but sees "You're not on the list yet" until added.
+
+### 6c. Google sign-in ("Continue with Google")
+
+The button only appears once Google is switched on in Supabase.
+
+1. Google Cloud Console → **APIs & Services → OAuth consent screen**: create it (External), app name MyConfía, your support email; add `openid`, `email`, `profile`. While in "Testing" only listed test users can sign in - publish the app to open it up.
+2. **Credentials → Create credentials → OAuth client ID → Web application.** Under *Authorised redirect URIs* add `https://<your-project-ref>.supabase.co/auth/v1/callback` (the project URL from Supabase → Project Settings → API, plus `/auth/v1/callback`). Copy the **Client ID** and **Client secret**.
+3. Supabase → **Authentication → Providers → Google**: switch it on and paste the Client ID and secret. Save.
+4. Supabase → **Authentication → URL Configuration**: the Site URL and Redirect URLs from section 6 must include the Vercel URL (and `http://localhost:5173/**` for local testing).
+
 ## 7. Vercel: frontend environment variables
 
 Vercel → project → **Settings → Environment Variables**:

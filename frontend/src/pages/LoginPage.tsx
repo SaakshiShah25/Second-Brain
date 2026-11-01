@@ -25,6 +25,9 @@ export default function LoginPage() {
   const [signupDone, setSignupDone] = useState(false)
   const [resetSent, setResetSent] = useState(false)
   const [googleSubmitting, setGoogleSubmitting] = useState(false)
+  // 'unconfirmed' = this email has an account that hasn't been verified yet; 'sent' = a new link was just sent.
+  const [resend, setResend] = useState<null | 'unconfirmed' | 'sent'>(null)
+  const [resending, setResending] = useState(false)
 
   if (!sessionLoading && session) {
     return <Navigate to="/" replace />
@@ -35,6 +38,20 @@ export default function LoginPage() {
     setError(null)
     setSignupDone(false)
     setResetSent(false)
+    setResend(null)
+  }
+
+  async function handleResend() {
+    setResending(true)
+    setError(null)
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/login` },
+    })
+    setResending(false)
+    if (error) setError(error.message)
+    else setResend('sent')
   }
 
   async function handleGoogleSignIn() {
@@ -54,6 +71,7 @@ export default function LoginPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
+    setResend(null)
     setSubmitting(true)
     try {
       if (mode === 'signin') {
@@ -93,7 +111,14 @@ export default function LoginPage() {
         setResetSent(true)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.')
+      const message = err instanceof Error ? err.message : 'Something went wrong.'
+      if (/not confirmed/i.test(message)) {
+        // The account exists but its email was never verified: say so, and offer a fresh link.
+        setError('Please confirm your email first - check your inbox (and spam) for the link we sent.')
+        setResend('unconfirmed')
+      } else {
+        setError(message)
+      }
     } finally {
       setSubmitting(false)
     }
@@ -117,7 +142,7 @@ export default function LoginPage() {
         </div>
 
         <div className="pb-8">
-          {mode !== 'forgot' && !signupDone && googleEnabled && (
+          {mode !== 'forgot' && !signupDone && (
             <Segmented
               className="mb-5"
               value={mode}
@@ -136,7 +161,16 @@ export default function LoginPage() {
           ) : signupDone ? (
             <p className="rounded-2xl bg-bg-elevated p-4 text-[0.9375rem] text-text-muted">
               Almost there — check <span className="font-medium text-text">{email}</span> for a confirmation link,
-              then sign in.
+              then sign in. It can take a minute, and may land in spam.
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={resending}
+                className="pressable mt-3 block font-medium text-link disabled:opacity-60"
+              >
+                {resending ? 'Sending…' : resend === 'sent' ? 'Sent again - check your inbox' : "Didn't get it? Send it again"}
+              </button>
+              {error && <span className="mt-2 block text-sm text-danger">{error}</span>}
             </p>
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
@@ -179,6 +213,16 @@ export default function LoginPage() {
                 </button>
               )}
               {error && <p className="text-sm text-danger">{error}</p>}
+              {resend && (
+                <button
+                  type="button"
+                  onClick={handleResend}
+                  disabled={resending || !email}
+                  className="pressable -mt-1 self-start py-1 text-sm font-medium text-link disabled:opacity-60"
+                >
+                  {resending ? 'Sending…' : resend === 'sent' ? 'Sent - check your inbox' : 'Send the confirmation link again'}
+                </button>
+              )}
               <Button type="submit" variant="primary" size="lg" block disabled={submitting} className="mt-1">
                 {submitting
                   ? 'Please wait…'
@@ -201,7 +245,7 @@ export default function LoginPage() {
             </button>
           )}
 
-          {mode !== 'forgot' && !signupDone && (
+          {mode !== 'forgot' && !signupDone && googleEnabled && (
             <>
               <div className="my-5 flex items-center gap-3">
                 <div className="h-px flex-1 bg-border-strong" />
