@@ -60,7 +60,8 @@ And a to-do phrased as a verb still counts as a to-do: `Discuss the fee collecti
 ### A category that doesn't exist yet (try this one)
 
 With no Health category, log: `Start exercising daily, focus on AI and ML concepts and complete the cybersecurity learning by 3rd Nov`
-Expect **one card** with **Category: Learning** (the two study tasks, the second due Tue 3 Nov) and **Category: Health** with a small **NEW** tag (the exercise task) - Health is created for you, and its task shows under Health on the Tasks tab. The headings (Category / Tasks / Decisions / Concerns) are bold and in that category's colour; a fact that fits nothing sits under a grey **Category: Others**.
+Expect **one card** with **Category: Learning** (the two study tasks, the second due Tue 3 Nov) and, under a grey **Category: Others**, a box asking **"File this under a new category called Health?"** with **Create / Rename / Not now**. Nothing is created until you choose: **Create** makes the category and moves the note and its task there; **Rename** lets you change the name first; **Not now** leaves it in Others. Every section also has a **Change** button that opens category bubbles to move that part (and its tasks) to another category, to Others, or to a brand-new one. The headings (Category / Tasks / Decisions / Concerns) are bold and in that category's colour.
+Also check the **+** next to the message box: the categories appear as bubbles (Auto first), and picking one files only the next note there.
 
 ### Instructions to the app, and pronouns
 

@@ -1,19 +1,14 @@
-import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { ListTodo, MapPin, MessageCircleQuestion, Mic, SquarePen, Tag, X } from 'lucide-react'
+import { ListTodo, MapPin, MessageCircleQuestion, Mic, SquarePen, X } from 'lucide-react'
 import { useChat } from '../api/chat'
 import { ApiError } from '../api/client'
-import { useCreateInitiative, useInitiatives } from '../api/initiatives'
-import { useUpdateInteraction } from '../api/notes'
+import { useInitiatives } from '../api/initiatives'
 import { useTranscribe } from '../api/voice'
 import type { CapturePart, CaptureSavedResult, ChatMessage, ChatResult } from '../api/types'
-import Button from '../components/Button'
-import Card from '../components/Card'
 import ConfiaLogo from '../components/ConfiaLogo'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { ProfileButton } from '../components/PageHeader'
 import Greeting from '../components/Greeting'
-import { Input } from '../components/fields'
 import ChatBubble from '../components/chat/ChatBubble'
 import TypingIndicator from '../components/chat/TypingIndicator'
 import ChatInput, { type ChatInputHandle } from '../components/chat/ChatInput'
@@ -94,20 +89,8 @@ export default function ChatPage() {
   const selectedInitiative = initiativeList.find((i) => i.id === selectedInitiativeId) ?? null
   const [pendingLocation, setPendingLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [locationLoading, setLocationLoading] = useState(false)
-  // A capture that didn't fit any existing initiative but reads like a
-  // substantial-enough theme to deserve its own (extraction.py's
-  // "suggested_initiative") - offered as a one-off yes/no prompt after
-  // the note has already saved, never blocking the save itself (see
-  // handleSavedCapture below).
-  const [pendingInitiativeSuggestion, setPendingInitiativeSuggestion] = useState<{
-    name: string
-    interactionId: number
-  } | null>(null)
-  const [namingCustomInitiative, setNamingCustomInitiative] = useState(false)
-  const [customInitiativeName, setCustomInitiativeName] = useState('')
   const [confirmingClear, setConfirmingClear] = useState(false)
   const usage = useUsageMode()
-  const queryClient = useQueryClient()
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -117,8 +100,6 @@ export default function ChatPage() {
 
   const chatMutation = useChat()
   const transcribe = useTranscribe()
-  const createInitiative = useCreateInitiative()
-  const updateInteraction = useUpdateInteraction()
   // Live "types out as you speak" preview while recording (see
   // useLiveTranscript.ts) - a browser-native best-effort layer on top of
   // the actual recording; Whisper's transcript (below) still replaces
@@ -130,10 +111,10 @@ export default function ChatPage() {
   // of that container, so aligning the anchor to the viewport's bottom
   // edge would leave the newest message hidden behind it.
   useEffect(() => {
-    if (messages.length === 0 && !pendingInitiativeSuggestion && !isBusy) return
+    if (messages.length === 0 && !isBusy) return
     const scroller = scrollAnchorRef.current?.closest('#app-scroll')
     scroller?.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' })
-  }, [messages, pendingInitiativeSuggestion, isBusy])
+  }, [messages, isBusy])
 
   function appendMessage(role: 'user' | 'assistant', content: string, extras: Partial<ChatMessage> = {}) {
     setMessages((prev) => [...prev, { role, content, ...extras }])
@@ -162,19 +143,10 @@ export default function ChatPage() {
     )
   }
 
-  // Posts the usual saved-note summary, then separately offers the
-  // new-initiative suggestion if extraction.py proposed one.
+  // The reply to a logged note. A proposed new category is offered inside the reply itself (CaptureReply), and
+  // the user can change where any part went from there too.
   function handleSavedCapture(result: CaptureSavedResult) {
     appendMessage('assistant', formatSavedMessage(result), { capture: result })
-    // A category may have been created for this note: the lists and chips need to know about it.
-    if (result.parts.some((p) => p.new_initiative)) queryClient.invalidateQueries({ queryKey: ['initiatives'] })
-    // One suggestion at a time: the first part that doesn't fit any initiative but reads like a theme of its own.
-    const suggesting = result.parts.find((p) => p.suggested_initiative)
-    if (suggesting?.suggested_initiative) {
-      setNamingCustomInitiative(false)
-      setCustomInitiativeName('')
-      setPendingInitiativeSuggestion({ name: suggesting.suggested_initiative, interactionId: suggesting.interaction_id })
-    }
   }
 
   function handleChatResult(result: ChatResult, sentText: string) {
@@ -191,38 +163,6 @@ export default function ChatPage() {
     } else {
       appendMessage('assistant', result.answer, result.sources?.length ? { sources: result.sources } : {})
     }
-  }
-
-  // Three ways to resolve the suggestion: accept it as-is, swap in a name
-  // the user types themselves (same create+tag flow, just a different
-  // name), or decline it entirely (note stays in Others). `customName` is
-  // only read for the 'custom' choice.
-  function resolveInitiativeSuggestion(choice: 'accept' | 'custom' | 'decline', customName?: string) {
-    if (!pendingInitiativeSuggestion) return
-    const { name: suggestedName, interactionId } = pendingInitiativeSuggestion
-    if (choice === 'decline') {
-      setPendingInitiativeSuggestion(null)
-      appendMessage('assistant', `Okay, left it in Others.`, { status: true })
-      return
-    }
-    const name = choice === 'custom' ? (customName ?? '').trim() : suggestedName
-    if (!name) return
-    setPendingInitiativeSuggestion(null)
-    createInitiative.mutate(
-      { name },
-      {
-        onSuccess: (initiative) => {
-          updateInteraction.mutate(
-            { interactionId, fields: { initiative_id: initiative.id } },
-            {
-              onSuccess: () => appendMessage('assistant', `Added **${initiative.name}** and tagged this note with it.`, { status: true }),
-              onError: () => appendMessage('assistant', `Created **${name}**, but couldn't tag this note with it - you can do that from the Notes page.`, { status: true }),
-            },
-          )
-        },
-        onError: () => appendMessage('assistant', `Couldn't create that initiative - please try again from the Notes tab.`, { status: true }),
-      },
-    )
   }
 
   async function submitText(text: string, asNote = false) {
@@ -354,7 +294,7 @@ export default function ChatPage() {
     setInputText('')
   }
 
-  const hasPending = pendingInitiativeSuggestion !== null
+  const hasPending = false
   const showTyping = isBusy && !hasPending && !isRecording && !transcribe.isPending
   const isEmpty = messages.length === 0 && !hasPending
 
@@ -441,83 +381,9 @@ export default function ChatPage() {
             key={i}
             message={m}
             onSaveAsNote={i === messages.length - 1 && !isBusy ? (t) => submitText(t, true) : undefined}
+            onCaptureChange={(capture) => setMessages((prev) => prev.map((msg, idx) => (idx === i ? { ...msg, capture } : msg)))}
           />
         ))}
-
-        {pendingInitiativeSuggestion && (
-          <Card style={{ animation: 'fade-in 0.2s ease-out' }}>
-            <div className="mb-3 flex items-start gap-3">
-              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-ink">
-                <Tag size={18} strokeWidth={1.9} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-[0.8125rem] font-medium text-text-muted">New category?</p>
-                <p className="text-[1rem] leading-snug font-semibold">{pendingInitiativeSuggestion.name}</p>
-                <p className="mt-0.5 text-[0.875rem] leading-snug text-text-muted">
-                  This note seems to belong to a category you don't have yet.
-                </p>
-              </div>
-            </div>
-            {namingCustomInitiative ? (
-              <div className="flex flex-col gap-2">
-                <Input
-                  autoFocus
-                  placeholder="Category name"
-                  value={customInitiativeName}
-                  onChange={(e) => setCustomInitiativeName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && customInitiativeName.trim()) {
-                      resolveInitiativeSuggestion('custom', customInitiativeName)
-                    }
-                  }}
-                />
-                <div className="flex justify-end gap-2">
-                  <Button
-                    size="sm"
-                    disabled={createInitiative.isPending || updateInteraction.isPending}
-                    onClick={() => setNamingCustomInitiative(false)}
-                  >
-                    Back
-                  </Button>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    disabled={!customInitiativeName.trim() || createInitiative.isPending || updateInteraction.isPending}
-                    onClick={() => resolveInitiativeSuggestion('custom', customInitiativeName)}
-                  >
-                    Add category
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={createInitiative.isPending || updateInteraction.isPending}
-                  onClick={() => resolveInitiativeSuggestion('decline')}
-                >
-                  Not now
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={createInitiative.isPending || updateInteraction.isPending}
-                  onClick={() => setNamingCustomInitiative(true)}
-                >
-                  Rename
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  disabled={createInitiative.isPending || updateInteraction.isPending}
-                  onClick={() => resolveInitiativeSuggestion('accept')}
-                >
-                  {createInitiative.isPending || updateInteraction.isPending ? 'Adding…' : 'Add and tag'}
-                </Button>
-              </div>
-            )}
-          </Card>
-        )}
 
         {showTyping && <TypingIndicator stage={stage} />}
 

@@ -1,9 +1,9 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { ArrowUp, Check, Loader2, MapPin, Mic, Pause, Play, Plus, Sparkles, Square, Trash2 } from 'lucide-react'
+import { ArrowUp, Loader2, MapPin, Mic, Pause, Play, Plus, Sparkles, Square, Trash2 } from 'lucide-react'
+import CategoryBubbles from '../CategoryBubbles'
 import Sheet from '../Sheet'
 import { ListGroup, ListRow, Toggle } from '../ListGroup'
 import type { Initiative } from '../../api/types'
-import { getInitiativeStyle } from '../../lib/initiativeStyle'
 
 export interface ChatInputHandle {
   focus: () => void
@@ -293,42 +293,24 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
             )}
           </ListGroup>
           {onSelectInitiative && (
-            <ListGroup title="Category for this note" footer="Used for the next note only. “Auto” lets Confía pick from what you write.">
-              <ListRow
-                icon={Sparkles}
-                iconColor="var(--sb-text-muted)"
-                soft
-                label="Auto"
-                detail="Confía picks the category"
-                trailing={selectedInitiativeId === null ? <Check size={18} strokeWidth={2.4} className="text-accent" /> : undefined}
-                onClick={() => {
-                  onSelectInitiative(null)
+            <section className="mb-2">
+              <h2 className="mb-2 px-1 text-[0.8125rem] font-medium uppercase tracking-wide text-text-faint">Category for this note</h2>
+              <CategoryBubbles
+                initiatives={initiatives}
+                selectedId={selectedInitiativeId}
+                noneLabel="Auto"
+                noneIcon={Sparkles}
+                onSelect={(id) => {
+                  onSelectInitiative(id)
                   setAttachOpen(false)
                 }}
               />
-              {initiatives.map((i) => {
-                const style = getInitiativeStyle(i)
-                return (
-                  <ListRow
-                    key={i.id}
-                    icon={style?.Icon}
-                    iconColor={style?.color}
-                    soft
-                    label={i.name}
-                    trailing={selectedInitiativeId === i.id ? <Check size={18} strokeWidth={2.4} className="text-accent" /> : undefined}
-                    onClick={() => {
-                      onSelectInitiative(i.id)
-                      setAttachOpen(false)
-                    }}
-                  />
-                )
-              })}
-              {initiatives.length === 0 && (
-                <p className="px-4 py-3 text-[0.9375rem] text-text-muted">
-                  No categories yet. Add some under Notes, then Initiatives.
-                </p>
-              )}
-            </ListGroup>
+              <p className="mt-2 px-1 text-[0.8125rem] leading-relaxed text-text-faint">
+                {initiatives.length === 0
+                  ? 'No categories yet - log a note and Confía will suggest one.'
+                  : 'Used for the next note only. “Auto” lets Confía pick from what you write.'}
+              </p>
+            </section>
           )}
         </Sheet>
       )}

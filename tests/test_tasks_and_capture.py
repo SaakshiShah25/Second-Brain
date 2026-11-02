@@ -292,37 +292,28 @@ if __name__ == "__main__":
     sys.exit(1 if failed else 0)
 
 
-def test_a_group_that_fits_no_initiative_gets_a_new_one_so_its_tasks_are_not_left_in_others():
+def test_a_group_that_fits_no_initiative_is_offered_a_new_one_not_given_one():
     cap, notes, tasks = _split_fakes(inits={"Work": 1})
+    created = []
+    real = cap.db.create_initiative
+    cap.db.create_initiative = lambda *a, **k: created.append(a) or real(*a, **k)
     out = cap._process_extracted("u", "Sell Jio shares asap. Start exercising daily.", {"groups": [
         {"initiative": None, "suggested_initiative": "Finance", "follow_ups": [{"description": "Sell Jio shares"}]},
-        {"initiative": None, "suggested_initiative": "health", "follow_ups": [{"description": "Start exercising daily"}]},
-        {"initiative": None, "suggested_initiative": "Health", "concerns": ["Back pain is getting worse"]},
+        {"initiative": None, "suggested_initiative": "Health", "follow_ups": [{"description": "Start exercising daily"}]},
     ]})
-    # the two Health groups are one; each new initiative is created and the tasks hang off the note filed under it
-    assert [p["initiative_name"] for p in out["parts"]] == ["Finance", "Health"]
-    assert [p["new_initiative"] for p in out["parts"]] == [True, True]
-    assert [n["initiative_id"] for n in notes] == [2, 3]
-    assert [i for i, _ in tasks] == [1, 2]
-    # a name that already exists is reused, not created again
-    out = cap._process_extracted("u", "More shares", {"groups": [
-        {"initiative": None, "suggested_initiative": " finance. ", "follow_ups": [{"description": "Buy shares"}]}]})
-    assert out["parts"][0]["initiative_id"] == 2 and out["parts"][0]["new_initiative"] is False
-
-
-def test_new_initiatives_are_capped_and_the_rest_stay_as_suggestions():
-    cap, notes, tasks = _split_fakes(inits={"Work": 1})
-    groups = [{"initiative": None, "suggested_initiative": n, "decisions": [n]} for n in ("A", "B", "C")]
-    out = cap._process_extracted("u", "x", {"groups": groups})
-    assert [p["new_initiative"] for p in out["parts"]] == [True, True, False]
-    assert out["parts"][2]["initiative_id"] is None and out["parts"][2]["suggested_initiative"] == "C"
-    # a name that is too long to be a category is not created
-    out = cap._process_extracted("u", "x", {"groups": [{"initiative": None, "suggested_initiative": "x" * 60, "decisions": ["d"]}]})
-    assert out["parts"][0]["initiative_id"] is None
+    # nothing is created behind the user's back: the notes sit in Others with the proposed names attached
+    assert created == []
+    assert [p["initiative_id"] for p in out["parts"]] == [None, None]
+    assert [p["suggested_initiative"] for p in out["parts"]] == ["Finance", "Health"]
+    assert [n["initiative_id"] for n in notes] == [None, None]
+    # a proposed name that is really one the user already has files the note there (different capitalisation / punctuation)
+    out = cap._process_extracted("u", "Weekly sync", {"groups": [
+        {"initiative": None, "suggested_initiative": " work. ", "follow_ups": [{"description": "Book the sync"}]}]})
+    assert out["parts"][0]["initiative_id"] == 1 and out["parts"][0]["suggested_initiative"] is None
     # the user's own category is never overridden by a suggestion
     out = cap._process_extracted("u", "x", {"groups": [{"initiative": None, "suggested_initiative": "Zed", "decisions": ["d"]}]},
                                  forced_initiative_id=1)
-    assert out["parts"][0]["initiative_id"] == 1 and out["parts"][0]["new_initiative"] is False
+    assert out["parts"][0]["initiative_id"] == 1 and out["parts"][0]["suggested_initiative"] is None
 
 
 def test_an_instruction_to_the_app_is_not_saved_as_a_task_decision_or_point():

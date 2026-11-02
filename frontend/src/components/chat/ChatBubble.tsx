@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useNavigate } from 'react-router-dom'
 import { ListChecks, NotebookText } from 'lucide-react'
-import type { AnswerSource, ChatMessage } from '../../api/types'
+import type { AnswerSource, CaptureSavedResult, ChatMessage } from '../../api/types'
 import { friendlyDate } from '../../lib/dates'
 import CopyButton from '../CopyButton'
 import CaptureReply from './CaptureReply'
@@ -44,10 +44,13 @@ function Sources({ sources }: { sources: AnswerSource[] }) {
 export default function ChatBubble({
   message,
   onSaveAsNote,
+  onCaptureChange,
 }: {
   message: ChatMessage
   // Only passed for the latest message while nothing is in flight.
   onSaveAsNote?: (text: string) => void
+  // The reply to a logged note was edited (category changed or confirmed): the new version to keep.
+  onCaptureChange?: (capture: CaptureSavedResult) => void
 }) {
   const bodyRef = useRef<HTMLDivElement>(null)
   if (message.role === 'user') {
@@ -69,7 +72,7 @@ export default function ChatBubble({
     <div className="pr-2" style={{ animation: 'fade-in 0.2s ease-out' }}>
       <div ref={bodyRef} className="prose-chat text-[0.9375rem] leading-relaxed text-text">
         {message.capture ? (
-          <CaptureReply result={message.capture} />
+          <CaptureReply result={message.capture} onChange={onCaptureChange} />
         ) : (
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
         )}
