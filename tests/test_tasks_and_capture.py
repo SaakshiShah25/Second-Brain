@@ -347,12 +347,14 @@ def test_task_priority_reminder_and_category_are_validated_and_need_the_migratio
     def call(**body):
         return tasks_router.update_task(1, TaskStatusUpdate(**body), "u")
 
-    call(priority="high", remind_on="2026-11-05", initiative_id=2)
+    soon = (date.today() + timedelta(days=5)).isoformat()
+    call(priority="high", remind_on=soon, initiative_id=2)
     # a new reminder date means it has not been sent yet
-    assert saved[-1] == {"priority": "high", "remind_on": "2026-11-05", "reminded_on": None, "initiative_id": 2}
+    assert saved[-1] == {"priority": "high", "remind_on": soon, "reminded_on": None, "initiative_id": 2}
     call(initiative_id=None, remind_on=None)
     assert saved[-1]["initiative_id"] is None and saved[-1]["remind_on"] is None
-    for bad in ({"priority": "urgent"}, {"remind_on": "tomorrow"}, {"initiative_id": 99}):
+    long_ago = (date.today() - timedelta(days=3)).isoformat()
+    for bad in ({"priority": "urgent"}, {"remind_on": "tomorrow"}, {"remind_on": long_ago}, {"initiative_id": 99}):
         try:
             call(**bad)
             assert False, bad

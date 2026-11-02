@@ -88,6 +88,9 @@ def update_task(task_id: int, body: TaskStatusUpdate, user_id: str = Depends(get
     if "remind_on" in edits:
         if edits["remind_on"] and not date_utils.to_valid_date(edits["remind_on"]):
             raise HTTPException(400, "remind_on must be YYYY-MM-DD")
+        # a day that is already over everywhere can't be reminded (one day of slack covers every time zone)
+        if edits["remind_on"] and edits["remind_on"] < (date.today() - timedelta(days=1)).isoformat():
+            raise HTTPException(400, "That day has already passed - pick today or later.")
         changes["remind_on"] = edits["remind_on"] or None
         changes["reminded_on"] = None  # a new reminder date means it has not been sent yet
         needs_migration = True

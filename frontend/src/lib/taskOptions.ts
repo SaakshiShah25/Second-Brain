@@ -26,10 +26,21 @@ function shift(iso: string, days: number): string {
   return isoLocal(new Date(y, m - 1, d + days))
 }
 
+// Reminders go out at 9 AM (device time) on their day, so once it is 9 AM today, today is no longer a day a
+// reminder can still arrive.
+export const REMINDER_HOUR = 9
+
+/** The first day a reminder can still be set for: today before 9 AM, otherwise tomorrow. */
+export function earliestReminderDate(now: Date = new Date()): string {
+  const today = isoLocal(now)
+  return now.getHours() >= REMINDER_HOUR ? shift(today, 1) : today
+}
+
 /** Quick choices for "remind me", in days from the due date (or from today when the task has no date).
- * Dates in the past are left out. */
-export function reminderChoices(dueDate: string | null): { label: string; date: string }[] {
-  const today = isoLocal(new Date())
+ * Days a reminder can no longer arrive on (earlier than today, or today after 9 AM) are left out. */
+export function reminderChoices(dueDate: string | null, now: Date = new Date()): { label: string; date: string }[] {
+  const today = isoLocal(now)
+  const earliest = earliestReminderDate(now)
   const choices = dueDate
     ? [
         { label: 'On the day it is due', date: dueDate },
@@ -42,5 +53,5 @@ export function reminderChoices(dueDate: string | null): { label: string; date: 
         { label: 'In 3 days', date: shift(today, 3) },
         { label: 'In a week', date: shift(today, 7) },
       ]
-  return choices.filter((c) => c.date >= today)
+  return choices.filter((c) => c.date >= earliest)
 }

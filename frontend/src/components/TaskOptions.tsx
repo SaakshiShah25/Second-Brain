@@ -2,22 +2,24 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BellOff } from 'lucide-react'
 import type { Task } from '../api/types'
-import { shortDate } from '../lib/dates'
-import { PRIORITIES, priorityOf, reminderChoices, type Priority } from '../lib/taskOptions'
+import { isoLocal, shortDate } from '../lib/dates'
+import { PRIORITIES, earliestReminderDate, priorityOf, reminderChoices, type Priority } from '../lib/taskOptions'
 import Button from './Button'
 import Sheet from './Sheet'
 import { Input } from './fields'
 
-// Three bars that rise like a level meter: all three filled = high, two = normal, one = low - in red, amber and
-// green. The unfilled bars stay faintly visible so it reads as "1 of 3" rather than as a different shape.
+// The priority icon: an up arrow beside four lines that get shorter - "sort by importance". Its colour is the level
+// (red high, amber normal, green low).
 export function PriorityBars({ priority, size = 22, inverted = false }: { priority: Priority; size?: number; inverted?: boolean }) {
-  const filled = priority === 'high' ? 3 : priority === 'normal' ? 2 : 1
   const color = inverted ? '#fff' : PRIORITIES.find((p) => p.value === priority)!.color
   return (
-    <svg width={size} height={size} viewBox="0 0 20 20" aria-hidden="true">
-      {[0, 1, 2].map((i) => (
-        <rect key={i} x={1 + i * 7} y={19 - (7 + i * 5)} width="5" height={7 + i * 5} rx="1.6" fill={color} opacity={i < filled ? 1 : 0.25} />
-      ))}
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 20V5" />
+      <path d="M1.8 8.4 5 5l3.2 3.4" />
+      <path d="M12 5.5h10.5" />
+      <path d="M12 10h8.5" />
+      <path d="M12 14.5h6.5" />
+      <path d="M12 19h3.5" />
     </svg>
   )
 }
@@ -90,7 +92,7 @@ export function PriorityFlag({ priority, onPick }: { priority: Priority; onPick:
 export function ReminderSheet({ task, onPick, onClose }: { task: Task; onPick: (date: string | null) => void; onClose: () => void }) {
   const choices = reminderChoices(task.due_date)
   const [custom, setCustom] = useState('')
-  const today = new Date().toLocaleDateString('en-CA')
+  const earliest = earliestReminderDate()
   return (
     <Sheet onClose={onClose}>
       <h3 className="text-lg font-semibold tracking-tight">Remind me</h3>
@@ -118,10 +120,10 @@ export function ReminderSheet({ task, onPick, onClose }: { task: Task; onPick: (
         {choices.length === 0 && <p className="text-[0.875rem] text-text-muted">The usual choices have already passed - pick a date below.</p>}
       </div>
       <div className="mt-4 flex gap-2">
-        <Input type="date" min={today} value={custom} onChange={(e) => setCustom(e.target.value)} className="flex-1" />
+        <Input type="date" min={earliest} value={custom} onChange={(e) => setCustom(e.target.value)} className="flex-1" />
         <Button
           variant="primary"
-          disabled={!custom}
+          disabled={!custom || custom < earliest}
           onClick={() => {
             onPick(custom)
             onClose()
@@ -130,7 +132,10 @@ export function ReminderSheet({ task, onPick, onClose }: { task: Task; onPick: (
           Set
         </Button>
       </div>
-      <p className="mt-2 text-[0.8125rem] text-text-faint">You'll get a notification at 9 AM that day, if reminders are on in Settings.</p>
+      <p className="mt-2 text-[0.8125rem] text-text-faint">
+        You'll get a notification at 9 AM that day, if reminders are on in Settings.
+        {earliest > isoLocal(new Date()) && " Today's 9 AM has already passed, so the earliest is tomorrow."}
+      </p>
       {task.remind_on && (
         <Button
           variant="ghost"
