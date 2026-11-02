@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { BellOff } from 'lucide-react'
 import type { Task } from '../api/types'
 import { isoLocal, shortDate } from '../lib/dates'
-import { PRIORITIES, earliestReminderDate, priorityOf, reminderChoices, type Priority } from '../lib/taskOptions'
+import { ON_PRIORITY, PRIORITIES, earliestReminderDate, priorityOf, reminderChoices, tint, type Priority } from '../lib/taskOptions'
 import Button from './Button'
 import Sheet from './Sheet'
 import { Input } from './fields'
@@ -19,8 +19,8 @@ export function PriorityBars({ priority, inverted = false, filled = false }: { p
       className="inline-flex h-6 min-w-[2.125rem] items-center justify-center rounded-full px-2 text-[0.8125rem] leading-none font-extrabold tracking-tight"
       style={
         inverted || filled
-          ? { backgroundColor: color, color: '#fff' }
-          : { backgroundColor: `${color}22`, color }
+          ? { backgroundColor: color, color: ON_PRIORITY }
+          : { backgroundColor: tint(color, 16), color }
       }
     >
       {MARKS[priority]}
@@ -74,8 +74,8 @@ export function PriorityFlag({ priority, onPick }: { priority: Priority; onPick:
                     className="pressable flex h-10 items-center gap-1 rounded-full border pr-3 pl-1.5 text-[0.8125rem] font-semibold"
                     style={
                       active
-                        ? { backgroundColor: p.color, borderColor: p.color, color: '#fff' }
-                        : { borderColor: `${p.color}66`, color: p.color }
+                        ? { backgroundColor: p.color, borderColor: p.color, color: ON_PRIORITY }
+                        : { borderColor: tint(p.color, 45), color: p.color }
                     }
                   >
                     <PriorityBars priority={p.value} inverted={active} />

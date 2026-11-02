@@ -5,10 +5,13 @@ export type Priority = 'high' | 'normal' | 'low'
 
 // Red = most important, amber = normal, green = least. A task starts as normal.
 export const PRIORITIES: { value: Priority; label: string; color: string }[] = [
-  { value: 'high', label: 'High', color: '#dc2626' },
-  { value: 'normal', label: 'Normal', color: '#d99a0b' },
-  { value: 'low', label: 'Low', color: '#16a34a' },
+  { value: 'high', label: 'High', color: 'var(--sb-prio-high)' },
+  { value: 'normal', label: 'Normal', color: 'var(--sb-prio-normal)' },
+  { value: 'low', label: 'Low', color: 'var(--sb-prio-low)' },
 ]
+// The colours are theme tokens (soft in both Paper and Graphite); a tint of one for backgrounds and outlines.
+export const tint = (color: string, percent: number) => `color-mix(in srgb, ${color} ${percent}%, transparent)`
+export const ON_PRIORITY = 'var(--sb-prio-on)' // text on a filled priority colour
 export const PRIORITY_RANK: Record<Priority, number> = { high: 0, normal: 1, low: 2 }
 
 export function priorityOf(task: Task): Priority {

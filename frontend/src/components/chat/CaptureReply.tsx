@@ -135,10 +135,10 @@ function Section({
           type="button"
           onClick={() => setChanging(true)}
           aria-label="Change category"
-          className="pressable flex items-center gap-1 rounded-full border border-border-strong px-2 py-0.5 text-[0.75rem] font-medium text-text-muted"
+          title="Change category"
+          className="pressable flex h-7 w-7 items-center justify-center rounded-full border border-border-strong text-text-muted"
         >
-          <Pencil size={11} strokeWidth={2.2} />
-          Change
+          <Pencil size={13} strokeWidth={2.2} />
         </button>
       </p>
       {part.change_note && (

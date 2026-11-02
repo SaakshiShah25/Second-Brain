@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, pointerWithin, rectIntersection, useDraggable, useDroppable, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from '@dnd-kit/core'
 import { ArrowLeftRight, Bell, Check, CheckCircle2, ChevronDown, ChevronRight, FolderInput, NotebookText, TriangleAlert } from 'lucide-react'
 import { useEditTask, useTasks, useUpdateTaskFields, useUpdateTaskOwner, useUpdateTaskStatus } from '../api/tasks'
-import type { Initiative, Task } from '../api/types'
+import type { Initiative, Interaction, Task } from '../api/types'
 import Button from '../components/Button'
 import CategorySheet from '../components/CategorySheet'
 import { Input, Label } from '../components/fields'
@@ -13,13 +13,14 @@ import { PriorityBars, PriorityFlag, ReminderSheet } from '../components/TaskOpt
 import Sheet from '../components/Sheet'
 import { toast } from '../components/Toast'
 import { useInitiatives } from '../api/initiatives'
-import { useNotes } from '../api/notes'
+import { useNotes, useUpdateInteraction } from '../api/notes'
 import { useConnection } from '../lib/connection'
 import { dueLabel, fullDate, isoLocal, shortDate } from '../lib/dates'
 import { groupByInitiative } from '../lib/groupByInitiative'
 import { matchesInitiative, notePoints, useInitiativeFilter } from '../lib/initiativeFilter'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
-import { PRIORITIES, PRIORITY_RANK, priorityOf, taskInitiativeId, type Priority } from '../lib/taskOptions'
+import { noteItems } from '../lib/noteSections'
+import { ON_PRIORITY, PRIORITIES, PRIORITY_RANK, priorityOf, taskInitiativeId, tint, type Priority } from '../lib/taskOptions'
 
 function isOverdue(task: Task): boolean {
   return task.status === 'open' && !!task.due_date && task.due_date < isoLocal(new Date())
@@ -316,10 +317,22 @@ export default function TasksPage() {
     priority === priorityOf(task) ? undefined : setOption(task, { priority }, `${PRIORITIES.find((p) => p.value === priority)!.label} priority`)
   const setReminder = (task: Task, date: string | null) =>
     setOption(task, { remind_on: date }, date ? `Reminder set for ${shortDate(date)}, 9 AM` : 'Reminder removed')
+  const updateNote = useUpdateInteraction()
+  // After a task moves, the note it came from may no longer sit with it. When the note was nothing but that one task
+  // it simply follows; otherwise the user is asked (the note's other points and tasks would move with it).
+  const [askNote, setAskNote] = useState<{ note: Interaction; target: number | null; name: string; others: number } | null>(null)
   const moveTask = (task: Task, initiativeId: number | null) => {
     if (initiativeId === taskInitiativeId(task)) return
     const name = initiativeId === null ? 'Others' : initiatives?.find((i) => i.id === initiativeId)?.name ?? 'that category'
     setOption(task, { initiative_id: initiativeId }, `Moved to ${name}`)
+    const note = (notes ?? []).find((n) => n.id === task.interaction_id)
+    if (!note || (note.initiative_id ?? null) === initiativeId) return
+    const others = allTasks.filter((t) => t.interaction_id === note.id && t.id !== task.id).length
+    if (noteItems(note).length === 0 && others === 0) {
+      updateNote.mutate({ interactionId: note.id, fields: { initiative_id: initiativeId } })
+    } else {
+      setAskNote({ note, target: initiativeId, name, others })
+    }
   }
 
   function handleDragEnd(e: DragEndEvent) {
@@ -566,8 +579,8 @@ export default function TasksPage() {
                         className="pressable flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full border text-[0.875rem] font-medium"
                         style={
                           active
-                            ? { backgroundColor: p.color, borderColor: p.color, color: '#fff' }
-                            : { borderColor: `${p.color}66`, color: p.color }
+                            ? { backgroundColor: p.color, borderColor: p.color, color: ON_PRIORITY }
+                            : { borderColor: tint(p.color, 45), color: p.color }
                         }
                       >
                         <PriorityBars priority={p.value} inverted={active} />
@@ -632,6 +645,44 @@ export default function TasksPage() {
             setActiveTaskId(null)
           }}
         />
+      )}
+
+      {askNote && (
+        <Sheet onClose={() => setAskNote(null)}>
+          <h3 className="text-lg font-semibold tracking-tight">Move the note too?</h3>
+          <p className="mt-1 text-[0.9375rem] leading-relaxed text-text-muted">
+            This task came from a note in {askNote.note.initiative?.name ?? 'Others'}. Moving the note to {askNote.name} puts its key points, decisions and concerns
+            there as well{askNote.others > 0 ? `, and its ${askNote.others === 1 ? 'other task' : `${askNote.others} other tasks`} move${askNote.others === 1 ? 's' : ''} with it` : ''}.
+          </p>
+          {noteItems(askNote.note).length > 0 && (
+            <ul className="mt-3 flex flex-col gap-1 rounded-xl bg-bg-elevated p-3 text-[0.875rem] leading-snug">
+              {noteItems(askNote.note).slice(0, 3).map((it, i) => (
+                <li key={i} className="line-clamp-2">
+                  {it.text}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-5 flex flex-col gap-2">
+            <Button
+              variant="primary"
+              size="lg"
+              block
+              disabled={updateNote.isPending}
+              onClick={() =>
+                updateNote.mutate(
+                  { interactionId: askNote.note.id, fields: { initiative_id: askNote.target } },
+                  { onSuccess: () => toast(`Note moved to ${askNote.name}`), onSettled: () => setAskNote(null) },
+                )
+              }
+            >
+              {updateNote.isPending ? 'Moving…' : `Move the note to ${askNote.name}`}
+            </Button>
+            <Button size="lg" block variant="ghost" onClick={() => setAskNote(null)}>
+              Just this task
+            </Button>
+          </div>
+        </Sheet>
       )}
 
       {draggingTask && <DropTray initiatives={initiatives ?? []} currentId={taskInitiativeId(draggingTask)} />}
