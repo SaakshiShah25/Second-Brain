@@ -98,9 +98,10 @@ function TaskRow({
       >
         <span
           className={`flex h-[1.375rem] w-[1.375rem] items-center justify-center rounded-full border-2 transition-colors ${
-            done ? 'border-success bg-success text-white' : task.owner === 'them' ? 'border-them-task' : 'border-text-faint'
-          }`}
-          style={done ? { animation: 'task-pop 0.3s ease-out' } : undefined}
+            done ? 'border-success bg-success text-white' : ''
+          } ${!done && task.owner === 'them' ? 'border-dashed' : ''}`}
+          // The ring takes the task's priority colour (red high, amber normal, green low); a dashed ring = someone else owes it.
+          style={done ? { animation: 'task-pop 0.3s ease-out' } : { borderColor: PRIORITIES.find((p) => p.value === priorityOf(task))!.color }}
         >
           {done && <Check size={13} strokeWidth={3} />}
         </span>
@@ -569,7 +570,7 @@ export default function TasksPage() {
                             : { borderColor: `${p.color}66`, color: p.color }
                         }
                       >
-                        <PriorityBars priority={p.value} size={18} inverted={active} />
+                        <PriorityBars priority={p.value} inverted={active} />
                         {p.label}
                       </button>
                     )

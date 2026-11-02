@@ -66,9 +66,13 @@ Also check the **+** next to the message box: the categories appear as bubbles (
 ### Task priority, reminders and moving tasks (needs `scripts/migration_38_task_options.sql`)
 
 On the Tasks tab each open task has a **flag** and a **bell**:
-- **Priority icon:** an up arrow beside four shrinking lines, in colour - red = high, amber = normal (the default), green = low. Tap it and choose High / Normal / Low from the small labelled panel that opens (it isn't cut off by the card). High tasks sort first inside their category, and in the 9 AM / 5 PM push list.
+- **Priority mark:** a round pill of exclamation marks in colour - `!!!` red = high, `!!` amber = normal (the default), `!` green = low. The tick circle at the left of the task takes the same colour (dashed = someone else owes it). Tap the pill and choose High / Normal / Low from the small labelled panel that opens (it isn't cut off by the card). High tasks sort first inside their category, and in the 9 AM / 5 PM push list.
 - **Bell:** choose "On the day it is due", "1 day before", "2 days before", "1 week before" (or Tomorrow / In 3 days / In a week for a task with no date), or pick any date. Days that can no longer get a 9 AM reminder are not offered: after 9 AM today, "today" (and "1 day before" a task due tomorrow) is missing and the date picker starts tomorrow. The bell fills in and the row shows the date. At 9 AM on that day (your device's time zone, with reminders turned on in Settings) you get one push for it. Setting a new date resets it; "Remove reminder" clears it.
 - **Move:** press and hold a task (drag with a mouse) and drop it on another category's list, or on a chip in the tray that appears. Or open the task and tap **Move**. Only that task moves; the note it came from stays where it was. Moving a *note* (from the chat reply or the Notes page) moves its tasks with it.
+
+### One to-do per thing
+
+`Start focusing on skipping. Make sure everyday you do 10 minutes of skipping.` gives **one** task, "Do 10 minutes of skipping daily" - not "Start focusing on skipping" plus the specific one. Genuinely different actions in one note (send the sheet, book the dentist) still become separate tasks.
 
 ### Instructions to the app, and pronouns
 

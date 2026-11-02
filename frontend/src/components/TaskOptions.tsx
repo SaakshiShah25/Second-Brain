@@ -8,19 +8,23 @@ import Button from './Button'
 import Sheet from './Sheet'
 import { Input } from './fields'
 
-// The priority icon: an up arrow beside four lines that get shorter - "sort by importance". Its colour is the level
-// (red high, amber normal, green low).
-export function PriorityBars({ priority, size = 22, inverted = false }: { priority: Priority; size?: number; inverted?: boolean }) {
-  const color = inverted ? '#fff' : PRIORITIES.find((p) => p.value === priority)!.color
+// The priority mark: a round-edged pill of exclamation marks - ! low, !! normal, !!! high - in the level's colour
+// (green, amber, red). It matches the app's rounded look (the checkbox ring and the bell) and needs no explaining.
+const MARKS: Record<Priority, string> = { high: '!!!', normal: '!!', low: '!' }
+export function PriorityBars({ priority, inverted = false, filled = false }: { priority: Priority; inverted?: boolean; filled?: boolean }) {
+  const color = PRIORITIES.find((p) => p.value === priority)!.color
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M5 20V5" />
-      <path d="M1.8 8.4 5 5l3.2 3.4" />
-      <path d="M12 5.5h10.5" />
-      <path d="M12 10h8.5" />
-      <path d="M12 14.5h6.5" />
-      <path d="M12 19h3.5" />
-    </svg>
+    <span
+      aria-hidden="true"
+      className="inline-flex h-6 min-w-[2.125rem] items-center justify-center rounded-full px-2 text-[0.8125rem] leading-none font-extrabold tracking-tight"
+      style={
+        inverted || filled
+          ? { backgroundColor: color, color: '#fff' }
+          : { backgroundColor: `${color}22`, color }
+      }
+    >
+      {MARKS[priority]}
+    </span>
   )
 }
 
@@ -29,7 +33,7 @@ export function PriorityBars({ priority, size = 22, inverted = false }: { priori
 export function PriorityFlag({ priority, onPick }: { priority: Priority; onPick: (p: Priority) => void }) {
   const [anchor, setAnchor] = useState<DOMRect | null>(null)
   const current = PRIORITIES.find((p) => p.value === priority)!
-  const PANEL_HEIGHT = 56
+  const PANEL_HEIGHT = 52
   const below = anchor ? anchor.bottom + 8 + PANEL_HEIGHT < window.innerHeight : true
   return (
     <>
@@ -39,8 +43,7 @@ export function PriorityFlag({ priority, onPick }: { priority: Priority; onPick:
         aria-label={`Priority: ${current.label}. Change`}
         aria-expanded={!!anchor}
         title={`Priority: ${current.label}`}
-        className="pressable -m-1 flex h-9 w-9 items-center justify-center rounded-full"
-        style={{ color: current.color }}
+        className="pressable -m-1 flex h-9 min-w-9 items-center justify-center rounded-full"
       >
         <PriorityBars priority={priority} />
       </button>
@@ -50,7 +53,7 @@ export function PriorityFlag({ priority, onPick }: { priority: Priority; onPick:
             <button type="button" aria-label="Close" className="fixed inset-0 z-[60] cursor-default" onClick={() => setAnchor(null)} />
             <div
               role="menu"
-              className="fixed z-[61] flex gap-1.5 rounded-2xl border border-border-strong bg-bg-card p-1.5 shadow-card"
+              className="fixed z-[61] flex gap-1 rounded-full border border-border-strong bg-bg-card p-1 shadow-card"
               style={{
                 right: Math.max(8, window.innerWidth - anchor.right - 8),
                 ...(below ? { top: anchor.bottom + 8 } : { bottom: window.innerHeight - anchor.top + 8 }),
@@ -68,14 +71,14 @@ export function PriorityFlag({ priority, onPick }: { priority: Priority; onPick:
                       setAnchor(null)
                       onPick(p.value)
                     }}
-                    className="pressable flex h-11 items-center gap-1.5 rounded-xl border px-3 text-[0.875rem] font-semibold"
+                    className="pressable flex h-10 items-center gap-1 rounded-full border pr-3 pl-1.5 text-[0.8125rem] font-semibold"
                     style={
                       active
                         ? { backgroundColor: p.color, borderColor: p.color, color: '#fff' }
                         : { borderColor: `${p.color}66`, color: p.color }
                     }
                   >
-                    <PriorityBars priority={p.value} size={20} inverted={active} />
+                    <PriorityBars priority={p.value} inverted={active} />
                     {p.label}
                   </button>
                 )
