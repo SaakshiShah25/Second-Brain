@@ -42,10 +42,10 @@ etc.) use them - extend these tokens rather than hardcoding a color.
   --sb-link: #2563eb;
   --sb-danger: #e5383b;
   --sb-success: #16a34a;
-  /* Task priority: muted on purpose, so a list of tasks stays calm. High / normal / low, and the text colour on a filled one. */
-  --sb-prio-high: #bf6a62;
-  --sb-prio-normal: #bf9a48;
-  --sb-prio-low: #6f9f82;
+  /* Task priority: clearly coloured but not harsh - rose, gold, teal-green. High / normal / low, and the text colour on a filled one. */
+  --sb-prio-high: #e04f7c;
+  --sb-prio-normal: #e3a01c;
+  --sb-prio-low: #2ea67e;
   --sb-prio-on: #ffffff;
   /* "Owed by them" task marker (DigestPage) - deliberately not
      --sb-danger: danger means destructive/error, this only means "who
@@ -96,9 +96,9 @@ etc.) use them - extend these tokens rather than hardcoding a color.
   --sb-link: #6aa5ff;
   --sb-danger: #ff6b6b;
   --sb-success: #4ade80;
-  --sb-prio-high: #c98a82;
-  --sb-prio-normal: #c7aa6c;
-  --sb-prio-low: #86b496;
+  --sb-prio-high: #f06a93;
+  --sb-prio-normal: #f0b64a;
+  --sb-prio-low: #4bc79b;
   --sb-prio-on: #1b1a17;
   --sb-them-task: #f472b6;
   --sb-scrim: rgba(0, 0, 0, 0.6);
