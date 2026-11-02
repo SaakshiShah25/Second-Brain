@@ -330,3 +330,40 @@ def test_an_instruction_to_the_app_is_not_saved_as_a_task_decision_or_point():
     assert g[0]["decisions"] == []
     # the real to-dos stay (the wrapper on "Add a task to ..." is stripped later, when the task is saved)
     assert [f["description"] for f in g[0]["follow_ups"]] == ["Read Conscious Capitalism by John Mackey", "Add a task to connect with Pratik Bhai"]
+
+
+def test_task_priority_reminder_and_category_are_validated_and_need_the_migration():
+    import api.routers.tasks as tasks_router
+    from api.schemas import TaskStatusUpdate
+    saved = []
+    tasks_router.db = types.SimpleNamespace(
+        task_extras_supported=lambda: True,
+        get_initiative=lambda u, i: {"id": i} if i == 2 else None,
+        update_task_fields=lambda u, t, **kw: saved.append(kw),
+        get_task=lambda u, t: {},
+    )
+    tasks_router.search_index = types.SimpleNamespace(enqueue=lambda *a, **k: None)
+
+    def call(**body):
+        return tasks_router.update_task(1, TaskStatusUpdate(**body), "u")
+
+    call(priority="high", remind_on="2026-11-05", initiative_id=2)
+    # a new reminder date means it has not been sent yet
+    assert saved[-1] == {"priority": "high", "remind_on": "2026-11-05", "reminded_on": None, "initiative_id": 2}
+    call(initiative_id=None, remind_on=None)
+    assert saved[-1]["initiative_id"] is None and saved[-1]["remind_on"] is None
+    for bad in ({"priority": "urgent"}, {"remind_on": "tomorrow"}, {"initiative_id": 99}):
+        try:
+            call(**bad)
+            assert False, bad
+        except Exception as e:
+            assert getattr(e, "status_code", None) == 400, bad
+    tasks_router.db.task_extras_supported = lambda: False
+    try:
+        call(priority="low")
+        assert False
+    except Exception as e:
+        assert getattr(e, "status_code", None) == 503 and "migration_38" in e.detail
+    # without the migration the usual edits still work
+    call(description="Call the bank")
+    assert saved[-1] == {"description": "Call the bank"}

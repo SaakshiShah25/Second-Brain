@@ -17,6 +17,7 @@ from api.schemas import TaskStatusUpdate
 router = APIRouter()
 
 FILTERS = {"overdue", "due_soon", "open", "done", "all"}
+PRIORITIES = {"high", "normal", "low"}
 
 
 def _matches_filter(task: dict, filter_name: str, today_str: str, soon_cutoff_str: str) -> bool:
@@ -77,6 +78,26 @@ def update_task(task_id: int, body: TaskStatusUpdate, user_id: str = Depends(get
         if edits["due_time"] and not valid:
             raise HTTPException(400, "due_time must look like 19:00 or 7pm")
         changes["due_time"] = valid
+    # Options set by the user: priority, a reminder date, and the task's own category.
+    needs_migration = False
+    if "priority" in edits:
+        if edits["priority"] not in PRIORITIES:
+            raise HTTPException(400, f"priority must be one of {sorted(PRIORITIES)}")
+        changes["priority"] = edits["priority"]
+        needs_migration = True
+    if "remind_on" in edits:
+        if edits["remind_on"] and not date_utils.to_valid_date(edits["remind_on"]):
+            raise HTTPException(400, "remind_on must be YYYY-MM-DD")
+        changes["remind_on"] = edits["remind_on"] or None
+        changes["reminded_on"] = None  # a new reminder date means it has not been sent yet
+        needs_migration = True
+    if "initiative_id" in edits:
+        if edits["initiative_id"] is not None and not db.get_initiative(user_id, edits["initiative_id"]):
+            raise HTTPException(400, "That category doesn't exist.")
+        changes["initiative_id"] = edits["initiative_id"]
+        needs_migration = True
+    if needs_migration and not db.task_extras_supported():
+        raise HTTPException(503, "Priority, reminders and moving tasks aren't available yet - run scripts/migration_38_task_options.sql first.")
     if changes.get("due_time") and not (changes.get("due_date") or db.get_task(user_id, task_id).get("due_date")):
         raise HTTPException(400, "Give the task a date before giving it a time.")
     if changes.get("due_date") is None and "due_date" in changes:

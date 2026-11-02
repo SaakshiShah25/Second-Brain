@@ -134,14 +134,15 @@ def test_the_cron_endpoint_needs_the_shared_secret():
     os.environ["CRON_SECRET"] = "s3cret"
     os.environ["VAPID_PUBLIC_KEY"] = "pub"
     os.environ["VAPID_PRIVATE_KEY"] = "priv"
-    push.push_notify = types.SimpleNamespace(configured=lambda: True, send_due=lambda: {"sent": 0})
+    push.push_notify = types.SimpleNamespace(configured=lambda: True, send_due=lambda: {"sent": 0},
+                                             send_task_reminders=lambda: {"reminded_tasks": 0})
     for bad in (None, "", "wrong"):
         try:
             push.send_due(bad)
             assert False, bad
         except Exception as e:
             assert getattr(e, "status_code", None) == 403
-    assert push.send_due("s3cret") == {"sent": 0}
+    assert push.send_due("s3cret") == {"sent": 0, "reminded_tasks": 0}
 
 
 if __name__ == "__main__":
@@ -154,3 +155,51 @@ if __name__ == "__main__":
             failed += 1; print(f"  FAIL {name}: {type(e).__name__}: {e}")
     print(f"\n{len(tests) - failed}/{len(tests)} passed")
     sys.exit(1 if failed else 0)
+
+
+def test_a_task_you_marked_high_leads_its_category_and_a_moved_task_is_listed_under_its_new_category():
+    def t(id, desc, ini, priority, due=None, own=True):
+        row = {"id": id, "description": desc, "due_date": due, "due_time": None, "status": "open", "priority": priority,
+               "interaction": {"initiative": {"id": 1, "name": "x"}}}
+        if own:
+            row["initiative_id"] = ini
+        return row
+    # task 3 was written under Work (the note's category) but moved to Personal; task 1 is high but dated later
+    tasks = [t(1, "Plan the launch", 1, "high", "2026-11-09"), t(2, "Send the invoice", 1, "normal", "2026-11-02"),
+             t(3, "Book dentist", 2, "normal")]
+    pn.db, _ = _db(tasks=tasks)
+    groups = pn.group_open_tasks("u")
+    assert groups == [("Work", ["Plan the launch", "Send the invoice"]), ("Personal", ["Book dentist"])]
+
+
+def test_task_reminders_go_out_once_in_the_nine_am_window_and_are_marked():
+    sent, marked = [], []
+    tasks = [{"id": 7, "description": "Renew passport", "due_date": "2026-11-10", "priority": "high"},
+             {"id": 8, "description": "Call the bank", "due_date": None, "priority": "normal"}]
+    subs = [{"id": 1, "user_id": "u", "endpoint": "e1", "timezone": "Asia/Kolkata"},
+            {"id": 2, "user_id": "u", "endpoint": "e2", "timezone": "UTC"}]     # the second device is not in its window
+    pn.db = types.SimpleNamespace(
+        get_push_subscriptions=lambda uid=None: subs,
+        get_tasks_to_remind=lambda uid, today, since: tasks if today == "2026-10-28" else [],
+        mark_tasks_reminded=lambda ids, d: marked.append((ids, d)),
+        delete_push_subscription=lambda *a, **k: None,
+    )
+    out = pn.send_task_reminders(now_utc=utc(3, 40), sender=lambda sub, msg: sent.append((sub["endpoint"], msg)))
+    assert out == {"reminded_users": 1, "reminded_tasks": 2}
+    assert [e for e, _ in sent] == ["e1"]
+    title = sent[0][1]["title"]
+    assert title == "Reminder · 2 tasks" and "Renew passport (due 2026-11-10)" in sent[0][1]["body"]
+    assert marked == [([7, 8], "2026-10-28")]
+    # outside everyone's 9 AM window nothing is sent
+    sent.clear(); marked.clear()
+    assert pn.send_task_reminders(now_utc=utc(12, 0), sender=lambda s, m: sent.append(s)) == {"reminded_users": 0, "reminded_tasks": 0}
+    assert sent == [] and marked == []
+    # a failed send leaves the tasks unmarked so the next run tries again
+    out = pn.send_task_reminders(now_utc=utc(3, 40), sender=lambda s, m: (_ for _ in ()).throw(RuntimeError("down")))
+    assert out["reminded_tasks"] == 0 and marked == []
+
+
+def test_a_single_reminder_is_titled_with_the_task():
+    msg = pn.build_reminder_message([{"id": 1, "description": "Renew passport", "due_date": None}], "2026-10-28")
+    assert msg["title"] == "Reminder · Renew passport" and msg["tag"] == "task-reminders-2026-10-28"
+    assert pn.build_reminder_message([], "2026-10-28") is None

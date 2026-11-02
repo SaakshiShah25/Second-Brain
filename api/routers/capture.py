@@ -173,7 +173,7 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
         if raw_due_date and not due_date:
             skipped_due_dates.append({"description": task_desc, "raw_due_date": raw_due_date})
         task_ids.append(db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner,
-                                       due_time=due_time))
+                                       due_time=due_time, initiative_id=initiative_id))
         tasks_created.append({"description": task_desc, "due_date": due_date, "due_time": due_time, "owner": owner})
 
     print(f"[timing] db_writes: {time.perf_counter() - _t_db0:.2f}s")

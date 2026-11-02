@@ -72,6 +72,10 @@ class TaskStatusUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=500)
     due_date: Optional[str] = Field(None, max_length=10)   # YYYY-MM-DD
     due_time: Optional[str] = Field(None, max_length=8)    # HH:MM
+    # Options the user sets on a task (needs scripts/migration_38_task_options.sql).
+    priority: Optional[str] = Field(None, max_length=10)       # "high" | "normal" | "low"
+    remind_on: Optional[str] = Field(None, max_length=10)      # YYYY-MM-DD, null clears the reminder
+    initiative_id: Optional[int] = None                         # move the task to another category; null = Others
 
 
 class PushKeys(BaseModel):

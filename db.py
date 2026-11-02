@@ -237,7 +237,25 @@ def search_interactions_by_embedding(user_id: str, query_embedding, top_k=5):
 
 # ---------- Task helpers ----------
 
-def create_task(user_id: str, interaction_id, description, due_date=None, owner="me", due_time=None):
+_task_extras_ok = False
+
+
+def task_extras_supported() -> bool:
+    """True once the task options columns exist (scripts/migration_38_task_options.sql): priority, remind_on,
+    reminded_on and the task's own initiative_id. Only a yes is remembered, so running the SQL takes effect
+    without a restart."""
+    global _task_extras_ok
+    if _task_extras_ok:
+        return True
+    try:
+        get_client().table("task").select("priority, remind_on, reminded_on, initiative_id").limit(1).execute()
+    except Exception:
+        return False
+    _task_extras_ok = True
+    return True
+
+
+def create_task(user_id: str, interaction_id, description, due_date=None, owner="me", due_time=None, initiative_id=None):
     row = {
         "user_id": user_id,
         "interaction_id": interaction_id,
@@ -247,6 +265,8 @@ def create_task(user_id: str, interaction_id, description, due_date=None, owner=
     }
     if due_time:  # only sent when there is one: the column exists once schema.sql section 32 has run
         row["due_time"] = due_time
+    if task_extras_supported():
+        row["initiative_id"] = initiative_id  # the task's own category: starts as its note's, can be moved later
     try:
         resp = get_client().table("task").insert(_encrypt_fields("task", row)).execute()
     except Exception as e:
@@ -296,6 +316,45 @@ def update_task_fields(user_id: str, task_id: int, **fields):
     null clears one). Only the keys passed are touched."""
     if fields:
         get_client().table("task").update(_encrypt_fields("task", fields)).eq("id", task_id).eq("user_id", user_id).execute()
+
+
+def set_tasks_initiative(user_id: str, interaction_id: int, initiative_id) -> None:
+    """A note moved to another category: the tasks it created follow it. No-op until the task options SQL has run."""
+    if not task_extras_supported():
+        return
+    get_client().table("task").update({"initiative_id": initiative_id}).eq("interaction_id", interaction_id).eq("user_id", user_id).execute()
+
+
+def get_tasks_to_remind(user_id: str, today: str, since: str) -> list:
+    """Open tasks whose reminder date is `since`..`today` (a short grace period so a missed run still delivers)
+    and that haven't been reminded yet."""
+    if not task_extras_supported():
+        return []
+    resp = (
+        get_client().table("task").select("*")
+        .eq("user_id", user_id).eq("status", "open")
+        .gte("remind_on", since).lte("remind_on", today)
+        .is_("reminded_on", "null")
+        .execute()
+    )
+    return _decrypt_rows("task", resp.data)
+
+
+def mark_tasks_reminded(task_ids: list, on_date: str) -> None:
+    if task_ids:
+        get_client().table("task").update({"reminded_on": on_date}).in_("id", task_ids).execute()
+
+
+def get_users_with_reminders(today: str, since: str) -> set:
+    """Users who have at least one open task with a reminder due (so the scheduler only builds messages for them)."""
+    if not task_extras_supported():
+        return set()
+    resp = (
+        get_client().table("task").select("user_id")
+        .eq("status", "open").gte("remind_on", since).lte("remind_on", today).is_("reminded_on", "null")
+        .execute()
+    )
+    return {r["user_id"] for r in resp.data}
 
 
 def update_task_owner(user_id: str, task_id: int, owner: str):

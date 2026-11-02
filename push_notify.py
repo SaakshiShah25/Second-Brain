@@ -40,6 +40,12 @@ MAX_BODY_CHARS = 480
 TASK_NAME_CHARS = 60
 
 TASKS_URL = "/tasks"
+PRIORITY_RANK = {"high": 0, "normal": 1, "low": 2}
+
+# A task reminder (the bell on a task) goes out in the 9 AM window of the day it was set for. A run that was missed
+# still delivers it for a few days afterwards.
+REMINDER_GRACE_DAYS = 3
+MAX_REMINDER_LINES = 5
 
 
 def configured() -> bool:
@@ -86,12 +92,19 @@ def group_open_tasks(user_id: str) -> list:
     by_id = {i["id"]: i["name"] for i in initiatives}
 
     def key(t):
-        return (t.get("due_date") or "9999-12-31", str(t.get("due_time") or "99"), t["id"])
+        # what you marked high first, then the nearest deadline, undated last
+        return (PRIORITY_RANK.get(t.get("priority"), 1), t.get("due_date") or "9999-12-31", str(t.get("due_time") or "99"), t["id"])
+
+    def initiative_id(t):
+        # the task's own category when it has one (it can be moved), else its note's
+        if "initiative_id" in t:
+            return t["initiative_id"]
+        return ((t.get("interaction") or {}).get("initiative") or {}).get("id")
 
     buckets: dict = {}
     for t in sorted(tasks, key=key):
-        ini = (t.get("interaction") or {}).get("initiative") or {}
-        name = by_id.get(ini.get("id")) if ini.get("id") in by_id else None
+        ini_id = initiative_id(t)
+        name = by_id.get(ini_id) if ini_id in by_id else None
         buckets.setdefault(name, []).append(_short(t["description"]))
     ordered = [(i["name"], buckets[i["name"]]) for i in initiatives if i["name"] in buckets]
     if None in buckets:
@@ -164,6 +177,64 @@ def send_to_user(user_id: str, slot: str = "9am", sender: Optional[Callable] = N
         except Exception as e:
             print(f"[warn] push to {sub['endpoint'][:48]}… failed: {e}")
     return sent
+
+
+def build_reminder_message(tasks: list, local_date: str) -> Optional[dict]:
+    """The notification for tasks the user asked to be reminded about, or None when there are none."""
+    if not tasks:
+        return None
+    ordered = sorted(tasks, key=lambda t: (PRIORITY_RANK.get(t.get("priority"), 1), t.get("due_date") or "9999-12-31", t["id"]))
+    lines = [_short(t["description"]) + (f" (due {t['due_date']})" if t.get("due_date") else "") for t in ordered[:MAX_REMINDER_LINES]]
+    if len(ordered) > MAX_REMINDER_LINES:
+        lines.append(f"+{len(ordered) - MAX_REMINDER_LINES} more")
+    one = len(ordered) == 1
+    return {
+        "title": "Reminder · " + (_short(ordered[0]["description"]) if one else f"{len(ordered)} tasks"),
+        "body": "\n".join(lines) if not one else (f"Due {ordered[0]['due_date']}" if ordered[0].get("due_date") else "You asked to be reminded."),
+        "url": TASKS_URL,
+        "tag": f"task-reminders-{local_date}",
+    }
+
+
+def send_task_reminders(now_utc: Optional[datetime] = None, sender: Optional[Callable] = None) -> dict:
+    """Sends the reminders users set on individual tasks (the bell). One notification per user, to each of their
+    devices that is inside its 9 AM window right now; each task is reminded once."""
+    sender = sender or _send_webpush
+    result = {"reminded_users": 0, "reminded_tasks": 0}
+    now_utc = now_utc or datetime.now(timezone.utc)
+    by_user: dict = {}
+    for sub in db.get_push_subscriptions():
+        due = due_slot(sub.get("timezone") or "UTC", now_utc)
+        if due and due[0] == "9am":
+            by_user.setdefault(sub["user_id"], []).append((sub, due[1]))
+    if not by_user:
+        return result
+    from datetime import date, timedelta
+    for user_id, subs in by_user.items():
+        local_date = subs[0][1]
+        since = (date.fromisoformat(local_date) - timedelta(days=REMINDER_GRACE_DAYS)).isoformat()
+        try:
+            tasks = db.get_tasks_to_remind(user_id, local_date, since)
+        except Exception as e:
+            print(f"[warn] couldn't read task reminders for {user_id}: {e}")
+            continue
+        message = build_reminder_message(tasks, local_date)
+        if message is None:
+            continue
+        delivered = False
+        for sub, _ in subs:
+            try:
+                sender(sub, message)
+                delivered = True
+            except SubscriptionGone:
+                db.delete_push_subscription(sub["endpoint"])
+            except Exception as e:
+                print(f"[warn] reminder push to {sub['endpoint'][:48]}… failed: {e}")
+        if delivered:
+            db.mark_tasks_reminded([t["id"] for t in tasks], local_date)
+            result["reminded_users"] += 1
+            result["reminded_tasks"] += len(tasks)
+    return result
 
 
 def send_due(now_utc: Optional[datetime] = None, sender: Optional[Callable] = None) -> dict:

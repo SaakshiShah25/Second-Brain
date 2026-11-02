@@ -67,4 +67,6 @@ def send_due(x_cron_secret: str = Header(None)):
     if not expected or not x_cron_secret or not hmac.compare_digest(x_cron_secret, expected):
         raise HTTPException(403, "Invalid or missing cron secret.")
     _require_configured()
-    return push_notify.send_due()
+    result = push_notify.send_due()
+    result.update(push_notify.send_task_reminders())  # the bell on individual tasks
+    return result
