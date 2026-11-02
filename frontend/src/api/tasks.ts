@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
-import type { TaskFilter, TaskOwner, TasksResponse } from './types'
+import type { Task, TaskFilter, TaskOwner, TasksResponse } from './types'
 
 export function useTasks(filter: TaskFilter, enabled = true) {
   return useQuery({
@@ -63,6 +63,29 @@ export function useUpdateTaskOwner() {
       const previous = queryClient.getQueriesData<TasksResponse>({ queryKey: ['tasks'] })
       queryClient.setQueriesData<TasksResponse>({ queryKey: ['tasks'] }, (old) =>
         old ? { ...old, tasks: old.tasks.map((t) => (t.id === taskId ? { ...t, owner } : t)) } : old,
+      )
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      context?.previous.forEach(([queryKey, data]) => queryClient.setQueryData(queryKey, data))
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+}
+
+// Priority, reminder date and category of a task: changed on the card, so the list updates the instant you tap.
+export function useUpdateTaskFields() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ taskId, fields }: { taskId: number; fields: Partial<Pick<Task, 'priority' | 'remind_on' | 'initiative_id'>> }) =>
+      api.patch(`/api/tasks/${taskId}`, fields),
+    onMutate: async ({ taskId, fields }) => {
+      await queryClient.cancelQueries({ queryKey: ['tasks'] })
+      const previous = queryClient.getQueriesData<TasksResponse>({ queryKey: ['tasks'] })
+      queryClient.setQueriesData<TasksResponse>({ queryKey: ['tasks'] }, (old) =>
+        old ? { ...old, tasks: old.tasks.map((t) => (t.id === taskId ? { ...t, ...fields } : t)) } : old,
       )
       return { previous }
     },

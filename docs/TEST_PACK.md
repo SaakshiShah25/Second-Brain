@@ -63,6 +63,13 @@ With no Health category, log: `Start exercising daily, focus on AI and ML concep
 Expect **one card** with **Category: Learning** (the two study tasks, the second due Tue 3 Nov) and, under a grey **Category: Others**, a box asking **"File this under a new category called Health?"** with **Create / Rename / Not now**. Nothing is created until you choose: **Create** makes the category and moves the note and its task there; **Rename** lets you change the name first; **Not now** leaves it in Others. Every section also has a **Change** button that opens category bubbles to move that part (and its tasks) to another category, to Others, or to a brand-new one. The headings (Category / Tasks / Decisions / Concerns) are bold and in that category's colour.
 Also check the **+** next to the message box: the categories appear as bubbles (Auto first), and picking one files only the next note there.
 
+### Task priority, reminders and moving tasks (needs `scripts/migration_38_task_options.sql`)
+
+On the Tasks tab each open task has a **flag** and a **bell**:
+- **Flag:** tap it for three colours - red (high), amber (normal, the default, shown faint), green (low). High tasks sort first inside their category, and in the 9 AM / 5 PM push list.
+- **Bell:** choose "On the day it is due", "1 day before", "2 days before", "1 week before" (or Tomorrow / In 3 days / In a week for a task with no date), or pick any date. The bell fills in and the row shows the date. At 9 AM on that day (your device's time zone, with reminders turned on in Settings) you get one push for it. Setting a new date resets it; "Remove reminder" clears it.
+- **Move:** press and hold a task (drag with a mouse) and drop it on another category's list, or on a chip in the tray that appears. Or open the task and tap **Move**. Only that task moves; the note it came from stays where it was. Moving a *note* (from the chat reply or the Notes page) moves its tasks with it.
+
 ### Instructions to the app, and pronouns
 
 - `Create a new initiative called reading. Read conscious capitalism by john mackey.` creates **Reading** (tagged NEW) with **one** task, "Read Conscious Capitalism by John Mackey" - no task called "Create a new initiative...".

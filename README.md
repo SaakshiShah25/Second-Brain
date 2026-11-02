@@ -17,7 +17,7 @@ A simple notes-and-tasks app you can talk or type to, with everything sorted int
 | **Chat input (Home)** | One box: type, or tap the mic and talk. It works out whether you are *logging a note* (or a to-do) or *asking a question* about what you logged. Recording can be paused or cancelled; you can pick a category and optionally attach your location. |
 | **Notes** | Organised **by initiative**: a block per initiative showing its newest key points and how much it holds ("3 notes · 2 decisions · 2 concerns"); tap one to open its page: everything extracted from its notes, as bullets grouped under a short topic label, with **Decisions:** and **Concerns:** as bold sub-lists under each, each bullet dated and tappable to open the note it came from. **All of that is extracted once, when a note is logged - opening Notes never calls an AI model.** "Source notes" lists the notes exactly as you wrote them; open one to read, edit or delete it. Notes carry no task lists - tasks live on the Tasks tab. Initiatives (name, colour, order) are yours to manage. |
 | **Task reminders** | Optional push notifications at **9 AM and 5 PM** (each device's own time zone) listing your open tasks grouped by category. Turn them on per device in Settings → Notifications. See "Task reminders" below. |
-| **Tasks** | Every task pulled out of your notes, **grouped under its initiative** (never by date), with the nearest deadline first inside each. Tasks can have a date and a time ("send the deck by 6pm"); an overdue date shows in red. Tap a task to tick it off, edit its wording or deadline, flip who owes it, or jump to the note it came from. |
+| **Tasks** | Every task pulled out of your notes, **grouped under its initiative** (never by date), with the nearest deadline first inside each. Tasks can have a date and a time ("send the deck by 6pm"); an overdue date shows in red. Tap a task to tick it off, edit its wording or deadline, flip who owes it, or jump to the note it came from. Each task has a **priority flag** (red high / amber normal / green low - high ones sort first), a **bell** to set a reminder (on the due date, 1-7 days before, or any date; you get a push at 9 AM that day) and can be **dragged onto another category** (press and hold on a phone) or moved with **Move** in its sheet - without moving the note it came from. |
 
 Also: a name for the greeting (typed at signup, asked once after sign-in, editable in Settings → Your name; kept in the Supabase account's metadata, never guessed from the email), sign-in (email or Google via Supabase Auth), light/dark themes, text size, app lock, a first-run tour,
 usage mode (work / personal / both) that tunes wording, account deletion, and encrypted-at-rest content.
@@ -90,6 +90,9 @@ Needed for task times (section 32):
 alter table task add column if not exists due_time time;
 notify pgrst, 'reload schema';
 ```
+
+For task priority, per-task reminders and moving a task to another category, run `scripts/migration_38_task_options.sql`
+(schema.sql section 38). Until then tasks work as before and those three say to run it.
 
 For a message that lands in several initiatives to store the original text once (instead of on every note),
 run `scripts/migration_37_source_note.sql` (schema.sql section 37). Without it everything still works, with a copy per note.
