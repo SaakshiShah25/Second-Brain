@@ -83,6 +83,8 @@ export interface CapturePart {
   initiative_id: number | null
   // Only ever set when initiative_id is null - a proposed name for a new initiative this part seems to be
   // about, for the frontend to offer as "add this as a new initiative?" (see ChatPage.tsx).
+  // Set on this device after the user changes where the part went ("Filed under Health - its 2 tasks moved too").
+  change_note?: string
   suggested_initiative: string | null
   // The existing initiative this part WAS filed under, by name - null means Others.
   initiative_name: string | null

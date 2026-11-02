@@ -9,7 +9,7 @@ import CategorySheet from '../components/CategorySheet'
 import { Input, Label } from '../components/fields'
 import InitiativeBar from '../components/InitiativeBar'
 import PageHeader from '../components/PageHeader'
-import { PriorityFlag, ReminderSheet } from '../components/TaskOptions'
+import { PriorityBars, PriorityFlag, ReminderSheet } from '../components/TaskOptions'
 import Sheet from '../components/Sheet'
 import { toast } from '../components/Toast'
 import { useInitiatives } from '../api/initiatives'
@@ -569,7 +569,7 @@ export default function TasksPage() {
                             : { borderColor: `${p.color}66`, color: p.color }
                         }
                       >
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: active ? '#fff' : p.color }} />
+                        <PriorityBars priority={p.value} size={18} inverted={active} />
                         {p.label}
                       </button>
                     )

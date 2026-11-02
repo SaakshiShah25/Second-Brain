@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { BellOff, Flag } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { BellOff } from 'lucide-react'
 import type { Task } from '../api/types'
 import { shortDate } from '../lib/dates'
 import { PRIORITIES, priorityOf, reminderChoices, type Priority } from '../lib/taskOptions'
@@ -7,54 +8,81 @@ import Button from './Button'
 import Sheet from './Sheet'
 import { Input } from './fields'
 
-// The flag on a task: faint when normal, red when high, green when low. Tap it for the three colours.
-export function PriorityFlag({ priority, onPick }: { priority: Priority; onPick: (p: Priority) => void }) {
-  const [open, setOpen] = useState(false)
-  const current = PRIORITIES.find((p) => p.value === priority)!
+// Three bars that rise like a level meter: all three filled = high, two = normal, one = low - in red, amber and
+// green. The unfilled bars stay faintly visible so it reads as "1 of 3" rather than as a different shape.
+export function PriorityBars({ priority, size = 22, inverted = false }: { priority: Priority; size?: number; inverted?: boolean }) {
+  const filled = priority === 'high' ? 3 : priority === 'normal' ? 2 : 1
+  const color = inverted ? '#fff' : PRIORITIES.find((p) => p.value === priority)!.color
   return (
-    <span className="relative">
+    <svg width={size} height={size} viewBox="0 0 20 20" aria-hidden="true">
+      {[0, 1, 2].map((i) => (
+        <rect key={i} x={1 + i * 7} y={19 - (7 + i * 5)} width="5" height={7 + i * 5} rx="1.6" fill={color} opacity={i < filled ? 1 : 0.25} />
+      ))}
+    </svg>
+  )
+}
+
+// The priority of a task. Tap it to choose: three labelled options in a small panel that floats above everything
+// (it is drawn outside the task card, so the card can't clip it).
+export function PriorityFlag({ priority, onPick }: { priority: Priority; onPick: (p: Priority) => void }) {
+  const [anchor, setAnchor] = useState<DOMRect | null>(null)
+  const current = PRIORITIES.find((p) => p.value === priority)!
+  const PANEL_HEIGHT = 56
+  const below = anchor ? anchor.bottom + 8 + PANEL_HEIGHT < window.innerHeight : true
+  return (
+    <>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={(e) => setAnchor(anchor ? null : e.currentTarget.getBoundingClientRect())}
         aria-label={`Priority: ${current.label}. Change`}
-        aria-expanded={open}
+        aria-expanded={!!anchor}
+        title={`Priority: ${current.label}`}
         className="pressable -m-1 flex h-9 w-9 items-center justify-center rounded-full"
+        style={{ color: current.color }}
       >
-        <Flag
-          size={18}
-          strokeWidth={2}
-          style={priority === 'normal' ? { color: 'var(--sb-text-faint)' } : { color: current.color, fill: current.color }}
-        />
+        <PriorityBars priority={priority} />
       </button>
-      {open && (
-        <>
-          <button type="button" aria-label="Close" className="fixed inset-0 z-20 cursor-default" onClick={() => setOpen(false)} />
-          <span
-            role="menu"
-            className="absolute top-full right-0 z-30 mt-1 flex gap-1.5 rounded-full border border-border bg-bg-card p-1.5 shadow-card"
-            style={{ animation: 'fade-in 0.15s ease-out' }}
-          >
-            {PRIORITIES.map((p) => (
-              <button
-                key={p.value}
-                type="button"
-                role="menuitem"
-                aria-label={`${p.label} priority`}
-                title={p.label}
-                onClick={() => {
-                  setOpen(false)
-                  onPick(p.value)
-                }}
-                className="pressable flex h-9 w-9 items-center justify-center rounded-full"
-                style={{ backgroundColor: priority === p.value ? `${p.color}26` : undefined }}
-              >
-                <span className="h-5 w-5 rounded-full" style={{ backgroundColor: p.color, outline: priority === p.value ? `2px solid ${p.color}` : undefined, outlineOffset: 2 }} />
-              </button>
-            ))}
-          </span>
-        </>
-      )}
-    </span>
+      {anchor &&
+        createPortal(
+          <>
+            <button type="button" aria-label="Close" className="fixed inset-0 z-[60] cursor-default" onClick={() => setAnchor(null)} />
+            <div
+              role="menu"
+              className="fixed z-[61] flex gap-1.5 rounded-2xl border border-border-strong bg-bg-card p-1.5 shadow-card"
+              style={{
+                right: Math.max(8, window.innerWidth - anchor.right - 8),
+                ...(below ? { top: anchor.bottom + 8 } : { bottom: window.innerHeight - anchor.top + 8 }),
+                animation: 'fade-in 0.15s ease-out',
+              }}
+            >
+              {PRIORITIES.map((p) => {
+                const active = priority === p.value
+                return (
+                  <button
+                    key={p.value}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setAnchor(null)
+                      onPick(p.value)
+                    }}
+                    className="pressable flex h-11 items-center gap-1.5 rounded-xl border px-3 text-[0.875rem] font-semibold"
+                    style={
+                      active
+                        ? { backgroundColor: p.color, borderColor: p.color, color: '#fff' }
+                        : { borderColor: `${p.color}66`, color: p.color }
+                    }
+                  >
+                    <PriorityBars priority={p.value} size={20} inverted={active} />
+                    {p.label}
+                  </button>
+                )
+              })}
+            </div>
+          </>,
+          document.body,
+        )}
+    </>
   )
 }
 

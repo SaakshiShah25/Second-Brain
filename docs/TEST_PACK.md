@@ -66,7 +66,7 @@ Also check the **+** next to the message box: the categories appear as bubbles (
 ### Task priority, reminders and moving tasks (needs `scripts/migration_38_task_options.sql`)
 
 On the Tasks tab each open task has a **flag** and a **bell**:
-- **Flag:** tap it for three colours - red (high), amber (normal, the default, shown faint), green (low). High tasks sort first inside their category, and in the 9 AM / 5 PM push list.
+- **Priority bars:** three rising bars in colour - all three red = high, two amber = normal (the default), one green = low. Tap them and choose High / Normal / Low from the small labelled panel that opens (it isn't cut off by the card). High tasks sort first inside their category, and in the 9 AM / 5 PM push list.
 - **Bell:** choose "On the day it is due", "1 day before", "2 days before", "1 week before" (or Tomorrow / In 3 days / In a week for a task with no date), or pick any date. The bell fills in and the row shows the date. At 9 AM on that day (your device's time zone, with reminders turned on in Settings) you get one push for it. Setting a new date resets it; "Remove reminder" clears it.
 - **Move:** press and hold a task (drag with a mouse) and drop it on another category's list, or on a chip in the tray that appears. Or open the task and tap **Move**. Only that task moves; the note it came from stays where it was. Moving a *note* (from the chat reply or the Notes page) moves its tasks with it.
 

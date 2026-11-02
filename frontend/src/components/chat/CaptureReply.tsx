@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MapPin, Pencil, TriangleAlert, type LucideIcon } from 'lucide-react'
+import { Check, MapPin, Pencil, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { useCreateInitiative, useInitiatives } from '../../api/initiatives'
 import { useUpdateInteraction } from '../../api/notes'
 import type { CapturePart, CaptureSavedResult } from '../../api/types'
@@ -8,6 +8,7 @@ import { notePoints } from '../../lib/initiativeFilter'
 import { getInitiativeStyle } from '../../lib/initiativeStyle'
 import Button from '../Button'
 import CategorySheet from '../CategorySheet'
+import { toast } from '../Toast'
 import { Input } from '../fields'
 
 // The reply to a logged note: ONE card, with a section per initiative it touched, in that initiative's colour -
@@ -40,6 +41,12 @@ function Label({ children, color }: { children: string; color: string }) {
   )
 }
 
+// What to tell the user after a part was filed somewhere else: where, and that its tasks went with it.
+function movedNote(name: string | null, tasks: number): string {
+  const where = name ? `Filed under ${name}` : 'Moved to Others'
+  return tasks > 0 ? `${where} - its ${tasks === 1 ? 'task' : `${tasks} tasks`} moved too` : where
+}
+
 // "Create the category <name>?" - a proposed new category is never created without the user saying yes. Until
 // then the note sits in Others. Create it as proposed, rename it first, or leave the note in Others ("Not now").
 function Suggestion({ part, color, onResolved }: { part: CapturePart; color: string; onResolved: (patch: Partial<CapturePart>) => void }) {
@@ -57,7 +64,8 @@ function Suggestion({ part, color, onResolved }: { part: CapturePart; color: str
     try {
       const made = await createInitiative.mutateAsync({ name: clean })
       await updateInteraction.mutateAsync({ interactionId: part.interaction_id, fields: { initiative_id: made.id } })
-      onResolved({ initiative_id: made.id, initiative_name: made.name, suggested_initiative: null })
+      onResolved({ initiative_id: made.id, initiative_name: made.name, suggested_initiative: null, change_note: `Created ${made.name} and filed this under it${part.tasks_created.length ? ' - with its ' + (part.tasks_created.length === 1 ? 'task' : part.tasks_created.length + ' tasks') : ''}` })
+      toast(`Created ${made.name}`)
     } catch (e) {
       setError(e instanceof Error && e.message ? e.message : "Couldn't create that category - please try again.")
     }
@@ -84,7 +92,7 @@ function Suggestion({ part, color, onResolved }: { part: CapturePart; color: str
             File this under a new category called <span className="font-bold" style={{ color }}>{part.suggested_initiative}</span>?
           </p>
           <div className="mt-2.5 flex flex-wrap justify-end gap-2">
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => onResolved({ suggested_initiative: null })}>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => onResolved({ suggested_initiative: null, change_note: 'Left in Others' })}>
               Not now
             </Button>
             <Button size="sm" disabled={busy} onClick={() => setRenaming(true)}>
@@ -133,6 +141,12 @@ function Section({
           Change
         </button>
       </p>
+      {part.change_note && (
+        <p className="mt-1.5 flex items-center gap-1.5 text-[0.8125rem] font-medium" style={{ color }}>
+          <Check size={14} strokeWidth={2.6} className="flex-shrink-0" />
+          {part.change_note}
+        </p>
+      )}
       {part.suggested_initiative && part.initiative_id === null && <Suggestion part={part} color={color} onResolved={onChange} />}
       {points.length > 0 && <List items={points} />}
       {part.tasks_created.length > 0 && (
@@ -169,11 +183,10 @@ function Section({
           onPick={async (id) => {
             // The note moves, and so do the tasks it created (the Tasks tab groups them by their note's category).
             await updateInteraction.mutateAsync({ interactionId: part.interaction_id, fields: { initiative_id: id } })
-            onChange({
-              initiative_id: id,
-              initiative_name: id === null ? null : initiatives.find((i) => i.id === id)?.name ?? part.initiative_name,
-              suggested_initiative: null,
-            })
+            if (id === part.initiative_id) return
+            const name = id === null ? null : initiatives.find((i) => i.id === id)?.name ?? part.initiative_name
+            onChange({ initiative_id: id, initiative_name: name, suggested_initiative: null, change_note: movedNote(name, part.tasks_created.length) })
+            toast(name ? `Moved to ${name}` : 'Moved to Others')
           }}
         />
       )}
