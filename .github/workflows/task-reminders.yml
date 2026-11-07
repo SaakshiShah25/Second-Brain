@@ -1,22 +1,15 @@
-# Sends the 9 AM and 5 PM task reminders (push notifications). Every 30 minutes this asks the
-# backend which devices are due one - the backend works out each device's own local time and
-# sends each reminder at most once a day (see push_notify.py), so running often is harmless.
-#
-# It also keeps the free Render service from falling asleep for long, which makes the app's
-# first request after a quiet spell much faster.
+# MANUAL ONLY. Reminders (the 9 AM / 5 PM summary and the reminders set on tasks) are sent by a
+# Supabase pg_cron job that calls the backend every minute (scripts/migration_42_reminder_cron.sql),
+# which also keeps the free Render service awake. This workflow stays as a way to fire one tick by
+# hand from the Actions tab when testing.
 #
 # Required repo secrets (Settings > Secrets and variables > Actions):
 #   RENDER_API_URL - the deployed backend's base URL, e.g. https://second-brain-api-ot22.onrender.com
 #   CRON_SECRET    - must match the CRON_SECRET env var set on Render
 #
-# GitHub may start scheduled runs a few minutes late; the reminder window is 90 minutes wide, so
-# that doesn't matter. (On a PRIVATE repo, 48 runs a day is about 1,450 of the 2,000 free minutes
-# a month; public repos are unlimited.)
-name: Task reminders
+name: Task reminders (manual)
 
 on:
-  schedule:
-    - cron: '*/30 * * * *'
   workflow_dispatch: {}  # run it by hand from the Actions tab to test
 
 jobs:

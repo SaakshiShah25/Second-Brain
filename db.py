@@ -255,6 +255,22 @@ def task_extras_supported() -> bool:
     return True
 
 
+_remind_time_ok = False
+
+
+def reminder_time_supported() -> bool:
+    """True once task.remind_time exists (scripts/migration_41_reminder_time.sql). Only a yes is remembered."""
+    global _remind_time_ok
+    if _remind_time_ok:
+        return True
+    try:
+        get_client().table("task").select("remind_time").limit(1).execute()
+    except Exception:
+        return False
+    _remind_time_ok = True
+    return True
+
+
 def create_task(user_id: str, interaction_id, description, due_date=None, owner="me", due_time=None, initiative_id=None):
     row = {
         "user_id": user_id,

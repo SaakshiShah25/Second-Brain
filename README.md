@@ -16,7 +16,7 @@ A simple notes-and-tasks app you can talk or type to, with everything sorted int
 |---|---|
 | **Chat input (Home)** | One box: type, or tap the mic and talk. It works out whether you are *logging a note* (or a to-do) or *asking a question* about what you logged. Recording can be paused or cancelled; you can pick a category and optionally attach your location. |
 | **Notes** | Organised **by initiative**: a block per initiative showing its newest key points and how much it holds ("3 notes · 2 decisions · 2 concerns"); tap one to open its page: everything extracted from its notes, as bullets grouped under a short topic label, with **Decisions:** and **Concerns:** as bold sub-lists under each, each bullet dated and tappable to open the note it came from. **All of that is extracted once, when a note is logged - opening Notes never calls an AI model.** "Source notes" lists the notes exactly as you wrote them; open one to read, edit or delete it. Notes carry no task lists - tasks live on the Tasks tab. Initiatives (name, colour, order) are yours to manage. |
-| **Task reminders** | Optional push notifications at **9 AM and 5 PM** (each device's own time zone) listing your open tasks grouped by category. Turn them on per device in Settings → Notifications. See "Task reminders" below. |
+| **Task reminders** | Optional push notifications at **9 AM and 5 PM** (each device's own time zone) listing your open tasks grouped by category, plus a **reminder on any task** at the day and time you pick (or at its due time). Turn them on per device in Settings → Notifications. See "Task reminders" below. |
 | **Tasks** | Every task pulled out of your notes, **grouped under its initiative** (never by date), with the nearest deadline first inside each. Tasks can have a date and a time ("send the deck by 6pm"); an overdue date shows in red. Tap a task to tick it off, edit its wording or deadline, flip who owes it, or jump to the note it came from. Each task has a **priority** mark (`!!!` red = high, `!!` amber = normal, `!` green = low - high ones sort first; the tick circle takes the same colour), a **bell** to set a reminder (on the due date, 1-7 days before, or any date; you get a push at 9 AM that day) and can be **dragged onto another category** (press and hold on a phone) or moved with **Move** in its sheet - and, after a move, you are asked whether the note it came from should move too (it carries its other tasks along). |
 
 Also: a name for the greeting (typed at signup, asked once after sign-in, editable in Settings → Your name; kept in the Supabase account's metadata, never guessed from the email), sign-in (email or Google via Supabase Auth), light/dark themes, text size, app lock, a first-run tour,
@@ -92,7 +92,8 @@ notify pgrst, 'reload schema';
 ```
 
 For task priority, per-task reminders and moving a task to another category, run `scripts/migration_38_task_options.sql`
-(schema.sql section 38). Until then tasks work as before and those three say to run it.
+(schema.sql section 38). Until then tasks work as before and those three say to run it. To choose a *time* for a
+task's reminder (instead of the default 9 AM), also run `scripts/migration_41_reminder_time.sql` (section 41).
 
 For a message that lands in several initiatives to store the original text once (instead of on every note),
 run `scripts/migration_37_source_note.sql` (schema.sql section 37). Without it everything still works, with a copy per note.
@@ -106,9 +107,12 @@ Web Push, sent by the backend (`push_notify.py`), shown by the app's service wor
 1. **Keys, once:** `python scripts/generate_vapid_keys.py you@example.com`, then set the three `VAPID_*` values on Render
    (and locally in `.env`). Never change the pair afterwards — devices subscribed with the old one stop working.
 2. **Database:** run `scripts/migration_36_push.sql` (schema.sql section 36, the `push_subscription` table) in the Supabase SQL Editor.
-3. **Scheduler:** `.github/workflows/task-reminders.yml` calls `POST /api/push/send-due` every 30 minutes with the
-   `CRON_SECRET` header (repo secrets `RENDER_API_URL` and `CRON_SECRET`; the same `CRON_SECRET` must be set on Render).
-   Each device gets each reminder at most once a day, inside a 90-minute window after 9:00 / 17:00 local time.
+3. **Scheduler:** a Supabase pg_cron job calls `POST /api/push/send-due` every minute with the `CRON_SECRET` header. Set it
+   up by filling in the backend URL and the `CRON_SECRET` already on Render in `scripts/migration_42_reminder_cron.sql` and
+   running it in the SQL Editor (don't commit the filled-in copy). `.github/workflows/task-reminders.yml` is kept for firing one tick by hand.
+   The 9 AM / 5 PM summary goes out at most once a day each, inside a 90-minute window. A reminder set on a task (the bell:
+   a day and a time, or "at its due time") goes out on the first run after that moment in the device's time zone, once,
+   and is still delivered for 3 days if a run was missed.
 4. **Per device:** Settings → Notifications → Task reminders. iPhone needs iOS 16.4+ and the app added to the Home Screen first.
    The Android app (a Trusted Web Activity) shows them only if notification delegation is enabled in that app.
 

@@ -1047,3 +1047,14 @@ update task set initiative_id = interaction.initiative_id
 create index if not exists task_initiative_idx on task (initiative_id);
 create index if not exists task_remind_on_idx on task (remind_on) where remind_on is not null;
 notify pgrst, 'reload schema';
+
+-- 41. A task's reminder (remind_on, the day) can now say WHEN that day: remind_time. Null means the default,
+--     9 AM, so every reminder set before this keeps arriving at 9 AM. The scheduler (api/routers/push.py ->
+--     push_notify.send_task_reminders) sends it once that time has passed on that day in the device's own
+--     time zone; reminded_on remembers it was sent. Until this has run, reminders work as before (9 AM) and
+--     choosing a time says to run this first.
+alter table task add column if not exists remind_time time;
+notify pgrst, 'reload schema';
+
+-- 42. The reminder job runs every minute from Supabase (pg_cron + pg_net + Vault), not GitHub
+--     Actions. Fill in the two placeholders in scripts/migration_42_reminder_cron.sql and run it.

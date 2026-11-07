@@ -172,34 +172,72 @@ def test_a_task_you_marked_high_leads_its_category_and_a_moved_task_is_listed_un
     assert groups == [("Work", ["Plan the launch", "Send the invoice"]), ("Personal", ["Book dentist"])]
 
 
-def test_task_reminders_go_out_once_in_the_nine_am_window_and_are_marked():
+def _reminder_world(tasks):
+    """A db stand-in holding task reminders; marking one removes it from what is still pending."""
     sent, marked = [], []
-    tasks = [{"id": 7, "description": "Renew passport", "due_date": "2026-11-10", "priority": "high"},
-             {"id": 8, "description": "Call the bank", "due_date": None, "priority": "normal"}]
     subs = [{"id": 1, "user_id": "u", "endpoint": "e1", "timezone": "Asia/Kolkata"},
-            {"id": 2, "user_id": "u", "endpoint": "e2", "timezone": "UTC"}]     # the second device is not in its window
+            {"id": 2, "user_id": "u", "endpoint": "e2", "timezone": "Asia/Kolkata"}]
+    pending = {t["id"]: t for t in tasks}
+
+    def mark(ids, d):
+        marked.append((ids, d))
+        for i in ids:
+            pending.pop(i, None)
+
     pn.db = types.SimpleNamespace(
         get_push_subscriptions=lambda uid=None: subs,
-        get_tasks_to_remind=lambda uid, today, since: tasks if today == "2026-10-28" else [],
-        mark_tasks_reminded=lambda ids, d: marked.append((ids, d)),
+        get_users_with_reminders=lambda today, since: {"u"} if pending else set(),
+        get_tasks_to_remind=lambda uid, today, since: [t for t in pending.values() if since <= t["remind_on"] <= today],
+        mark_tasks_reminded=mark,
         delete_push_subscription=lambda *a, **k: None,
     )
-    out = pn.send_task_reminders(now_utc=utc(3, 40), sender=lambda sub, msg: sent.append((sub["endpoint"], msg)))
+    return sent, marked, (lambda sub, msg: sent.append((sub["endpoint"], msg)))
+
+
+def test_a_task_reminder_goes_out_once_its_own_time_has_passed_in_the_users_time_zone():
+    tasks = [{"id": 7, "description": "Renew passport", "due_date": "2026-11-10", "priority": "high", "remind_on": "2026-10-28"},
+             {"id": 8, "description": "Call the bank", "due_date": None, "remind_on": "2026-10-28", "remind_time": "15:00:00"},
+             {"id": 9, "description": "Pay rent", "due_date": None, "remind_on": "2026-10-27"}]   # missed yesterday
+    sent, marked, sender = _reminder_world(tasks)
+    # 09:10 in Kolkata on 28 Oct: the two with no time (9 AM) are due, the 3 PM one is not yet
+    out = pn.send_task_reminders(now_utc=utc(3, 40), sender=sender)
     assert out == {"reminded_users": 1, "reminded_tasks": 2}
-    assert [e for e, _ in sent] == ["e1"]
-    title = sent[0][1]["title"]
-    assert title == "Reminder · 2 tasks" and "Renew passport (due 2026-11-10)" in sent[0][1]["body"]
-    assert marked == [([7, 8], "2026-10-28")]
-    # outside everyone's 9 AM window nothing is sent
-    sent.clear(); marked.clear()
-    assert pn.send_task_reminders(now_utc=utc(12, 0), sender=lambda s, m: sent.append(s)) == {"reminded_users": 0, "reminded_tasks": 0}
-    assert sent == [] and marked == []
-    # a failed send leaves the tasks unmarked so the next run tries again
-    out = pn.send_task_reminders(now_utc=utc(3, 40), sender=lambda s, m: (_ for _ in ()).throw(RuntimeError("down")))
-    assert out["reminded_tasks"] == 0 and marked == []
+    assert [e for e, _ in sent] == ["e1", "e2"]              # every device of the user
+    msg = sent[0][1]
+    assert msg["title"] == "Reminder · 2 tasks" and "Renew passport (due 2026-11-10)" in msg["body"] and "Call the bank" not in msg["body"]
+    assert marked == [([7, 9], "2026-10-28")]
+    # a run a few minutes later has nothing new to say
+    sent.clear()
+    assert pn.send_task_reminders(now_utc=utc(3, 45), sender=sender)["reminded_tasks"] == 0 and sent == []
+    # 15:30 in Kolkata: now the 3 PM one goes, on its own notification tag
+    out = pn.send_task_reminders(now_utc=utc(10, 0), sender=sender)
+    assert out["reminded_tasks"] == 1 and sent[0][1]["title"] == "Reminder · Call the bank"
+    assert sent[0][1]["tag"] == "task-reminder-8" and marked[-1] == ([8], "2026-10-28")
 
 
-def test_a_single_reminder_is_titled_with_the_task():
+def test_nothing_is_sent_before_a_reminders_time_and_a_failed_send_is_retried():
+    sent, marked, sender = _reminder_world([{"id": 1, "description": "Call mom", "remind_on": "2026-10-28", "remind_time": "18:30"}])
+    assert pn.send_task_reminders(now_utc=utc(3, 40), sender=sender)["reminded_tasks"] == 0 and sent == [] and marked == []
+    boom = lambda s, m: (_ for _ in ()).throw(RuntimeError("down"))
+    assert pn.send_task_reminders(now_utc=utc(13, 0), sender=boom)["reminded_tasks"] == 0 and marked == []   # 18:30 IST
+    assert pn.send_task_reminders(now_utc=utc(13, 5), sender=sender)["reminded_tasks"] == 1                  # tried again
+
+
+def test_a_run_with_nothing_pending_reads_the_tasks_once_not_per_user():
+    reads = []
+    pn.db = types.SimpleNamespace(
+        get_push_subscriptions=lambda uid=None: [{"id": 1, "user_id": "u", "endpoint": "e", "timezone": "UTC"}],
+        get_users_with_reminders=lambda today, since: set(),
+        get_tasks_to_remind=lambda *a: reads.append(a) or [],
+    )
+    assert pn.send_task_reminders(now_utc=utc(9, 0), sender=lambda s, m: None) == {"reminded_users": 0, "reminded_tasks": 0}
+    assert reads == []
+
+
+def test_a_single_reminder_is_titled_with_the_task_and_shows_the_due_time():
     msg = pn.build_reminder_message([{"id": 1, "description": "Renew passport", "due_date": None}], "2026-10-28")
-    assert msg["title"] == "Reminder · Renew passport" and msg["tag"] == "task-reminders-2026-10-28"
+    assert msg["title"] == "Reminder · Renew passport" and msg["tag"] == "task-reminder-1"
+    two = pn.build_reminder_message([{"id": 1, "description": "A", "due_date": "2026-10-30", "due_time": "18:00:00"},
+                                     {"id": 2, "description": "B", "due_date": None}], "2026-10-28")
+    assert "A (due 2026-10-30 at 18:00)" in two["body"]
     assert pn.build_reminder_message([], "2026-10-28") is None
