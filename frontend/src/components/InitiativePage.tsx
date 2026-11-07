@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, FileText } from 'lucide-react'
-import type { Interaction, Task } from '../api/types'
+import type { Interaction, ItemList as ListLabel, Task } from '../api/types'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
 import ExportInitiativeButton from './ExportInitiativeButton'
 import InteractionCard, { ItemList } from './InteractionCard'
@@ -17,6 +17,8 @@ interface Props {
   notes: Interaction[]
   // The to-dos and list entries that belong to this initiative (everything that isn't a note).
   items?: Task[]
+  // Labels (lists) made for this space, shown even before they hold anything.
+  labels?: ListLabel[]
 }
 
 function Heading({ initiative, size = 'md' }: { initiative: Ini; size?: 'md' | 'lg' }) {
@@ -72,7 +74,7 @@ export function InitiativeBlock({ initiative, notes, items = [], onOpen }: Props
 // The whole initiative as one page: the key points, decisions and concerns that were extracted from its notes when
 // they were logged, grouped under each note's topic label - then the notes themselves, as written ("Source notes").
 // Nothing here calls an AI model.
-export function InitiativeView({ initiative, notes, items = [] }: Props) {
+export function InitiativeView({ initiative, notes, items = [], labels = [] }: Props) {
   const [showSource, setShowSource] = useState(false)
   // Tapping an item opens the note it came from.
   const [openNoteId, setOpenNoteId] = useState<number | null>(null)
@@ -135,7 +137,7 @@ export function InitiativeView({ initiative, notes, items = [] }: Props) {
         )}
       </div>
 
-      <InitiativeThings items={items} />
+      <InitiativeThings items={items} labels={labels} spaceId={initiative?.id ?? null} />
 
       {openNote && (
         // The note's sheet floats above the page, so the card itself stays out of sight.

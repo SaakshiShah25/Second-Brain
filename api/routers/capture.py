@@ -217,6 +217,7 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
     task_ids = []
     skipped_due_dates = []
     lists = lists or _ListResolver(user_id)
+    item_spaces = []
     for item in items:
         task_desc, raw_due_date, owner = item["description"], item.get("due_date"), item["owner"]
         repeat = normalize_repeat(item.get("repeat"))
@@ -232,6 +233,7 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
         list_id = item_list["id"] if item_list else None
         # Nothing said where it belongs: it goes to the space its list already lives in.
         item_space = initiative_id if initiative_id is not None else lists.home_space(item_list)
+        item_spaces.append(item_space)
         task_id = db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner,
                                  due_time=due_time, initiative_id=item_space, list_id=list_id,
                                  repeat=repeat, detail=item["detail"])
@@ -250,17 +252,23 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
         search_index.enqueue(user_id, "note", [interaction_id])
     search_index.enqueue(user_id, "task", task_ids)
 
+    # A part that was only items reports the space they went to (they may have followed their list's space), so the
+    # reply can say where they are and offer to change it.
+    reported = initiative_id
+    if reported is None and interaction_id is None and len(set(item_spaces)) == 1 and item_spaces[0] is not None:
+        reported = item_spaces[0]
+
     return {
         # None when the message was only items - nothing was kept as a note.
         "interaction_id": interaction_id,
         "note_saved": interaction_id is not None,
-        "initiative_id": initiative_id,
+        "initiative_id": reported,
         # Only ever non-null when initiative_id is null - extraction.py's prompt keeps the two mutually
         # exclusive. The frontend offers "add this as a new initiative?" off of this, and re-tags the note
         # via PATCH /api/notes/{id} once the user says yes.
         "suggested_initiative": (extracted.get("suggested_initiative") or None) if interaction_id else None,
         # Name, not just the id, so the chat UI can say where this part landed (None = Others).
-        "initiative_name": (db.get_initiative(user_id, initiative_id) or {}).get("name") if initiative_id else None,
+        "initiative_name": (db.get_initiative(user_id, reported) or {}).get("name") if reported else None,
         "summary": summary if interaction_id else "",
         "tasks_created": tasks_created,
         "skipped_due_dates": skipped_due_dates,

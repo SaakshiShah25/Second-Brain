@@ -19,6 +19,7 @@ through two gates before reaching capture / the retrieval agent:
 
 import asyncio
 import json
+import re
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -27,10 +28,13 @@ from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 import agent
+import commands
+import db
 import intent
 import llm_budget
 import observability
 import moderation
+import text_utils
 from timing import step
 from api.auth import get_current_user_id
 from api.rate_limit import limiter
@@ -56,6 +60,76 @@ def _blocked_reply(moderation_result: dict) -> dict:
             "answer": moderation.refusal(moderation_result)}
 
 
+def _find_space(spaces: list, said: str):
+    """The space the user named: an exact (case-insensitive) match, else the only one whose name contains it."""
+    said = " ".join((said or "").lower().split())
+    exact = [s for s in spaces if s["name"].strip().lower() == said]
+    if exact:
+        return exact[0]
+    partial = [s for s in spaces if said and (said in s["name"].lower() or s["name"].lower() in said)]
+    return partial[0] if len(partial) == 1 else None
+
+
+def _run_command(user_id: str, cmd: dict, picked_space_id) -> dict:
+    """Carries out "create a reading list in Personal" / "create a space called Health" (commands.parse) and says what
+    happened. `picked_space_id` is the space chosen in the input bar, used when the message names none."""
+    spaces = db.get_initiatives(user_id)
+    reply = {"intent": "command", "status": "answered", "changed": [], "space_id": None, "list_name": None}
+    if cmd["kind"] == "create_space":
+        try:
+            made = db.create_initiative(user_id, cmd["name"][:40])
+        except ValueError:
+            reply["answer"] = f"You already have a space called **{cmd['name']}**."
+            return reply
+        reply.update(answer=f"Created the space **{made['name']}**. Anything about it that you log from now on can be filed there.",
+                     changed=["initiatives"], space_id=made["id"])
+        return reply
+
+    space = None
+    if cmd.get("space"):
+        space = _find_space(spaces, cmd["space"])
+        if not space:
+            names = ", ".join(f"**{s['name']}**" for s in spaces) or "none yet"
+            reply["answer"] = (f"I don't have a space called “{cmd['space']}”. Your spaces: {names}. "
+                               f"Say “create a space called {cmd['space']}” first, or tell me one of these.")
+            return reply
+    elif picked_space_id:
+        space = next((s for s in spaces if s["id"] == picked_space_id), None)
+
+    key = text_utils.list_key(cmd["name"])
+    existing = next((l for l in db.get_lists(user_id) if text_utils.list_key(l["name"]) == key), None)
+    note = ""
+    if existing:
+        made = existing
+        if space and not existing.get("initiative_id") and db.list_space_supported():
+            db.update_list(user_id, existing["id"], initiative_id=space["id"])
+            note = f" I've put it in **{space['name']}**."
+        reply["answer"] = f"You already have **{existing['name']}**.{note}"
+    else:
+        title = cmd["name"][:40]
+        made = db.create_list(user_id, title, text_utils.list_emoji(title), initiative_id=space["id"] if space else None)
+        where = f" in **{space['name']}**" if space else ""
+        reply["answer"] = f"Created **{made.get('emoji') or ''} {made['name']}**{where}. Say “add … to my {made['name'].lower()}” to fill it."
+        if space and not db.list_space_supported():
+            reply["answer"] += " (To remember which space it lives in, run `scripts/migration_43_list_space.sql`.)"
+    reply.update(changed=["lists"], space_id=space["id"] if space else None, list_name=made["name"])
+    return reply
+
+
+async def _handle_command(user_id: str, body: ChatRequest, request: Request, cmd: dict, on_stage=None) -> dict:
+    """Runs a command, then - for "create a reading list in Personal and add Dune" - captures the rest of the message
+    as usual, into the list that was just made (and its space)."""
+    result = await run_in_threadpool(_run_command, user_id, cmd, body.initiative_id)
+    then = cmd.get("then")
+    if then and result.get("list_name"):
+        if not re.search(r"\b(?:to|in|into)\b", then, re.I):
+            then = f"{then} to my {result['list_name'].lower()}"
+        captured = await capture_router._capture_text_core(
+            user_id, then, body.geo_lat, body.geo_lng, request, on_stage=on_stage, initiative_id=result.get("space_id"))
+        result["capture"] = captured
+    return result
+
+
 @router.post("")
 @limiter.limit("20/minute")
 async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_current_user_id)):
@@ -64,6 +138,11 @@ async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_c
         moderation_result = await run_in_threadpool(moderation.check, body.text)
     if not moderation_result["safe"]:
         return _blocked_reply(moderation_result)
+
+    # "Create a reading list in Personal" is an instruction to the app: do it, instead of logging it as a to-do.
+    cmd = None if body.as_note else commands.parse(body.text)
+    if cmd:
+        return await _handle_command(user_id, body, request, cmd)
 
     with step("intent_classify"):
         detected = "capture" if body.as_note else await run_in_threadpool(intent.classify, body.text)
@@ -138,6 +217,12 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
         moderation_result = await run_in_threadpool(moderation.check, body.text)
         if not moderation_result["safe"]:
             await queue.put(("result", _blocked_reply(moderation_result)))
+            return
+
+        cmd = None if body.as_note else commands.parse(body.text)
+        if cmd:
+            await push_stage("saving")
+            await queue.put(("result", await _handle_command(user_id, body, request, cmd, on_stage=push_stage)))
             return
 
         if body.as_note:  # "Save it as a note instead": no need to decide again
