@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useUpdateTaskStatus } from '../api/tasks'
 import type { Task } from '../api/types'
 import { byDue } from '../lib/items'
+import DragToSpace, { Draggable } from './DragToSpace'
 import ItemRow from './ItemRow'
 import ItemSheet from './ItemSheet'
 
@@ -22,7 +23,9 @@ function Block({ title, items, onToggle, onOpen }: { title: string; items: Task[
       </h3>
       <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
         {items.map((t) => (
-          <ItemRow key={t.id} task={t} compactDate onToggle={onToggle} onOpen={onOpen} />
+          <Draggable key={t.id} task={t}>
+            <ItemRow task={t} compactDate onToggle={onToggle} onOpen={onOpen} />
+          </Draggable>
         ))}
       </div>
     </section>
@@ -52,6 +55,7 @@ export default function InitiativeThings({ items }: { items: Task[] }) {
   }
   if (open.length === 0) return null
   return (
+    <DragToSpace tasks={items}>
     <div className="mb-4">
       {todos.length > 0 && <Block title="To-dos" items={todos} {...rowProps} />}
       {[...lists.entries()].map(([id, l]) => (
@@ -59,5 +63,6 @@ export default function InitiativeThings({ items }: { items: Task[] }) {
       ))}
       {active && <ItemSheet task={active} onClose={() => setOpenId(null)} />}
     </div>
+    </DragToSpace>
   )
 }

@@ -4,6 +4,7 @@ import { useTasks, useUpdateTaskStatus } from '../api/tasks'
 import type { Task } from '../api/types'
 import Button from '../components/Button'
 import Chip, { ChipRow } from '../components/Chip'
+import DragToSpace, { Draggable } from '../components/DragToSpace'
 import InitiativeBar from '../components/InitiativeBar'
 import ItemRow from '../components/ItemRow'
 import ItemSheet from '../components/ItemSheet'
@@ -40,7 +41,9 @@ function Section({ title, tasks, tone, ...rowProps }: {
       </h3>
       <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
         {tasks.map((t) => (
-          <ItemRow key={t.id} task={t} showList compactDate {...rowProps} />
+          <Draggable key={t.id} task={t}>
+            <ItemRow task={t} showList compactDate {...rowProps} />
+          </Draggable>
         ))}
       </div>
     </section>
@@ -102,6 +105,7 @@ export default function TodayPage() {
   ]
 
   return (
+    <DragToSpace tasks={everything}>
     <div className="flex flex-1 flex-col">
       <PageHeader title="Today" subtitle={subtitle} showProfile />
 
@@ -181,5 +185,6 @@ export default function TodayPage() {
 
       <InitiativeBar counts={openCountsByInitiative(everything)} />
     </div>
+    </DragToSpace>
   )
 }

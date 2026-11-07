@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeftRight, Bell, Check, ChevronRight, FolderInput, NotebookText, Trash2 } from 'lucide-react'
 import { useDeleteItem, useEditTask, useUpdateTaskFields, useUpdateTaskOwner, useUpdateTaskStatus } from '../api/tasks'
+import { useMoveItem } from '../lib/useMoveItem'
 import { useInitiatives } from '../api/initiatives'
 import { useLists } from '../api/lists'
 import type { Task } from '../api/types'
@@ -28,6 +29,7 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
   const updateOwner = useUpdateTaskOwner()
   const deleteItem = useDeleteItem()
   const updateFields = useUpdateTaskFields()
+  const { move, prompt: movePrompt } = useMoveItem()
   const { data: initiatives = [] } = useInitiatives()
   const [choosingCategory, setChoosingCategory] = useState(false)
   const [choosingReminder, setChoosingReminder] = useState(false)
@@ -274,12 +276,11 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
           currentId={categoryId}
           onClose={() => setChoosingCategory(false)}
           onPick={async (id) => {
-            if (id === categoryId) return
-            await updateFields.mutateAsync({ taskId: task.id, fields: { initiative_id: id } })
-            toast(id === null ? 'Moved to Others' : `Moved to ${initiatives.find((i) => i.id === id)?.name ?? 'that space'}`)
+            await move(task, id)
           }}
         />
       )}
+      {movePrompt}
 
       {confirmDelete && (
         <ConfirmDialog
