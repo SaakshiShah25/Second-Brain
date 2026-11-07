@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { ListTodo, MapPin, MessageCircleQuestion, Mic, SquarePen, X } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useChat } from '../api/chat'
-import { ApiError } from '../api/client'
+import { api, ApiError } from '../api/client'
 import { useInitiatives } from '../api/initiatives'
 import { useTranscribe } from '../api/voice'
 import type { CapturePart, CaptureSavedResult, ChatMessage, ChatResult } from '../api/types'
@@ -36,6 +37,10 @@ function errorText(err: unknown): string {
 // decisions, concerns and tasks (each fact is shown once - extraction keeps them from repeating).
 function formatPart(part: CapturePart, showCategory: boolean): string {
   const lines: string[] = []
+  if (part.interaction_id == null) {
+    // Only items were saved (no note): one line each, with the list it went to.
+    return part.tasks_created.map((t) => `- ${t.list_emoji ? t.list_emoji + ' ' : ''}${t.description}${t.list_name ? ` → ${t.list_name}` : ''}`).join('\n')
+  }
   // "Others" is named only when the message was split, so it is clear where each piece went.
   if (part.initiative_name) lines.push(`**Category:** ${part.initiative_name}`)
   else if (showCategory) lines.push('**Category:** Others')
@@ -91,6 +96,7 @@ export default function ChatPage() {
   const [locationLoading, setLocationLoading] = useState(false)
   const [confirmingClear, setConfirmingClear] = useState(false)
   const usage = useUsageMode()
+  const queryClient = useQueryClient()
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -147,6 +153,22 @@ export default function ChatPage() {
   // the user can change where any part went from there too.
   function handleSavedCapture(result: CaptureSavedResult) {
     appendMessage('assistant', formatSavedMessage(result), { capture: result })
+  }
+
+  // Takes back everything one capture saved: its items, then its notes (deleting a note would take that
+  // note's items with it anyway; standalone items need deleting one by one).
+  async function undoCapture(index: number) {
+    const capture = messages[index]?.capture
+    if (!capture || messages[index].undone) return
+    try {
+      await Promise.all(capture.parts.flatMap((p) => p.tasks_created.map((t) => api.delete(`/api/tasks/${t.id}`))))
+      await Promise.all(capture.parts.filter((p) => p.interaction_id != null).map((p) => api.delete(`/api/notes/${p.interaction_id}`)))
+    } finally {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['notes'] })
+      queryClient.invalidateQueries({ queryKey: ['initiatives'] })
+    }
+    setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, undone: true } : m)))
   }
 
   function handleChatResult(result: ChatResult, sentText: string) {
@@ -382,6 +404,7 @@ export default function ChatPage() {
             message={m}
             onSaveAsNote={i === messages.length - 1 && !isBusy ? (t) => submitText(t, true) : undefined}
             onCaptureChange={(capture) => setMessages((prev) => prev.map((msg, idx) => (idx === i ? { ...msg, capture } : msg)))}
+            onUndo={m.capture && !m.undone ? () => undoCapture(i) : undefined}
           />
         ))}
 

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { CheckCircle2, ChevronDown, MapPin, Pencil, Trash2, TriangleAlert } from 'lucide-react'
+import { CheckCircle2, ChevronDown, FileDown, MapPin, Pencil, Trash2, TriangleAlert } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { useDeleteInteraction, useUpdateInteraction } from '../api/notes'
+import { useTasks } from '../api/tasks'
 import type { Interaction } from '../api/types'
 import { fullDate } from '../lib/dates'
 import { notePoints } from '../lib/initiativeFilter'
 import { distinctPoints, noteItems, type NoteItem } from '../lib/noteSections'
+import { buildNotePdf, shareOrDownload } from '../lib/notePdf'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
@@ -83,6 +85,23 @@ export default function InteractionCard({
   const [showRaw, setShowRaw] = useState(false)
   // react-query dedupes this against the page's own useInitiatives() call.
   const { data: initiatives } = useInitiatives()
+  // The note's own to-dos go into its PDF - only fetched once the note is opened.
+  const { data: taskData } = useTasks('all', open)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+
+  async function exportPdf() {
+    setExporting(true)
+    setExportError(null)
+    try {
+      const items = (taskData?.tasks ?? []).filter((t) => t.interaction_id === interaction.id)
+      await shareOrDownload(await buildNotePdf(interaction, items))
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Couldn't make the PDF - please try again.")
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const initiativeStyle = getInitiativeStyle(interaction.initiative)
   // The original text of a message that went to several initiatives lives on one note; editing or deleting it from
@@ -238,7 +257,11 @@ export default function InteractionCard({
                 </div>
               )}
 
-              <div className="mt-6 flex gap-2">
+              <Button className="mt-6" block onClick={exportPdf} disabled={exporting}>
+                <FileDown size={16} strokeWidth={2} /> {exporting ? 'Making the PDF…' : 'Export as PDF'}
+              </Button>
+              {exportError && <p className="mt-1.5 text-[0.8125rem] text-danger">{exportError}</p>}
+              <div className="mt-2 flex gap-2">
                 <Button className="flex-1" onClick={() => setEditing(true)}>
                   <Pencil size={16} strokeWidth={2} /> Edit
                 </Button>

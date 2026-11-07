@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Home, ListChecks, NotebookText, type LucideIcon } from 'lucide-react'
+import { CalendarCheck, Home, ListChecks, NotebookText, type LucideIcon } from 'lucide-react'
 import Toaster from './Toast'
 import ConnectionBanner from './ConnectionBanner'
 import { syncReminders } from '../lib/push'
 
 // Each tab has its own hue (index.css --sb-fun-*), shown when it's the
-// active tab - full class strings so Tailwind can see them.
-const tabs: { to: string; label: string; icon: LucideIcon; end: boolean; pill: string; text: string }[] = [
+// active tab - full class strings so Tailwind can see them. `also` lists
+// other screens that belong to the tab (the Tasks list lives under Lists).
+const tabs: { to: string; label: string; icon: LucideIcon; end: boolean; also?: RegExp; pill: string; text: string }[] = [
   { to: '/', label: 'Home', icon: Home, end: true, pill: 'bg-fun-orange/15 text-fun-orange', text: 'text-fun-orange' },
-  { to: '/tasks', label: 'Tasks', icon: ListChecks, end: false, pill: 'bg-fun-sun/15 text-fun-sun', text: 'text-fun-sun' },
+  { to: '/today', label: 'Today', icon: CalendarCheck, end: false, pill: 'bg-fun-pink/15 text-fun-pink', text: 'text-fun-pink' },
+  { to: '/lists', label: 'Lists', icon: ListChecks, end: false, also: /^\/tasks/, pill: 'bg-fun-sun/15 text-fun-sun', text: 'text-fun-sun' },
   { to: '/notes', label: 'Notes', icon: NotebookText, end: false, pill: 'bg-fun-sky/15 text-fun-sky', text: 'text-fun-sky' },
 ]
 
@@ -124,7 +126,9 @@ export default function Layout() {
                   data-tour-nav={tab.to}
                   className="pressable flex flex-1 flex-col items-center justify-center gap-1"
                 >
-                  {({ isActive }) => (
+                  {({ isActive: onTab }) => {
+                    const isActive = onTab || !!tab.also?.test(pathname)
+                    return (
                     <>
                       <span
                         className={`flex h-8 w-12 items-center justify-center rounded-full transition-colors ${
@@ -137,7 +141,8 @@ export default function Layout() {
                         {tab.label}
                       </span>
                     </>
-                  )}
+                    )
+                  }}
                 </NavLink>
               ))}
             </div>

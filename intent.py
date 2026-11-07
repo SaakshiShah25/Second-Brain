@@ -17,6 +17,7 @@ filtering happens earlier, in moderation.py, before this ever runs.
 import json
 import re
 
+import extraction
 import llm_budget
 from llm_client import FAST_MODEL_NAME
 
@@ -28,6 +29,9 @@ _SYSTEM_PROMPT = """You classify a message sent to a personal notes-and-tasks ch
   schedule", "idea: weekend trip to Goa"). A bare instruction with no "you"/"can you" is the
   user writing a to-do for THEMSELF, never a request to you - "Read chapter 5 of the bond book
   by Sunday", "Call mom tonight", "Book flights for Diwali", "Finish the IC memo" are all capture.
+  So is adding to one of their lists or setting a reminder or a date: "Add Dune to my reading
+  list", "Oppenheimer - must watch", "Milk and eggs for groceries", "Mom's birthday is 14 March",
+  "Remind me to drink water every 2 hours", "Keep an eye on Tata Motors".
 - "ask": the user is asking a question about THEIR OWN logged notes or tasks, or searching for
   something they wrote down before (e.g. "What did I note about pricing?", "What's overdue?",
   "What do I need to do this week?", "When did I last talk to Rohan?").
@@ -68,7 +72,7 @@ _SELF_TODO = re.compile(
     r"^\s*(please\s+)?(understand|learn|study|research|revise|review|explore|look\s+into|read\s+up|read|"
     r"figure\s+out|find\s+out|get|call|email|book|buy|send|finish|complete|schedule|check|submit|pay|renew|"
     r"fix|prepare|plan|set\s+up|follow\s+up|ask|share|update|upload|download|apply|register|attend|"
-    r"organi[sz]e|clean|order|pick\s+up|print|sign|file|cancel)\b", re.I)
+    r"organi[sz]e|clean|order|pick\s+up|print|sign|file|cancel|add|watch|wash|drink|remember)\b", re.I)
 _ADDRESSED_TO_ASSISTANT = re.compile(r"\b(me|explain|can\s+you|could\s+you|would\s+you|you)\b|\?", re.I)
 
 
@@ -83,6 +87,8 @@ def fast_classify(text: str):
     if _QUESTION.match(t):
         return "ask"
     if _SELF_TODO.match(t) and not _ADDRESSED_TO_ASSISTANT.search(t):
+        return "capture"
+    if extraction.quick_extract(t):  # "Movies: Dune, Oppenheimer" - an obvious list add
         return "capture"
     return None
 

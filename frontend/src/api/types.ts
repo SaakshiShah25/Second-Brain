@@ -2,9 +2,23 @@
 
 export type TaskOwner = 'me' | 'them'
 
+// daily | weekdays | weekly | monthly | yearly | hours:N (an "every N hours" routine)
+export type Repeat = string
+
+// A named pile of items - Movies, Books, Groceries, Birthdays. The main Tasks list is not one of
+// these: it's every item whose list_id is null.
+export interface ItemList {
+  id: number
+  name: string
+  emoji: string | null
+  position: number | null
+  created_at: string
+}
+
+// Every to-do and list entry is a Task (an "item").
 export interface Task {
   id: number
-  interaction_id: number
+  interaction_id: number | null // the note it came from; null for an item captured on its own
   description: string
   due_date: string | null
   due_time?: string | null // HH:MM(:SS), only when the deadline has a time of day
@@ -15,6 +29,11 @@ export interface Task {
   remind_on?: string | null // the day (YYYY-MM-DD) to get a push about this task
   remind_time?: string | null // HH:MM(:SS) that day; null = 9 AM (needs migration 41)
   initiative_id?: number | null // the task's own category (it can be moved without moving its note); null = Others
+  // The next four exist once scripts/migration_40_lists.sql has run.
+  list_id?: number | null
+  item_list?: { id: number; name: string; emoji: string | null } | null
+  repeat?: Repeat | null
+  detail?: string | null
   created_at: string
   interaction?: {
     id: number
@@ -79,8 +98,23 @@ export interface Interaction {
 
 // One message can cover several subjects, so it is saved as one note per part, each under its own initiative
 // (api/routers/capture.py). `parts` has one entry per note created.
+// What a capture saved as an item (a to-do, a list entry, a routine, a date).
+export interface CreatedItem {
+  id: number
+  description: string
+  due_date: string | null
+  due_time?: string | null
+  owner: TaskOwner
+  repeat?: Repeat | null
+  list_id?: number | null
+  list_name?: string | null
+  list_emoji?: string | null
+}
+
 export interface CapturePart {
-  interaction_id: number
+  // null when the part was only items ("add Dune to my reading list") - nothing kept as a note
+  interaction_id: number | null
+  note_saved?: boolean
   initiative_id: number | null
   // Only ever set when initiative_id is null - a proposed name for a new initiative this part seems to be
   // about, for the frontend to offer as "add this as a new initiative?" (see ChatPage.tsx).
@@ -90,7 +124,7 @@ export interface CapturePart {
   // The existing initiative this part WAS filed under, by name - null means Others.
   initiative_name: string | null
   summary: string
-  tasks_created: { description: string; due_date: string | null; due_time?: string | null; owner: TaskOwner }[]
+  tasks_created: CreatedItem[]
   skipped_due_dates: { description: string; raw_due_date: string }[]
   decisions: string[]
   concerns: string[]
@@ -136,6 +170,8 @@ export interface ChatMessage {
   saveAsNote?: string
   // The structured reply to a logged note (rendered as coloured sections); `content` keeps a plain-text copy.
   capture?: CaptureSavedResult
+  // Set once the user took back everything this capture saved (see CaptureReply's Undo).
+  undone?: boolean
 }
 
 // ---------- Unified chat (single thread, no mode tabs) ----------

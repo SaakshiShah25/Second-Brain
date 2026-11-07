@@ -14,7 +14,9 @@ A simple notes-and-tasks app you can talk or type to, with everything sorted int
 
 | | |
 |---|---|
-| **Chat input (Home)** | One box: type, or tap the mic and talk. It works out whether you are *logging a note* (or a to-do) or *asking a question* about what you logged. Recording can be paused or cancelled; you can pick a category and optionally attach your location. |
+| **Chat input (Home)** | One box: type, or tap the mic and talk. It works out whether you are *logging a note* (or a to-do) or *asking a question* about what you logged. Recording can be paused or cancelled; you can pick a category and optionally attach your location. A capture becomes **items** (to-dos, list entries, routines, dates) and - only when there is something to remember - a note: "add Dune to my reading list" saves just the item, "met Priya, send her the deck" saves a note plus a to-do. The reply shows what went where, each line tappable, with **Undo**. |
+| **Today** | What needs you now, across every list: overdue, due today (timed ones by time, routines, dates) and the coming week - birthdays included. Undated things stay on their lists. |
+| **Lists** | The main **Tasks** list, plus lists made as you go - Movies, Books, Groceries, Birthdays, Routines, Startup ideas - each with a quick-add box and its done items folded away. Items can have a date, a time, a repeat (daily, weekdays, weekly, monthly, yearly, every N hours) and a detail; ticking a repeating item moves it to its next date. |
 | **Notes** | Organised **by initiative**: a block per initiative showing its newest key points and how much it holds ("3 notes · 2 decisions · 2 concerns"); tap one to open its page: everything extracted from its notes, as bullets grouped under a short topic label, with **Decisions:** and **Concerns:** as bold sub-lists under each, each bullet dated and tappable to open the note it came from. **All of that is extracted once, when a note is logged - opening Notes never calls an AI model.** "Source notes" lists the notes exactly as you wrote them; open one to read, edit or delete it. Notes carry no task lists - tasks live on the Tasks tab. Initiatives (name, colour, order) are yours to manage. |
 | **Task reminders** | Optional push notifications at **9 AM and 5 PM** (each device's own time zone) listing your open tasks grouped by category, plus a **reminder on any task** at the day and time you pick (or at its due time). Turn them on per device in Settings → Notifications. See "Task reminders" below. |
 | **Tasks** | Every task pulled out of your notes, **grouped under its initiative** (never by date), with the nearest deadline first inside each. Tasks can have a date and a time ("send the deck by 6pm"); an overdue date shows in red. Tap a task to tick it off, edit its wording or deadline, flip who owes it, or jump to the note it came from. Each task has a **priority** mark (`!!!` red = high, `!!` amber = normal, `!` green = low - high ones sort first; the tick circle takes the same colour), a **bell** to set a reminder (on the due date, 1-7 days before, or any date; you get a push at 9 AM that day) and can be **dragged onto another category** (press and hold on a phone) or moved with **Move** in its sheet - and, after a move, you are asked whether the note it came from should move too (it carries its other tasks along). |
@@ -97,6 +99,9 @@ task's reminder (instead of the default 9 AM), also run `scripts/migration_41_re
 
 For a message that lands in several initiatives to store the original text once (instead of on every note),
 run `scripts/migration_37_source_note.sql` (schema.sql section 37). Without it everything still works, with a copy per note.
+
+For lists, items without a note, repeats and per-item reminders, run `scripts/migration_40_lists.sql` (schema.sql section 40)
+**before** deploying the backend that uses it: the Today, Lists and Tasks pages read the new `item_list` table.
 
 If a note was saved with a missing-column warning, `scripts/pending_migration.sql` collects the pending changes.
 

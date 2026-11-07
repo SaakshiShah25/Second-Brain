@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, pointerWithin, rectIntersection, useDraggable, useDroppable, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from '@dnd-kit/core'
 import { ArrowLeftRight, Bell, Check, CheckCircle2, ChevronDown, ChevronRight, FolderInput, NotebookText, TriangleAlert } from 'lucide-react'
 import { useEditTask, useTasks, useUpdateTaskFields, useUpdateTaskOwner, useUpdateTaskStatus } from '../api/tasks'
@@ -9,6 +9,7 @@ import CategorySheet from '../components/CategorySheet'
 import { Input, Label } from '../components/fields'
 import InitiativeBar from '../components/InitiativeBar'
 import PageHeader from '../components/PageHeader'
+import QuickAdd from '../components/QuickAdd'
 import { PriorityBars, PriorityFlag, ReminderSheet } from '../components/TaskOptions'
 import Sheet from '../components/Sheet'
 import { toast } from '../components/Toast'
@@ -243,7 +244,13 @@ export default function TasksPage() {
   const navigate = useNavigate()
   const [showCompleted, setShowCompleted] = useState(false)
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('all')
-  const [activeTaskId, setActiveTaskId] = useState<number | null>(null)
+  // Arriving with ?open=<id> (from a chat reply or an answer's source) opens that task.
+  const [params, setParams] = useSearchParams()
+  const [activeTaskId, setActiveTaskIdState] = useState<number | null>(Number(params.get('open')) || null)
+  function setActiveTaskId(id: number | null) {
+    setActiveTaskIdState(id)
+    if (id === null && params.has('open')) setParams((p) => (p.delete('open'), p), { replace: true })
+  }
   const [editing, setEditing] = useState(false)
   const [editDesc, setEditDesc] = useState('')
   const [editDate, setEditDate] = useState('')
@@ -251,7 +258,8 @@ export default function TasksPage() {
   const { data, error, refetch, isFetching } = useTasks('all')
   const connection = useConnection()
   const offline = connection.offline || connection.unreachable
-  const allTasks = data?.tasks ?? []
+  // This page is the main Tasks list: items that live in a named list are on that list's page.
+  const allTasks = (data?.tasks ?? []).filter((t) => !t.list_id)
   const activeTask = allTasks.find((t) => t.id === activeTaskId) ?? null
 
   // Tasks are shown under their initiative, never sorted by when they are due.
@@ -367,10 +375,10 @@ export default function TasksPage() {
       stopLingering(task.id)
     }
     updateStatus.mutate(
-      { taskId: task.id, status },
+      { taskId: task.id, status, repeats: !!task.repeat },
       {
         onSuccess: () => {
-          toast(status === 'done' ? 'Task done · moved to Completed' : 'Moved back to open tasks')
+          toast(task.repeat && status === 'done' ? 'Done · moved to its next date' : status === 'done' ? 'Task done · moved to Completed' : 'Moved back to open tasks')
           onSuccess?.()
         },
         onError: () => {
@@ -397,6 +405,8 @@ export default function TasksPage() {
     <DndContext sensors={sensors} collisionDetection={collide} onDragStart={(e) => setDraggingId(Number(e.active.id))} onDragEnd={handleDragEnd} onDragCancel={() => setDraggingId(null)}>
     <div>
       <PageHeader title="Tasks" showProfile />
+
+      <QuickAdd listId={null} placeholder="Add a task" />
 
       <InitiativeBar counts={openCounts} className="mb-4" />
 
