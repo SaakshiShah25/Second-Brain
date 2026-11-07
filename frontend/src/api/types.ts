@@ -2,15 +2,34 @@
 
 export type TaskOwner = 'me' | 'them'
 
+// daily | weekdays | weekly | monthly | yearly | hours:N (an "every N hours" routine)
+export type Repeat = string
+
+// A named pile of items - Movies, Books, Groceries, Birthdays. The main Tasks list is not one of
+// these: it's every item whose list_id is null.
+export interface ItemList {
+  id: number
+  name: string
+  emoji: string | null
+  position: number | null
+  created_at: string
+}
+
+// Every to-do and list entry is a Task (an "item").
 export interface Task {
   id: number
-  interaction_id: number
+  interaction_id: number | null // the note it came from; null for an item captured on its own
   description: string
   due_date: string | null
   due_time?: string | null // HH:MM(:SS), only when the deadline has a time of day
   status: 'open' | 'done'
   owner: TaskOwner
   created_at: string
+  list_id?: number | null
+  item_list?: { id: number; name: string; emoji: string | null } | null
+  initiative_id?: number | null
+  repeat?: Repeat | null
+  detail?: string | null
   interaction?: {
     id: number
     date: string | null
@@ -63,9 +82,23 @@ export interface Interaction {
   concerns: string[]
 }
 
+export interface CreatedItem {
+  id: number
+  description: string
+  due_date: string | null
+  due_time?: string | null
+  owner: TaskOwner
+  repeat?: Repeat | null
+  list_id?: number | null
+  list_name?: string | null
+  list_emoji?: string | null
+}
+
 export interface CaptureSavedResult {
   status: 'saved'
-  interaction_id: number
+  // null when the capture was only items ("add Dune to my reading list") - nothing kept as a note
+  interaction_id: number | null
+  note_saved?: boolean
   initiative_id: number | null
   // Only ever set when initiative_id is null - a proposed name for a new
   // initiative this note seems to be about, for the frontend to offer as
@@ -76,7 +109,7 @@ export interface CaptureSavedResult {
   // (extraction.py never sets both for the same note).
   initiative_name: string | null
   summary: string
-  tasks_created: { description: string; due_date: string | null; due_time?: string | null; owner: TaskOwner }[]
+  tasks_created: CreatedItem[]
   date_warning: string | null
   skipped_due_dates: { description: string; raw_due_date: string }[]
   geo_address: string | null
@@ -114,6 +147,8 @@ export interface ChatMessage {
   // Set on the "that's not something I can help with" reply: the original text, so it can be
   // saved as a note instead with one tap.
   saveAsNote?: string
+  // What a capture saved, shown as tappable lines with Undo (see components/chat/Receipt.tsx).
+  receipt?: { items: CreatedItem[]; noteId: number | null; undone?: boolean }
 }
 
 // ---------- Unified chat (single thread, no mode tabs) ----------

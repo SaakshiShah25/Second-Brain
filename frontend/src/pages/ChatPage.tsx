@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { ListTodo, MapPin, MessageCircleQuestion, Mic, SquarePen, Tag, X } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useChat } from '../api/chat'
-import { ApiError } from '../api/client'
+import { api, ApiError } from '../api/client'
 import { useCreateInitiative, useInitiatives } from '../api/initiatives'
 import { useUpdateInteraction } from '../api/notes'
 import { useTranscribe } from '../api/voice'
@@ -18,7 +19,6 @@ import TypingIndicator from '../components/chat/TypingIndicator'
 import ChatInput, { type ChatInputHandle } from '../components/chat/ChatInput'
 import { useChatSession } from '../chat/ChatSessionContext'
 import { useLiveTranscript } from '../lib/useLiveTranscript'
-import { dueLabel } from '../lib/dates'
 import { notePoints } from '../lib/initiativeFilter'
 import { isOffline } from '../lib/connection'
 import { useUsageMode } from '../lib/usageMode'
@@ -36,8 +36,17 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+// The note part of a capture's reply. The items it created are shown under it as a receipt
+// (components/chat/Receipt.tsx), not as text.
 function formatSavedMessage(result: CaptureSavedResult): string {
   const lines: string[] = []
+  if (result.interaction_id == null) {
+    // Only items were saved (no note) - the receipt says it all.
+    for (const skipped of result.skipped_due_dates) {
+      lines.push(`_Note: couldn't set a date for "${skipped.description}" (got '${skipped.raw_due_date}') - saved without one_`)
+    }
+    return lines.join('\n\n') || (result.tasks_created.length === 1 ? 'Added.' : `Added ${result.tasks_created.length} things.`)
+  }
   // Omitted entirely for Uncategorized rather than shown as "none",
   // same convention as every other optional field here; the
   // suggested_initiative follow-up prompt covers that case instead.
@@ -51,13 +60,6 @@ function formatSavedMessage(result: CaptureSavedResult): string {
   if (result.concerns.length > 0) {
     lines.push('**Concerns:**')
     for (const c of result.concerns) lines.push(`- ${c}`)
-  }
-  if (result.tasks_created.length > 0) {
-    lines.push('**Tasks:**')
-    for (const t of result.tasks_created) {
-      const owner = t.owner === 'them' ? 'Someone else' : 'Me'
-      lines.push(`- ${t.description}${t.due_date ? ` _(due ${dueLabel(t.due_date, t.due_time)})_` : ''} — ${owner}`)
-    }
   }
   if (result.date_warning) lines.push(`_Note: ${result.date_warning}_`)
   for (const skipped of result.skipped_due_dates) {
@@ -98,6 +100,7 @@ export default function ChatPage() {
   const [customInitiativeName, setCustomInitiativeName] = useState('')
   const [confirmingClear, setConfirmingClear] = useState(false)
   const usage = useUsageMode()
+  const queryClient = useQueryClient()
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -155,8 +158,11 @@ export default function ChatPage() {
   // Posts the usual saved-note summary, then separately offers the
   // new-initiative suggestion if extraction.py proposed one.
   function handleSavedCapture(result: CaptureSavedResult) {
-    appendMessage('assistant', formatSavedMessage(result))
-    if (result.suggested_initiative) {
+    appendMessage('assistant', formatSavedMessage(result), {
+      receipt: { items: result.tasks_created, noteId: result.interaction_id },
+      ...(result.interaction_id == null ? { status: true } : {}),
+    })
+    if (result.suggested_initiative && result.interaction_id != null) {
       setNamingCustomInitiative(false)
       setCustomInitiativeName('')
       setPendingInitiativeSuggestion({ name: result.suggested_initiative, interactionId: result.interaction_id })
@@ -251,6 +257,21 @@ export default function ChatPage() {
       setStage(null)
       abortControllerRef.current = null
     }
+  }
+
+  // Takes back everything one capture saved: its items, then its note (deleting the note would
+  // take that note's items with it anyway; standalone items need deleting one by one).
+  async function undoCapture(index: number) {
+    const receipt = messages[index]?.receipt
+    if (!receipt || receipt.undone) return
+    try {
+      await Promise.all(receipt.items.map((item) => api.delete(`/api/tasks/${item.id}`)))
+      if (receipt.noteId != null) await api.delete(`/api/notes/${receipt.noteId}`)
+    } finally {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['notes'] })
+    }
+    setMessages((prev) => prev.map((m, i) => (i === index && m.receipt ? { ...m, receipt: { ...m.receipt, undone: true } } : m)))
   }
 
   function stopRequest() {
@@ -427,6 +448,7 @@ export default function ChatPage() {
             key={i}
             message={m}
             onSaveAsNote={i === messages.length - 1 && !isBusy ? (t) => submitText(t, true) : undefined}
+            onUndo={m.receipt && !m.receipt.undone ? () => undoCapture(i) : undefined}
           />
         ))}
 

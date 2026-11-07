@@ -57,9 +57,12 @@ What runs automatically once these are set:
 | Workflow | When (IST) | What it does |
 |---|---|---|
 | CI | every push | Runs the tests, type check and build |
-| Task reminders | every 30 min | Sends the 9 AM and 5 PM task reminder push notifications (each device's own time zone) |
 | Daily report | 9:00pm | Emails you users, usage, AI budget, limits hit and errors; deletes events older than 30 days |
 | Nightly backup | 3:00am | Encrypted database dump, kept 14 days under **Actions → Nightly backup → a run → Artifacts** |
+
+Reminders don't run from GitHub any more: a Supabase pg_cron job calls the backend every minute
+(set up with `scripts/migration_38_reminder_cron.sql`, see README → Task reminders). The workflow is still
+there to fire one tick by hand.
 
 ## 4. UptimeRobot: uptime monitor and keep-awake (free)
 

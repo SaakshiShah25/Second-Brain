@@ -14,9 +14,17 @@ export default defineConfig({
       workbox: {
         // The push + notification-click handlers for the task reminders (public/push-sw.js).
         importScripts: ['push-sw.js'],
+        // The note PDF export (src/lib/notePdf.ts) loads jsPDF and its add-ons only when used -
+        // keep them out of the install download; they're cached the first time someone exports.
+        globIgnores: ['**/jspdf*.js', '**/html2canvas*.js', '**/purify*.js', '**/index.es-*.js'],
         // Geist (index.html) comes from Google Fonts - cache it so an
         // installed app keeps its typography offline.
         runtimeCaching: [
+          {
+            urlPattern: ({ url }) => /^\/(fonts\/.*\.ttf|assets\/jspdf[^/]*\.js)$/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: { cacheName: 'pdf-export', expiration: { maxEntries: 6 } },
+          },
           {
             urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
             handler: 'CacheFirst',

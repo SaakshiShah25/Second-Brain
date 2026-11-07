@@ -15,14 +15,14 @@ self.addEventListener('push', (event) => {
       badge: '/icons/icon-192.png',
       tag: data.tag || 'tasks',
       renotify: true, // a newer reminder with the same tag replaces the old one and alerts again
-      data: { url: data.url || '/tasks' },
+      data: { url: data.url || '/today' },
     }),
   )
 })
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const url = (event.notification.data && event.notification.data.url) || '/tasks'
+  const url = (event.notification.data && event.notification.data.url) || '/today'
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
       // Reuse the open app window if there is one, otherwise open a new one.

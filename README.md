@@ -14,10 +14,12 @@ A simple notes-and-tasks app you can talk or type to, with everything sorted int
 
 | | |
 |---|---|
-| **Chat input (Home)** | One box: type, or tap the mic and talk. It works out whether you are *logging a note* (or a to-do) or *asking a question* about what you logged. Recording can be paused or cancelled; you can pick a category and optionally attach your location. |
+| **Chat input (Home)** | One box: type, or tap the mic and talk. It works out whether you are *logging something* or *asking a question* about what you logged. A capture becomes **items** (to-dos, list entries, routines, dates) and - only when there is something to remember - a **note**: "add Dune to my reading list" saves just the item, "met Priya, send her the deck" saves a note plus a to-do. The reply is a receipt of what went where, each line tappable, with **Undo**. Recording can be paused or cancelled; you can pick a category and optionally attach your location. |
+| **Today** | What needs you now, across every list: overdue, due today (timed ones by time, routines, dates) and the coming week - birthdays included. Undated things stay on their lists. |
+| **Lists** | The main **Tasks** list, plus lists made as you go - Movies, Books, Groceries, Birthdays, Routines, Startup ideas - each with a quick-add box and its done items folded away. Items can have a date, a time, a repeat (daily, weekdays, weekly, monthly, yearly, every N hours) and a detail; ticking a repeating item moves it to its next date. |
 | **Notes** | Organised **by initiative**: a block per initiative showing its notes as short bullet points; tap one to open that initiative's page, where the points are sorted into sections that fit the subject. Search shows matching notes; open a note to read, edit or delete it. Notes carry no task lists - tasks live on the Tasks tab. Initiatives (name, colour, order) are yours to manage. |
-| **Task reminders** | Optional push notifications at **9 AM and 5 PM** (each device's own time zone) listing your open tasks grouped by category. Turn them on per device in Settings → Notifications. See "Task reminders" below. |
-| **Tasks** | Every task pulled out of your notes, **grouped under its initiative** (never by date), with the nearest deadline first inside each. Tasks can have a date and a time ("send the deck by 6pm"); an overdue date shows in red. Tap a task to tick it off, edit its wording or deadline, flip who owes it, or jump to the note it came from. |
+| **Reminders** | Optional push notifications: a summary at **9 AM and 5 PM** (each device's own time zone) of your open to-dos by category, plus one per item at its moment - at its time of day, the evening before a birthday, every N hours for a routine. Turn them on per device in Settings → Notifications. See "Task reminders" below. |
+| **Tasks** (under Lists) | Every to-do not in a named list, **grouped under its initiative**, nearest deadline first inside each. Overdue dates show in red. Tap one to tick it off, edit it (wording, date, time, repeat, list), flip who owes it, or jump to the note it came from. |
 
 Also: sign-in (email or Google via Supabase Auth), light/dark themes, text size, app lock, a first-run tour,
 usage mode (work / personal / both) that tunes wording, account deletion, and encrypted-at-rest content.
@@ -75,7 +77,7 @@ Backend settings go in a repo-root `.env`; the frontend's go in `frontend/.env.d
 ### Database
 
 Run `schema.sql` in the Supabase SQL Editor (every statement is `if not exists`, so re-running is safe).
-For this version the tables that matter are `interaction`, `task`, `initiative`, `user_preference`,
+For this version the tables that matter are `interaction`, `task` (every item), `item_list`, `initiative`, `user_preference`,
 `search_chunk`, `subscription` / `usage_counter`. Older tables from the full app (`person`,
 `document`, graph tables…) can stay in place — nothing in v1.0 reads or writes them.
 
@@ -95,9 +97,11 @@ Web Push, sent by the backend (`push_notify.py`), shown by the app's service wor
 1. **Keys, once:** `python scripts/generate_vapid_keys.py you@example.com`, then set the three `VAPID_*` values on Render
    (and locally in `.env`). Never change the pair afterwards — devices subscribed with the old one stop working.
 2. **Database:** run `scripts/migration_36_push.sql` (schema.sql section 36, the `push_subscription` table) in the Supabase SQL Editor.
-3. **Scheduler:** `.github/workflows/task-reminders.yml` calls `POST /api/push/send-due` every 30 minutes with the
-   `CRON_SECRET` header (repo secrets `RENDER_API_URL` and `CRON_SECRET`; the same `CRON_SECRET` must be set on Render).
-   Each device gets each reminder at most once a day, inside a 90-minute window after 9:00 / 17:00 local time.
+3. **Scheduler:** a Supabase pg_cron job calls `POST /api/push/send-due` every minute with the `CRON_SECRET` header.
+   Set it up by filling in the backend URL and `CRON_SECRET` in `scripts/migration_38_reminder_cron.sql` and running it in
+   the SQL Editor (the same `CRON_SECRET` must be set on Render). The 9 AM / 5 PM summaries go out at most once a day each;
+   an item with a time of day is reminded at that time, a birthday the evening before at 8 PM, and an "every N hours"
+   routine every N hours from 9 AM to 9 PM. `.github/workflows/task-reminders.yml` is kept for firing one tick by hand.
 4. **Per device:** Settings → Notifications → Task reminders. iPhone needs iOS 16.4+ and the app added to the Home Screen first.
    The Android app (a Trusted Web Activity) shows them only if notification delegation is enabled in that app.
 

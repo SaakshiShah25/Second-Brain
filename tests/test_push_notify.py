@@ -66,7 +66,7 @@ def test_tasks_are_grouped_under_categories_nearest_deadline_first():
 def test_the_message_lists_each_category_with_a_few_tasks_and_a_count():
     pn.db, _ = _db()
     msg = pn.build_message(pn.group_open_tasks("u"), "9am")
-    assert msg["title"] == "Good morning · 7 open tasks" and msg["url"] == "/tasks"
+    assert msg["title"] == "Good morning · 7 open tasks" and msg["url"] == "/today"
     lines = msg["body"].split("\n")
     assert lines[0].startswith("Work (4): Email the proposal · Send Priya the deck · Fourth work task +1 more")
     assert lines[1] == "Personal (2): Pay rent · Book dentist" and lines[2] == "Others (1): Order a notebook"

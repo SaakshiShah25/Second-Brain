@@ -35,7 +35,7 @@ import voice
 from llm_client import get_client as get_llm_client
 from api.auth import get_current_user_id
 from api.rate_limit import TOO_FAST, default_rate_limit, limiter, route_label, token_subject
-from api.routers import admin, ask, capture, chat, initiatives, notes, push, settings, tasks
+from api.routers import admin, ask, capture, chat, initiatives, lists, notes, push, settings, tasks
 
 # Error tracking (Sentry, free Developer plan) - only when SENTRY_DSN is
 # set. Notes are private, so nothing personal is sent: no request bodies,
@@ -206,6 +206,7 @@ app.add_middleware(
 # Every route gets the default per-user limit (api/rate_limit.py).
 _LIMITED = [Depends(default_rate_limit)]
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"], dependencies=_LIMITED)
+app.include_router(lists.router, prefix="/api/lists", tags=["lists"], dependencies=_LIMITED)
 app.include_router(capture.router, prefix="/api/capture", tags=["capture"], dependencies=_LIMITED)
 app.include_router(ask.router, prefix="/api/ask", tags=["ask"], dependencies=_LIMITED)
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"], dependencies=_LIMITED)

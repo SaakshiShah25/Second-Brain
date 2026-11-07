@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
-import type { TaskFilter, TaskOwner, TasksResponse } from './types'
+import type { Repeat, TaskFilter, TaskOwner, TasksResponse } from './types'
 
 export function useTasks(filter: TaskFilter, enabled = true) {
   return useQuery({
@@ -10,12 +10,42 @@ export function useTasks(filter: TaskFilter, enabled = true) {
   })
 }
 
-// Edits a task's wording and/or deadline. A field sent as null clears it.
+export interface ItemEdit {
+  description?: string
+  due_date?: string | null
+  due_time?: string | null
+  repeat?: Repeat | null
+  list_id?: number | null
+  detail?: string | null
+}
+
+// Edits an item's wording, deadline, repeat, list or detail. A field sent as null clears it.
 export function useEditTask() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ taskId, ...fields }: { taskId: number; description?: string; due_date?: string | null; due_time?: string | null }) =>
-      api.patch(`/api/tasks/${taskId}`, fields),
+    mutationFn: ({ taskId, ...fields }: { taskId: number } & ItemEdit) => api.patch(`/api/tasks/${taskId}`, fields),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+}
+
+// Typed straight into a list's quick-add box.
+export function useCreateItem() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { description: string; list_id: number | null; due_date?: string | null; repeat?: Repeat | null }) =>
+      api.post<{ id: number }>('/api/tasks', body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+}
+
+export function useDeleteItem() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (taskId: number) => api.delete(`/api/tasks/${taskId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
@@ -31,12 +61,15 @@ export function useEditTask() {
 // tap. onSettled still invalidates so the real counts (overdue/due soon/
 // etc., which aren't worth recomputing client-side) catch up right after.
 
+// A repeating item (`repeats`) isn't closed when ticked - the server moves it to its next
+// date - so it isn't shown as done in the meantime either; the refetch brings the new date.
 export function useUpdateTaskStatus() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ taskId, status }: { taskId: number; status: 'open' | 'done' }) =>
+    mutationFn: ({ taskId, status }: { taskId: number; status: 'open' | 'done'; repeats?: boolean }) =>
       api.patch(`/api/tasks/${taskId}`, { status }),
-    onMutate: async ({ taskId, status }) => {
+    onMutate: async ({ taskId, status, repeats }) => {
+      if (repeats) return { previous: [] as ReturnType<typeof queryClient.getQueriesData<TasksResponse>> }
       await queryClient.cancelQueries({ queryKey: ['tasks'] })
       const previous = queryClient.getQueriesData<TasksResponse>({ queryKey: ['tasks'] })
       queryClient.setQueriesData<TasksResponse>({ queryKey: ['tasks'] }, (old) =>

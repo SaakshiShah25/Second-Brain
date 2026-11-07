@@ -1,7 +1,8 @@
 """
-api/routers/tasks.py — The Today page's task data: list with the
-Overdue / Due soon / Open / Done / All filters, and edit a task (status,
-owner, wording, deadline).
+api/routers/tasks.py — Items: every to-do and list entry (the Today, Lists and
+Tasks pages all read GET /api/tasks), adding one straight into a list, editing
+one (status, owner, wording, deadline, repeat, list, detail) and deleting one.
+Ticking off a repeating item moves it to its next date instead of closing it.
 """
 
 from datetime import date, timedelta
@@ -12,7 +13,7 @@ import date_utils
 import db
 import search_index
 from api.auth import get_current_user_id
-from api.schemas import TaskStatusUpdate
+from api.schemas import TaskCreate, TaskStatusUpdate
 
 router = APIRouter()
 
@@ -51,12 +52,56 @@ def list_tasks(status_filter: str = "open", user_id: str = Depends(get_current_u
     return {"tasks": tasks, "counts": counts}
 
 
+def _valid_repeat(value):
+    if not value:
+        return None
+    repeat = date_utils.normalize_repeat(value)
+    if not repeat:
+        raise HTTPException(400, "repeat must be daily, weekdays, weekly, monthly, yearly or hours:N")
+    return repeat
+
+
+def _check_list(user_id: str, list_id):
+    if list_id is not None and not db.get_list(user_id, list_id):
+        raise HTTPException(404, "That list doesn't exist.")
+
+
+@router.post("")
+def create_task(body: TaskCreate, user_id: str = Depends(get_current_user_id)):
+    text = " ".join(body.description.split())
+    if not text:
+        raise HTTPException(400, "An item needs some wording.")
+    _check_list(user_id, body.list_id)
+    if body.due_date and not date_utils.to_valid_date(body.due_date):
+        raise HTTPException(400, "due_date must be YYYY-MM-DD")
+    repeat = _valid_repeat(body.repeat)
+    due_time = date_utils.to_valid_time(body.due_time) if body.due_time else None
+    due_date = body.due_date or (date.today().isoformat() if (due_time or repeat) else None)
+    task_id = db.create_task(user_id, None, text, due_date=due_date, due_time=due_time,
+                             list_id=body.list_id, repeat=repeat)
+    search_index.enqueue(user_id, "task", [task_id])
+    return {"id": task_id}
+
+
+@router.delete("/{task_id}")
+def delete_task(task_id: int, user_id: str = Depends(get_current_user_id)):
+    db.delete_task(user_id, task_id)
+    search_index.enqueue(user_id, "task", [], prune_after=True)
+    return {"ok": True}
+
+
 @router.patch("/{task_id}")
 def update_task(task_id: int, body: TaskStatusUpdate, user_id: str = Depends(get_current_user_id)):
     if body.status is not None:
         if body.status not in ("open", "done"):
             raise HTTPException(400, "status must be 'open' or 'done'")
-        db.update_task_status(user_id, task_id, body.status)
+        current = db.get_task(user_id, task_id) if body.status == "done" else None
+        if current and current.get("repeat"):
+            # A repeating item is never "done": ticking it off moves it to its next date.
+            db.update_task_fields(user_id, task_id, due_date=date_utils.next_occurrence(
+                current.get("due_date"), current["repeat"]))
+        else:
+            db.update_task_status(user_id, task_id, body.status)
     if body.owner is not None:
         if body.owner not in ("me", "them"):
             raise HTTPException(400, "owner must be 'me' or 'them'")
@@ -77,10 +122,20 @@ def update_task(task_id: int, body: TaskStatusUpdate, user_id: str = Depends(get
         if edits["due_time"] and not valid:
             raise HTTPException(400, "due_time must look like 19:00 or 7pm")
         changes["due_time"] = valid
+    if "list_id" in edits:
+        _check_list(user_id, edits["list_id"])
+        changes["list_id"] = edits["list_id"]
+    if "repeat" in edits:
+        changes["repeat"] = _valid_repeat(edits["repeat"])
+        if changes["repeat"] and not (changes.get("due_date") or db.get_task(user_id, task_id).get("due_date")):
+            changes["due_date"] = date.today().isoformat()  # a routine starts today unless told otherwise
+    if "detail" in edits:
+        changes["detail"] = " ".join((edits["detail"] or "").split()) or None
     if changes.get("due_time") and not (changes.get("due_date") or db.get_task(user_id, task_id).get("due_date")):
         raise HTTPException(400, "Give the task a date before giving it a time.")
     if changes.get("due_date") is None and "due_date" in changes:
         changes["due_time"] = None  # no date -> no time of day either
+        changes["repeat"] = None    # ...and nothing to repeat from
     if changes:
         try:
             db.update_task_fields(user_id, task_id, **changes)

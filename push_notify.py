@@ -1,16 +1,23 @@
 """
-push_notify.py — Task reminders as Web Push notifications.
+push_notify.py — Reminders as Web Push notifications. Two kinds:
 
-Twice a day (9 AM and 5 PM in each user's own time zone) every subscribed device gets one
-notification listing the user's open tasks, grouped under their categories (initiatives), so
-they can see at a glance what to focus on. Tapping it opens the Tasks tab.
+  * The daily summary. At 9 AM and 5 PM in each user's own time zone every subscribed device
+    gets one notification listing the user's open to-dos, grouped under their categories
+    (initiatives). Entries in a list (a movie, a book) only appear once they have a date that
+    has come. Tapping it opens the Today tab.
+  * Item reminders, one notification per item, at the moment it is for:
+      - an item with a time of day: at that time ("Call the bank" at 4 PM)
+      - a yearly date with no time (a birthday): 8 PM the evening before; the morning summary
+        has it on the day itself
+      - an "every N hours" routine (drink water): every N hours from 9 AM until 9 PM
 
 How it runs
-    A scheduled job (.github/workflows/task-reminders.yml) calls POST /api/push/send-due every
-    30 minutes. send_due() looks at each stored device, works out its local time from the
-    time zone it registered, and sends when it is inside a slot's window and that slot has not
-    been sent today (last_9am / last_5pm hold the local date it last went out). A late or
-    skipped run is fine: the window stays open for a while, and it can only send once a slot.
+    A Supabase pg_cron job (scripts/migration_38_reminder_cron.sql) calls
+    POST /api/push/send-due every minute. send_due() works out each device's local time from
+    the time zone it registered. Summaries go out when a device is inside a slot's window and
+    that slot has not been sent today (last_9am / last_5pm hold the local date it last went
+    out). An item reminder records the occurrence it was sent for (task.reminded_key), so each
+    one is sent once, and a missed minute is picked up on the next.
 
 Setup (once): generate keys with `python scripts/generate_vapid_keys.py`, then set
 VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT (a mailto: address) on the backend.
@@ -23,10 +30,11 @@ decrypted task descriptions, only at the moment of sending.
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Callable, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import date_utils
 import db
 
 # (slot name, hour of the day the reminder is for)
@@ -39,7 +47,13 @@ MAX_TASKS_PER_GROUP = 3   # task names shown under each
 MAX_BODY_CHARS = 480
 TASK_NAME_CHARS = 60
 
-TASKS_URL = "/tasks"
+TASKS_URL = "/today"
+
+# An item reminder is still worth sending this long after its moment (a missed tick, the
+# server waking up) - after that it is old news and the summary covers it.
+ITEM_GRACE = timedelta(hours=2)
+EVE_HOUR = 20                  # yearly dates (birthdays): the evening before
+NUDGE_HOURS = (9, 21)          # "every N hours" routines run from 9 AM until 9 PM
 
 
 def configured() -> bool:
@@ -61,16 +75,20 @@ def valid_timezone(name: str) -> bool:
 def due_slot(timezone_name: str, now_utc: Optional[datetime] = None):
     """(slot, local_date_iso) when this device's local time is inside a reminder window, else
     None. `slot` is '9am' or '5pm'."""
-    now_utc = now_utc or datetime.now(timezone.utc)
-    try:
-        local = now_utc.astimezone(ZoneInfo(timezone_name))
-    except (ZoneInfoNotFoundError, ValueError, TypeError):
-        local = now_utc  # unknown zone: treat as UTC rather than never sending
+    local = _local_now(timezone_name, now_utc)
     minutes = local.hour * 60 + local.minute
     for slot, hour in SLOTS:
         if hour * 60 <= minutes < hour * 60 + WINDOW_MINUTES:
             return slot, local.date().isoformat()
     return None
+
+
+def _local_now(timezone_name: str, now_utc: Optional[datetime] = None) -> datetime:
+    now_utc = now_utc or datetime.now(timezone.utc)
+    try:
+        return now_utc.astimezone(ZoneInfo(timezone_name))
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        return now_utc  # unknown zone: treat as UTC rather than never sending
 
 
 def _short(text: str) -> str:
@@ -81,7 +99,11 @@ def _short(text: str) -> str:
 def group_open_tasks(user_id: str) -> list:
     """[(category name, [task descriptions])] - the user's categories in their listed order,
     "Others" (no category) last; nearest deadline first inside each, undated last."""
-    tasks = db.get_all_tasks_with_context(user_id, status="open")
+    today = date.today().isoformat()
+    # A movie or a book on a list is a pile, not a to-do - only a list entry whose date has come
+    # belongs in the summary.
+    tasks = [t for t in db.get_all_tasks_with_context(user_id, status="open")
+             if not t.get("list_id") or (t.get("due_date") and t["due_date"] <= today)]
     initiatives = db.get_initiatives(user_id)
     by_id = {i["id"]: i["name"] for i in initiatives}
 
@@ -90,8 +112,8 @@ def group_open_tasks(user_id: str) -> list:
 
     buckets: dict = {}
     for t in sorted(tasks, key=key):
-        ini = (t.get("interaction") or {}).get("initiative") or {}
-        name = by_id.get(ini.get("id")) if ini.get("id") in by_id else None
+        ini_id = t.get("initiative_id") or ((t.get("interaction") or {}).get("initiative") or {}).get("id")
+        name = by_id.get(ini_id)
         buckets.setdefault(name, []).append(_short(t["description"]))
     ordered = [(i["name"], buckets[i["name"]]) for i in initiatives if i["name"] in buckets]
     if None in buckets:
@@ -166,13 +188,83 @@ def send_to_user(user_id: str, slot: str = "9am", sender: Optional[Callable] = N
     return sent
 
 
+def item_reminder(item: dict, timezone_name: str, now_utc: Optional[datetime] = None):
+    """(occurrence key, message) when this item's own reminder is due now and hasn't been sent
+    for this occurrence yet, else None. See the module docstring for when each kind fires."""
+    if not item.get("due_date"):
+        return None
+    local = _local_now(timezone_name, now_utc)
+    now = local.replace(tzinfo=None)
+    due = date.fromisoformat(item["due_date"])
+    lst = item.get("item_list") or {}
+    title = f"{lst['emoji']} {item['description']}" if lst.get("emoji") else item["description"]
+    hours = date_utils.repeat_hours(item.get("repeat"))
+
+    if hours:
+        start, end = NUDGE_HOURS
+        if due > now.date() or not (start <= now.hour < end):
+            return None
+        slot = start + (now.hour - start) // hours * hours
+        key, body = f"{now.date().isoformat()}T{slot:02d}", "Time for this again"
+    elif item.get("due_time"):
+        hh, mm = (int(x) for x in str(item["due_time"]).split(":")[:2])
+        at = datetime.combine(due, time(hh, mm))
+        if not (at <= now < at + ITEM_GRACE):
+            return None
+        key, body = at.strftime("%Y-%m-%dT%H:%M"), f"Now · {lst.get('name') or 'Tasks'}"
+    elif item.get("repeat") == "yearly":
+        at = datetime.combine(due - timedelta(days=1), time(EVE_HOUR))
+        if not (at <= now < at + ITEM_GRACE):
+            return None
+        key, body = f"eve:{due.isoformat()}", "Tomorrow"
+    else:
+        return None
+    if item.get("reminded_key") == key:
+        return None
+    return key, {"title": title, "body": body, "url": TASKS_URL, "tag": f"item-{item['id']}"}
+
+
+def _send_item_reminders(subs: list, now_utc: Optional[datetime], sender: Callable, result: dict) -> None:
+    by_user: dict = {}
+    for sub in subs:
+        by_user.setdefault(sub["user_id"], []).append(sub)
+    until = ((now_utc or datetime.now(timezone.utc)) + timedelta(days=2)).date().isoformat()
+    try:
+        items = db.get_reminder_candidates(list(by_user), until)
+    except Exception as e:
+        print(f"[warn] couldn't read item reminders (run scripts/migration_37_lists.sql?): {e}")
+        return
+    for item in items:
+        devices = by_user.get(item["user_id"]) or []
+        due = item_reminder(item, devices[0].get("timezone") or "UTC", now_utc) if devices else None
+        if not due:
+            continue
+        key, message = due
+        delivered = False
+        for sub in devices:
+            try:
+                sender(sub, message)
+                delivered = True
+            except SubscriptionGone:
+                db.delete_push_subscription(sub["endpoint"])
+                result["removed"] += 1
+            except Exception as e:
+                print(f"[warn] push to {sub['endpoint'][:48]}… failed: {e}")
+                result["failed"] += 1
+        if delivered:
+            db.mark_task_reminded(item["id"], key)
+            result["items_sent"] += 1
+
+
 def send_due(now_utc: Optional[datetime] = None, sender: Optional[Callable] = None) -> dict:
-    """One scheduler tick: sends every reminder that is due and not yet sent today.
+    """One scheduler tick: sends every summary and item reminder that is due and not yet sent.
     Returns counts for the job's log."""
     sender = sender or _send_webpush
-    result = {"checked": 0, "due": 0, "sent": 0, "skipped_no_tasks": 0, "removed": 0, "failed": 0}
+    result = {"checked": 0, "due": 0, "sent": 0, "skipped_no_tasks": 0, "removed": 0, "failed": 0, "items_sent": 0}
+    subs = db.get_push_subscriptions()
+    _send_item_reminders(subs, now_utc, sender, result)
     messages: dict = {}  # (user_id, slot) -> message, built once per user per tick
-    for sub in db.get_push_subscriptions():
+    for sub in subs:
         result["checked"] += 1
         due = due_slot(sub.get("timezone") or "UTC", now_utc)
         if not due:

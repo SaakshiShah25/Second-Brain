@@ -32,6 +32,8 @@ def update_note(interaction_id: int, body: InteractionUpdate, user_id: str = Dep
         fields["embedding"] = embeddings.compute_embedding(fields["raw_text"])
     if fields:
         db.update_interaction(user_id, interaction_id, **fields)
+        if "initiative_id" in fields:
+            db.update_tasks_initiative_for_interaction(user_id, interaction_id, fields["initiative_id"])
         search_index.enqueue(user_id, "note", [interaction_id])
         search_index.enqueue(user_id, "task", [t["id"] for t in db.get_tasks_for_interactions(user_id, [interaction_id])])
     return {"ok": True}

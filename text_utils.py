@@ -181,3 +181,25 @@ def as_bullets(text, max_points: int = 4):
     points = [p for p in points if p][:max_points]
     return "\n".join(f"- {p}" for p in points)
 
+
+
+# A new list gets an emoji from its name, so "Movies" shows 🎬 without asking anything.
+_LIST_EMOJI = [
+    (r"stock|invest|portfolio|\bshares?\b", "📈"), (r"book|read", "📚"), (r"movie|film|watch|\bshows?\b|series|netflix", "🎬"),
+    (r"grocer|shop|buy|market", "🛒"), (r"birthday|anniversar|\bdates?\b", "🎂"), (r"idea|startup|business", "💡"),
+    (r"routine|habit|daily|health|fitness|workout|gym", "🔁"), (r"trip|travel|pack|holiday|vacation", "🧳"),
+    (r"gift|present", "🎁"), (r"podcast|music|song|album", "🎧"), (r"recipe|cook|food|restaurant|eat", "🍳"),
+    (r"place|visit|cafe", "📍"), (r"bill|pay|money|finance", "💸"), (r"home|house|clean|chore", "🏠"),
+    (r"learn|course|study|school|class", "🎓"),
+]
+
+# What people call the main to-do list - an item "in" one of these has no list of its own.
+MAIN_LIST_NAMES = {"tasks", "task", "to-do", "to-dos", "todo", "todos", "to do", "to do list", "todo list", "inbox"}
+
+
+def list_emoji(name: str) -> str:
+    lower = (name or "").lower()
+    for pattern, emoji in _LIST_EMOJI:
+        if re.search(pattern, lower):
+            return emoji
+    return "📝"

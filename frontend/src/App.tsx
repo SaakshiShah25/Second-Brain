@@ -4,6 +4,9 @@ import Layout from './components/Layout'
 import LoginPage from './pages/LoginPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import TasksPage from './pages/TasksPage'
+import TodayPage from './pages/TodayPage'
+import ListsPage from './pages/ListsPage'
+import ListPage from './pages/ListPage'
 import ChatPage from './pages/ChatPage'
 import NotesPage from './pages/NotesPage'
 import SettingsPage from './pages/SettingsPage'
@@ -46,8 +49,11 @@ export default function App() {
         >
           <Route path="/" element={<ChatPage />} />
           <Route path="/notes" element={<NotesPage />} />
+          <Route path="/today" element={<TodayPage />} />
+          <Route path="/lists" element={<ListsPage />} />
+          <Route path="/lists/:listId" element={<ListPage />} />
           <Route path="/tasks" element={<TasksPage />} />
-          <Route path="/digest" element={<Navigate to="/tasks" replace />} />
+          <Route path="/digest" element={<Navigate to="/today" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Route>

@@ -194,6 +194,7 @@ def test_export_downloads_everything_without_internal_fields(client, monkeypatch
                         lambda uid: [{"id": 5, "summary": "- point", "embedding": [0.1], "user_id": uid}])
     monkeypatch.setattr(settings.db, "get_all_tasks_with_context",
                         lambda uid: [{"id": 9, "description": "do it", "interaction": {"id": 5}, "user_id": uid}])
+    monkeypatch.setattr(settings.db, "get_lists", lambda uid: [{"id": 3, "name": "Movies", "user_id": uid}])
     monkeypatch.setattr(settings.db, "get_user_preference", lambda uid: {"theme": "light", "user_id": uid})
     r = client.get("/api/settings/export", headers=_auth())
     assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
@@ -201,7 +202,32 @@ def test_export_downloads_everything_without_internal_fields(client, monkeypatch
     assert data["email"] == "user-1@example.com"
     assert data["notes"] == [{"id": 5, "summary": "- point"}]  # no embedding, no user_id
     assert data["tasks"] == [{"id": 9, "description": "do it"}]
+    assert data["lists"] == [{"id": 3, "name": "Movies"}]
     assert data["settings"] == {"theme": "light"}
+
+
+# ---------- lists and items ----------
+
+def test_ticking_a_repeating_item_moves_its_date_instead_of_closing_it(client, monkeypatch):
+    from api.routers import tasks as tasks_router
+    calls = []
+    monkeypatch.setattr(tasks_router.db, "get_task", lambda uid, tid: {"id": tid, "due_date": "2020-01-01", "repeat": "daily"})
+    monkeypatch.setattr(tasks_router.db, "update_task_fields", lambda uid, tid, **f: calls.append(("fields", f)))
+    monkeypatch.setattr(tasks_router.db, "update_task_status", lambda uid, tid, s: calls.append(("status", s)))
+    monkeypatch.setattr(tasks_router.search_index, "enqueue", lambda *a, **k: None)
+    r = client.patch("/api/tasks/4", json={"status": "done"}, headers=_auth())
+    assert r.status_code == 200
+    (kind, fields), = calls
+    assert kind == "fields" and fields["due_date"] > "2020-01-01"   # moved on, still open
+
+
+def test_lists_can_be_created_but_not_named_like_the_main_tasks_list(client, monkeypatch):
+    from api.routers import lists as lists_router
+    monkeypatch.setattr(lists_router.db, "get_list_by_name", lambda uid, name: None)
+    monkeypatch.setattr(lists_router.db, "create_list", lambda uid, name, emoji=None: {"id": 1, "name": name, "emoji": emoji})
+    r = client.post("/api/lists", json={"name": "  Movies "}, headers=_auth())
+    assert r.status_code == 200 and r.json() == {"id": 1, "name": "Movies", "emoji": "🎬"}
+    assert client.post("/api/lists", json={"name": "To-do"}, headers=_auth()).status_code == 400
 
 
 # ---------- admin ----------
