@@ -93,7 +93,18 @@ def update_task(task_id: int, body: TaskStatusUpdate, user_id: str = Depends(get
             raise HTTPException(400, "That day has already passed - pick today or later.")
         changes["remind_on"] = edits["remind_on"] or None
         changes["reminded_on"] = None  # a new reminder date means it has not been sent yet
+        if not changes["remind_on"]:
+            edits.setdefault("remind_time", None)  # no reminder, no time for it
         needs_migration = True
+    if "remind_time" in edits:
+        valid = date_utils.to_valid_time(edits["remind_time"]) if edits["remind_time"] else None
+        if edits["remind_time"] and not valid:
+            raise HTTPException(400, "remind_time must look like 19:00 or 7pm")
+        if valid or db.reminder_time_supported():  # clearing it needs the column too, but only if it was ever set
+            changes["remind_time"] = valid
+            changes["reminded_on"] = None
+        if valid and not db.reminder_time_supported():
+            raise HTTPException(503, "Choosing a time for a reminder isn't available yet - run scripts/migration_41_reminder_time.sql first.")
     if "initiative_id" in edits:
         if edits["initiative_id"] is not None and not db.get_initiative(user_id, edits["initiative_id"]):
             raise HTTPException(400, "That category doesn't exist.")

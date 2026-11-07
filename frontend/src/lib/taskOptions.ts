@@ -29,21 +29,27 @@ function shift(iso: string, days: number): string {
   return isoLocal(new Date(y, m - 1, d + days))
 }
 
-// Reminders go out at 9 AM (device time) on their day, so once it is 9 AM today, today is no longer a day a
-// reminder can still arrive.
-export const REMINDER_HOUR = 9
+// A reminder arrives at a time the user picks on the day they pick (device time); with none picked it is 9 AM.
+export const DEFAULT_REMIND_TIME = '09:00'
 
-/** The first day a reminder can still be set for: today before 9 AM, otherwise tomorrow. */
-export function earliestReminderDate(now: Date = new Date()): string {
+/** True when that day and time (HH:MM) have already gone by. */
+export function momentPassed(date: string, time: string, now: Date = new Date()): boolean {
+  const [y, m, d] = date.split('-').map(Number)
+  const [h, min] = time.split(':').map(Number)
+  return new Date(y, m - 1, d, h, min || 0) <= now
+}
+
+/** The first day a reminder at `time` can still arrive on: today if that time is still ahead, otherwise tomorrow. */
+export function earliestReminderDate(now: Date = new Date(), time: string = DEFAULT_REMIND_TIME): string {
   const today = isoLocal(now)
-  return now.getHours() >= REMINDER_HOUR ? shift(today, 1) : today
+  return momentPassed(today, time, now) ? shift(today, 1) : today
 }
 
 /** Quick choices for "remind me", in days from the due date (or from today when the task has no date).
- * Days a reminder can no longer arrive on (earlier than today, or today after 9 AM) are left out. */
+ * Days that have already gone by are left out; whether today's time is still ahead is checked once the time is chosen. */
 export function reminderChoices(dueDate: string | null, now: Date = new Date()): { label: string; date: string }[] {
   const today = isoLocal(now)
-  const earliest = earliestReminderDate(now)
+  const earliest = today
   const choices = dueDate
     ? [
         { label: 'On the day it is due', date: dueDate },

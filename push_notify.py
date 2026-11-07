@@ -1,16 +1,22 @@
 """
 push_notify.py — Task reminders as Web Push notifications.
 
-Twice a day (9 AM and 5 PM in each user's own time zone) every subscribed device gets one
-notification listing the user's open tasks, grouped under their categories (initiatives), so
-they can see at a glance what to focus on. Tapping it opens the Tasks tab.
+Two kinds of notification:
+  * The daily summary: at 9 AM and 5 PM in each user's own time zone every subscribed device gets
+    one notification listing the user's open tasks, grouped under their categories (initiatives), so
+    they can see at a glance what to focus on.
+  * Task reminders: the bell on a task. The user picks a day and a time (default 9 AM; "at its due
+    time" copies the task's own). It is sent once that moment has passed in the device's time zone.
+Tapping either opens the Tasks tab.
 
 How it runs
-    A scheduled job (.github/workflows/task-reminders.yml) calls POST /api/push/send-due every
-    30 minutes. send_due() looks at each stored device, works out its local time from the
-    time zone it registered, and sends when it is inside a slot's window and that slot has not
-    been sent today (last_9am / last_5pm hold the local date it last went out). A late or
-    skipped run is fine: the window stays open for a while, and it can only send once a slot.
+    A scheduled job (.github/workflows/task-reminders.yml, every 5 minutes) calls POST
+    /api/push/send-due. send_due() looks at each stored device, works out its local time from the
+    time zone it registered, and sends a summary when it is inside a slot's window and that slot has
+    not been sent today (last_9am / last_5pm hold the local date it last went out). Task reminders
+    are sent by send_task_reminders() on the first run at or after their moment and marked
+    (task.reminded_on), so a late or skipped run only delays them - and a reminder missed entirely is
+    still delivered for REMINDER_GRACE_DAYS afterwards.
 
 Setup (once): generate keys with `python scripts/generate_vapid_keys.py`, then set
 VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT (a mailto: address) on the backend.
@@ -23,7 +29,8 @@ decrypted task descriptions, only at the moment of sending.
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from datetime import time as dtime
 from typing import Callable, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -45,6 +52,7 @@ PRIORITY_RANK = {"high": 0, "normal": 1, "low": 2}
 # A task reminder (the bell on a task) goes out in the 9 AM window of the day it was set for. A run that was missed
 # still delivers it for a few days afterwards.
 REMINDER_GRACE_DAYS = 3
+DEFAULT_REMIND_TIME = "09:00"   # a reminder with no time of its own
 MAX_REMINDER_LINES = 5
 
 
@@ -179,12 +187,22 @@ def send_to_user(user_id: str, slot: str = "9am", sender: Optional[Callable] = N
     return sent
 
 
+def reminder_moment(task: dict) -> datetime:
+    """When this task's reminder is for, as a naive local time: its day at its time (9 AM when it has none)."""
+    hhmm = str(task.get("remind_time") or DEFAULT_REMIND_TIME)[:5]
+    hour, minute = (int(x) for x in hhmm.split(":"))
+    return datetime.combine(date.fromisoformat(str(task["remind_on"])[:10]), dtime(hour, minute))
+
+
 def build_reminder_message(tasks: list, local_date: str) -> Optional[dict]:
     """The notification for tasks the user asked to be reminded about, or None when there are none."""
     if not tasks:
         return None
     ordered = sorted(tasks, key=lambda t: (PRIORITY_RANK.get(t.get("priority"), 1), t.get("due_date") or "9999-12-31", t["id"]))
-    lines = [_short(t["description"]) + (f" (due {t['due_date']})" if t.get("due_date") else "") for t in ordered[:MAX_REMINDER_LINES]]
+    def line(t):
+        due = f" (due {t['due_date']}" + (f" at {str(t['due_time'])[:5]}" if t.get("due_time") else "") + ")" if t.get("due_date") else ""
+        return _short(t["description"]) + due
+    lines = [line(t) for t in ordered[:MAX_REMINDER_LINES]]
     if len(ordered) > MAX_REMINDER_LINES:
         lines.append(f"+{len(ordered) - MAX_REMINDER_LINES} more")
     one = len(ordered) == 1
@@ -192,29 +210,49 @@ def build_reminder_message(tasks: list, local_date: str) -> Optional[dict]:
         "title": "Reminder · " + (_short(ordered[0]["description"]) if one else f"{len(ordered)} tasks"),
         "body": "\n".join(lines) if not one else (f"Due {ordered[0]['due_date']}" if ordered[0].get("due_date") else "You asked to be reminded."),
         "url": TASKS_URL,
-        "tag": f"task-reminders-{local_date}",
+        # one tag per reminder, so a 9 AM and a 3 PM reminder on the same day don't replace each other
+        "tag": f"task-reminder-{ordered[0]['id']}",
     }
 
 
+def _local_now(timezone_name: str, now_utc: datetime) -> datetime:
+    try:
+        return now_utc.astimezone(ZoneInfo(timezone_name))
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        return now_utc  # unknown zone: treat as UTC rather than never sending
+
+
 def send_task_reminders(now_utc: Optional[datetime] = None, sender: Optional[Callable] = None) -> dict:
-    """Sends the reminders users set on individual tasks (the bell). One notification per user, to each of their
-    devices that is inside its 9 AM window right now; each task is reminded once."""
+    """Sends the reminders users set on individual tasks (the bell). One notification per user per run, to each of
+    their devices, listing the tasks whose moment (their day and time, in the user's time zone) has passed; each task
+    is reminded once."""
     sender = sender or _send_webpush
     result = {"reminded_users": 0, "reminded_tasks": 0}
     now_utc = now_utc or datetime.now(timezone.utc)
     by_user: dict = {}
     for sub in db.get_push_subscriptions():
-        due = due_slot(sub.get("timezone") or "UTC", now_utc)
-        if due and due[0] == "9am":
-            by_user.setdefault(sub["user_id"], []).append((sub, due[1]))
+        by_user.setdefault(sub["user_id"], []).append(sub)
     if not by_user:
         return result
-    from datetime import date, timedelta
+    # One query for who has anything pending at all (time zones span a day either side of UTC), so a run with
+    # nothing to send costs a single read rather than one per user.
+    try:
+        waiting = db.get_users_with_reminders(
+            (now_utc.date() + timedelta(days=1)).isoformat(),
+            (now_utc.date() - timedelta(days=REMINDER_GRACE_DAYS + 1)).isoformat(),
+        )
+    except Exception as e:
+        print(f"[warn] couldn't read task reminders: {e}")
+        return result
     for user_id, subs in by_user.items():
-        local_date = subs[0][1]
-        since = (date.fromisoformat(local_date) - timedelta(days=REMINDER_GRACE_DAYS)).isoformat()
+        if user_id not in waiting:
+            continue
+        local = _local_now(subs[0].get("timezone") or "UTC", now_utc)
+        local_date = local.date().isoformat()
+        since = (local.date() - timedelta(days=REMINDER_GRACE_DAYS)).isoformat()
         try:
-            tasks = db.get_tasks_to_remind(user_id, local_date, since)
+            tasks = [t for t in db.get_tasks_to_remind(user_id, local_date, since)
+                     if reminder_moment(t) <= local.replace(tzinfo=None)]
         except Exception as e:
             print(f"[warn] couldn't read task reminders for {user_id}: {e}")
             continue
@@ -222,7 +260,7 @@ def send_task_reminders(now_utc: Optional[datetime] = None, sender: Optional[Cal
         if message is None:
             continue
         delivered = False
-        for sub, _ in subs:
+        for sub in subs:
             try:
                 sender(sub, message)
                 delivered = True

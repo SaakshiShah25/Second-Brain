@@ -57,7 +57,7 @@ What runs automatically once these are set:
 | Workflow | When (IST) | What it does |
 |---|---|---|
 | CI | every push | Runs the tests, type check and build |
-| Task reminders | every 30 min | Sends the 9 AM and 5 PM task reminder push notifications (each device's own time zone) |
+| Task reminders | every 5 min | Sends the 9 AM / 5 PM task summary and the reminders set on tasks, at the time chosen (each device's own time zone) |
 | Daily report | 9:00pm | Emails you users, usage, AI budget, limits hit and errors; deletes events older than 30 days |
 | Nightly backup | 3:00am | Encrypted database dump, kept 14 days under **Actions → Nightly backup → a run → Artifacts** |
 

@@ -338,6 +338,7 @@ def test_task_priority_reminder_and_category_are_validated_and_need_the_migratio
     saved = []
     tasks_router.db = types.SimpleNamespace(
         task_extras_supported=lambda: True,
+        reminder_time_supported=lambda: False,   # migration 41 (a reminder's time) not run: the plain date still works
         get_initiative=lambda u, i: {"id": i} if i == 2 else None,
         update_task_fields=lambda u, t, **kw: saved.append(kw),
         get_task=lambda u, t: {},

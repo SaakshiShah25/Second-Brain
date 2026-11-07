@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BellOff } from 'lucide-react'
 import type { Task } from '../api/types'
-import { isoLocal, shortDate } from '../lib/dates'
-import { ON_PRIORITY, PRIORITIES, earliestReminderDate, priorityOf, reminderChoices, tint, type Priority } from '../lib/taskOptions'
+import { isoLocal, shortDate, timeLabel } from '../lib/dates'
+import { DEFAULT_REMIND_TIME, ON_PRIORITY, PRIORITIES, earliestReminderDate, momentPassed, priorityOf, reminderChoices, tint, type Priority } from '../lib/taskOptions'
 import Button from './Button'
 import Sheet from './Sheet'
 import { Input } from './fields'
@@ -91,53 +91,85 @@ export function PriorityFlag({ priority, onPick }: { priority: Priority; onPick:
   )
 }
 
-// "Remind me" for one task: quick choices counted from its due date, or any date. The push arrives at 9 AM that day.
-export function ReminderSheet({ task, onPick, onClose }: { task: Task; onPick: (date: string | null) => void; onClose: () => void }) {
+// "Remind me" for one task: a time of day (9 AM unless changed), then quick choices counted from its due date, "at its due
+// time" when it has one, or any date.
+export function ReminderSheet({
+  task,
+  onPick,
+  onClose,
+}: {
+  task: Task
+  onPick: (date: string | null, time: string | null) => void
+  onClose: () => void
+}) {
+  const [time, setTime] = useState((task.remind_time ?? DEFAULT_REMIND_TIME).slice(0, 5))
   const choices = reminderChoices(task.due_date)
   const [custom, setCustom] = useState('')
-  const earliest = earliestReminderDate()
+  const today = isoLocal(new Date())
+  const earliest = earliestReminderDate(new Date(), time || DEFAULT_REMIND_TIME)
+  const dueTime = task.due_date && task.due_time ? task.due_time.slice(0, 5) : null
+  // Stored as null when it is the default, so a plain 9 AM reminder stays exactly what it always was.
+  const pick = (date: string, at: string) => {
+    onPick(date, at === DEFAULT_REMIND_TIME ? null : at)
+    onClose()
+  }
+  const gone = (date: string, at: string) => momentPassed(date, at)
   return (
     <Sheet onClose={onClose}>
       <h3 className="text-lg font-semibold tracking-tight">Remind me</h3>
       <p className="mb-4 mt-0.5 line-clamp-2 text-[0.9375rem] text-text-muted">{task.description}</p>
       {task.remind_on && (
         <p className="mb-3 rounded-xl bg-bg-elevated px-3.5 py-2.5 text-[0.9375rem]">
-          Reminder set for <span className="font-semibold">{shortDate(task.remind_on)}</span>, 9 AM
+          Reminder set for <span className="font-semibold">{shortDate(task.remind_on)}</span>,{' '}
+          {timeLabel((task.remind_time ?? DEFAULT_REMIND_TIME).slice(0, 5))}
         </p>
       )}
+      {dueTime && task.due_date && (
+        <button
+          type="button"
+          disabled={gone(task.due_date, dueTime)}
+          onClick={() => pick(task.due_date!, dueTime)}
+          className="pressable mb-3 flex h-11 w-full items-center justify-between rounded-2xl border border-border-strong bg-bg-card px-3.5 text-left disabled:opacity-40"
+        >
+          <span className="text-[0.9375rem] font-medium">At its due time</span>
+          <span className="text-[0.8125rem] text-text-muted">
+            {shortDate(task.due_date)}, {timeLabel(dueTime)}
+          </span>
+        </button>
+      )}
+      <div className="mb-3 flex items-center gap-3">
+        <label htmlFor="remind-time" className="text-[0.9375rem] text-text-muted">
+          At
+        </label>
+        <Input id="remind-time" type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-36" />
+      </div>
       <div className="flex flex-wrap gap-2">
-        {choices.map((c) => (
-          <button
-            key={c.label}
-            type="button"
-            onClick={() => {
-              onPick(c.date)
-              onClose()
-            }}
-            className="pressable flex h-10 flex-col items-start justify-center rounded-2xl border border-border-strong bg-bg-card px-3.5 text-left leading-tight"
-          >
-            <span className="text-[0.875rem] font-medium">{c.label}</span>
-            <span className="text-[0.75rem] text-text-muted">{shortDate(c.date)}</span>
-          </button>
-        ))}
+        {choices.map((c) => {
+          const past = !time || gone(c.date, time)
+          return (
+            <button
+              key={c.label}
+              type="button"
+              disabled={past}
+              onClick={() => pick(c.date, time)}
+              className="pressable flex h-10 flex-col items-start justify-center rounded-2xl border border-border-strong bg-bg-card px-3.5 text-left leading-tight disabled:opacity-40"
+            >
+              <span className="text-[0.875rem] font-medium">{c.label}</span>
+              <span className="text-[0.75rem] text-text-muted">{shortDate(c.date)}</span>
+            </button>
+          )
+        })}
         {choices.length === 0 && <p className="text-[0.875rem] text-text-muted">The usual choices have already passed - pick a date below.</p>}
       </div>
       <div className="mt-4 flex gap-2">
         <Input type="date" min={earliest} value={custom} onChange={(e) => setCustom(e.target.value)} className="flex-1" />
-        <Button
-          variant="primary"
-          disabled={!custom || custom < earliest}
-          onClick={() => {
-            onPick(custom)
-            onClose()
-          }}
-        >
+        <Button variant="primary" disabled={!custom || !time || gone(custom, time)} onClick={() => pick(custom, time)}>
           Set
         </Button>
       </div>
       <p className="mt-2 text-[0.8125rem] text-text-faint">
-        You'll get a notification at 9 AM that day, if reminders are on in Settings.
-        {earliest > isoLocal(new Date()) && " Today's 9 AM has already passed, so the earliest is tomorrow."}
+        You'll get a notification at {time ? timeLabel(time) : 'that time'} that day, if reminders are on in Settings.
+        {earliest > today && ` ${timeLabel(time)} has already passed today, so the earliest day is tomorrow.`}
       </p>
       {task.remind_on && (
         <Button
@@ -145,7 +177,7 @@ export function ReminderSheet({ task, onPick, onClose }: { task: Task; onPick: (
           block
           className="mt-3"
           onClick={() => {
-            onPick(null)
+            onPick(null, null)
             onClose()
           }}
         >

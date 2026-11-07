@@ -15,12 +15,12 @@ import { toast } from '../components/Toast'
 import { useInitiatives } from '../api/initiatives'
 import { useNotes, useUpdateInteraction } from '../api/notes'
 import { useConnection } from '../lib/connection'
-import { dueLabel, fullDate, isoLocal, shortDate } from '../lib/dates'
+import { dueLabel, fullDate, isoLocal, shortDate, timeLabel } from '../lib/dates'
 import { groupByInitiative } from '../lib/groupByInitiative'
 import { matchesInitiative, notePoints, useInitiativeFilter } from '../lib/initiativeFilter'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
 import { noteItems } from '../lib/noteSections'
-import { ON_PRIORITY, PRIORITIES, PRIORITY_RANK, priorityOf, taskInitiativeId, tint, type Priority } from '../lib/taskOptions'
+import { DEFAULT_REMIND_TIME, ON_PRIORITY, PRIORITIES, PRIORITY_RANK, priorityOf, taskInitiativeId, tint, type Priority } from '../lib/taskOptions'
 
 function isOverdue(task: Task): boolean {
   return task.status === 'open' && !!task.due_date && task.due_date < isoLocal(new Date())
@@ -117,6 +117,7 @@ function TaskRow({
             <span className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap text-accent">
               <Bell size={12} strokeWidth={2.2} />
               {shortDate(task.remind_on)}
+              {task.remind_time && `, ${timeLabel(task.remind_time.slice(0, 5))}`}
             </span>
           )}
           {task.due_date && (
@@ -315,8 +316,8 @@ export default function TasksPage() {
   }
   const setPriority = (task: Task, priority: Priority) =>
     priority === priorityOf(task) ? undefined : setOption(task, { priority }, `${PRIORITIES.find((p) => p.value === priority)!.label} priority`)
-  const setReminder = (task: Task, date: string | null) =>
-    setOption(task, { remind_on: date }, date ? `Reminder set for ${shortDate(date)}, 9 AM` : 'Reminder removed')
+  const setReminder = (task: Task, date: string | null, time: string | null) =>
+    setOption(task, { remind_on: date, remind_time: time }, date ? `Reminder set for ${shortDate(date)}, ${timeLabel(time ?? DEFAULT_REMIND_TIME)}` : 'Reminder removed')
   const updateNote = useUpdateInteraction()
   // After a task moves, the note it came from may no longer sit with it. When the note was nothing but that one task
   // it simply follows; otherwise the user is asked (the note's other points and tasks would move with it).
@@ -633,7 +634,7 @@ export default function TasksPage() {
       )}
 
       {reminderTask && (
-        <ReminderSheet task={reminderTask} onPick={(date) => setReminder(reminderTask, date)} onClose={() => setReminderTaskId(null)} />
+        <ReminderSheet task={reminderTask} onPick={(date, time) => setReminder(reminderTask, date, time)} onClose={() => setReminderTaskId(null)} />
       )}
       {movingTask && (
         <CategorySheet

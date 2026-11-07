@@ -12,7 +12,8 @@ export interface Task {
   owner: TaskOwner
   // The next three exist once scripts/migration_38_task_options.sql has run.
   priority?: 'high' | 'normal' | 'low'
-  remind_on?: string | null // the day (YYYY-MM-DD) to get a 9 AM push about this task
+  remind_on?: string | null // the day (YYYY-MM-DD) to get a push about this task
+  remind_time?: string | null // HH:MM(:SS) that day; null = 9 AM (needs migration 41)
   initiative_id?: number | null // the task's own category (it can be moved without moving its note); null = Others
   created_at: string
   interaction?: {
