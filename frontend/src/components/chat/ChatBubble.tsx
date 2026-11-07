@@ -10,9 +10,9 @@ import CaptureReply from './CaptureReply'
 
 const SOURCE_ICON = { note: NotebookText, task: ListChecks }
 
-// Where a tap on a source chip goes: straight to the item (Lists finds its list), Notes for a note.
+// Where a tap on a source chip goes: straight to the item (Today opens its sheet), Notes (Spaces) for a note.
 function sourceTarget(s: AnswerSource): string {
-  return s.kind === 'task' ? `/lists?open=${s.id}` : '/notes'
+  return s.kind === 'task' ? `/today?open=${s.id}` : '/notes'
 }
 
 function Sources({ sources }: { sources: AnswerSource[] }) {

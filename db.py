@@ -399,9 +399,13 @@ def get_reminder_candidates(user_ids: list, until_date: str) -> list:
     due on or before `until_date`, for these users. Read by push_notify.send_due every minute."""
     if not user_ids:
         return []
+    # remind_on (the bell) only exists once the task options SQL has run; an item with a bell set is reminded by that.
+    columns = "id, user_id, description, due_date, due_time, repeat, reminded_key, item_list(name, emoji)"
+    if task_extras_supported():
+        columns += ", remind_on"
     resp = (
         get_client().table("task")
-        .select("id, user_id, description, due_date, due_time, repeat, reminded_key, item_list(name, emoji)")
+        .select(columns)
         .in_("user_id", list(user_ids)).eq("status", "open")
         .not_.is_("due_date", "null").lte("due_date", until_date)
         .or_("due_time.not.is.null,repeat.not.is.null")

@@ -42,8 +42,8 @@ function formatPart(part: CapturePart, showCategory: boolean): string {
     return part.tasks_created.map((t) => `- ${t.list_emoji ? t.list_emoji + ' ' : ''}${t.description}${t.list_name ? ` → ${t.list_name}` : ''}`).join('\n')
   }
   // "Others" is named only when the message was split, so it is clear where each piece went.
-  if (part.initiative_name) lines.push(`**Category:** ${part.initiative_name}`)
-  else if (showCategory) lines.push('**Category:** Others')
+  if (part.initiative_name) lines.push(`**Space:** ${part.initiative_name}`)
+  else if (showCategory) lines.push('**Space:** Others')
   const points = notePoints(part.summary)
   if (points.length > 0) lines.push(points.map((p) => `- ${p}`).join('\n'))
   if (part.decisions.length > 0) {
@@ -149,7 +149,7 @@ export default function ChatPage() {
     )
   }
 
-  // The reply to a logged note. A proposed new category is offered inside the reply itself (CaptureReply), and
+  // The reply to a logged note. A proposed new space is offered inside the reply itself (CaptureReply), and
   // the user can change where any part went from there too.
   function handleSavedCapture(result: CaptureSavedResult) {
     appendMessage('assistant', formatSavedMessage(result), { capture: result })
@@ -208,7 +208,7 @@ export default function ChatPage() {
         onStage: setStage,
       })
       setPendingLocation(null) // one-shot per note, not sticky across future sends
-      if (result.intent === 'capture') setSelectedInitiativeId(null) // likewise the chosen category
+      if (result.intent === 'capture') setSelectedInitiativeId(null) // likewise the chosen space
       handleChatResult(result, text)
       // Not processed because the AI was unavailable - hand the text back so
       // it can be sent again without retyping.
@@ -423,11 +423,11 @@ export default function ChatPage() {
           {selectedInitiative && (
             <div className="mb-2 flex">
               <span className="flex items-center gap-1.5 rounded-full border border-accent/30 py-1 pr-1 pl-2.5 text-xs font-medium text-accent" style={SOLID_CHIP}>
-                Category: {selectedInitiative.name}
+                Space: {selectedInitiative.name}
                 <button
                   type="button"
                   onClick={() => setSelectedInitiativeId(null)}
-                  aria-label="Remove category"
+                  aria-label="Remove space"
                   className="pressable flex h-5 w-5 items-center justify-center rounded-full"
                 >
                   <X size={12} strokeWidth={2} />

@@ -13,7 +13,7 @@ import { toast } from '../Toast'
 import { Input } from '../fields'
 
 // The reply to a logged note: ONE card, with a section per initiative it touched, in that initiative's colour -
-//   Category: <name>
+//   Space: <name>
 //   (key points)  Tasks:  Decisions:  Concerns:
 // Everything about one initiative sits together; nothing is repeated between the lists (extraction
 // keeps each fact in exactly one), and there are no divider lines - just a coloured edge per section.
@@ -48,7 +48,7 @@ function movedNote(name: string | null, tasks: number): string {
   return tasks > 0 ? `${where} - its ${tasks === 1 ? 'task' : `${tasks} tasks`} moved too` : where
 }
 
-// "Create the category <name>?" - a proposed new category is never created without the user saying yes. Until
+// "Create the space <name>?" - a proposed new space is never created without the user saying yes. Until
 // then the note sits in Others. Create it as proposed, rename it first, or leave the note in Others ("Not now").
 function Suggestion({ part, color, onResolved }: { part: CapturePart; color: string; onResolved: (patch: Partial<CapturePart>) => void }) {
   const createInitiative = useCreateInitiative()
@@ -68,13 +68,13 @@ function Suggestion({ part, color, onResolved }: { part: CapturePart; color: str
       onResolved({ initiative_id: made.id, initiative_name: made.name, suggested_initiative: null, change_note: `Created ${made.name} and filed this under it${part.tasks_created.length ? ' - with its ' + (part.tasks_created.length === 1 ? 'task' : part.tasks_created.length + ' tasks') : ''}` })
       toast(`Created ${made.name}`)
     } catch (e) {
-      setError(e instanceof Error && e.message ? e.message : "Couldn't create that category - please try again.")
+      setError(e instanceof Error && e.message ? e.message : "Couldn't create that space - please try again.")
     }
   }
 
   return (
     <div className="mt-3 rounded-xl bg-bg-elevated p-3">
-      <p className="text-[0.8125rem] text-text-muted">New category?</p>
+      <p className="text-[0.8125rem] text-text-muted">New space?</p>
       {renaming ? (
         <div className="mt-1.5 flex flex-col gap-2">
           <Input autoFocus value={name} maxLength={40} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && create(name)} />
@@ -90,7 +90,7 @@ function Suggestion({ part, color, onResolved }: { part: CapturePart; color: str
       ) : (
         <>
           <p className="mt-0.5 text-[0.9375rem] leading-snug">
-            File this under a new category called <span className="font-bold" style={{ color }}>{part.suggested_initiative}</span>?
+            File this under a new space called <span className="font-bold" style={{ color }}>{part.suggested_initiative}</span>?
           </p>
           <div className="mt-2.5 flex flex-wrap justify-end gap-2">
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => onResolved({ suggested_initiative: null, change_note: 'Left in Others' })}>
@@ -130,13 +130,13 @@ function Section({
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[1rem] font-bold" style={{ color }}>
         <span className="flex items-center gap-1.5">
           {Icon && <Icon size={16} strokeWidth={2.4} className="flex-shrink-0" />}
-          Category: {part.initiative_name ?? 'Others'}
+          Space: {part.initiative_name ?? 'Others'}
         </span>
         <button
           type="button"
           onClick={() => setChanging(true)}
-          aria-label="Change category"
-          title="Change category"
+          aria-label="Change space"
+          title="Change space"
           className="pressable flex h-7 w-7 items-center justify-center rounded-full border border-border-strong text-text-muted"
         >
           <Pencil size={13} strokeWidth={2.2} />
@@ -180,11 +180,11 @@ function Section({
       )}
       {changing && (
         <CategorySheet
-          title="Which category should this go in?"
+          title="Which space should this go in?"
           currentId={part.initiative_id}
           onClose={() => setChanging(false)}
           onPick={async (id) => {
-            // The note moves, and so do the tasks it created (the Tasks tab groups them by their note's category).
+            // The note moves, and so do the tasks it created (the Tasks tab groups them by their note's space).
             await updateInteraction.mutateAsync({ interactionId: part.interaction_id!, fields: { initiative_id: id } })
             if (id === part.initiative_id) return
             const name = id === null ? null : initiatives.find((i) => i.id === id)?.name ?? part.initiative_name

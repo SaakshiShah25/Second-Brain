@@ -75,7 +75,7 @@ def create_task(body: TaskCreate, user_id: str = Depends(get_current_user_id)):
         raise HTTPException(400, "An item needs some wording.")
     _check_list(user_id, body.list_id)
     if body.initiative_id is not None and not db.get_initiative(user_id, body.initiative_id):
-        raise HTTPException(400, "That category doesn't exist.")
+        raise HTTPException(400, "That space doesn't exist.")
     if body.due_date and not date_utils.to_valid_date(body.due_date):
         raise HTTPException(400, "due_date must be YYYY-MM-DD")
     repeat = _valid_repeat(body.repeat)
@@ -155,7 +155,7 @@ def update_task(task_id: int, body: TaskStatusUpdate, user_id: str = Depends(get
             raise HTTPException(503, "Choosing a time for a reminder isn't available yet - run scripts/migration_41_reminder_time.sql first.")
     if "initiative_id" in edits:
         if edits["initiative_id"] is not None and not db.get_initiative(user_id, edits["initiative_id"]):
-            raise HTTPException(400, "That category doesn't exist.")
+            raise HTTPException(400, "That space doesn't exist.")
         changes["initiative_id"] = edits["initiative_id"]
         needs_migration = True
     if "list_id" in edits:

@@ -1,12 +1,10 @@
 import { useCallback, useLayoutEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ListTree,
+  LayoutGrid,
   MessageCircleQuestion,
   MessageSquare,
-  NotebookText,
   Settings as SettingsIcon,
-  ListChecks,
   CalendarCheck,
   type LucideIcon,
 } from 'lucide-react'
@@ -59,25 +57,13 @@ const STEPS: Step[] = [
   {
     icon: CalendarCheck,
     title: 'Today',
-    description: 'What needs you today, from every list — overdue things, today’s reminders and routines, and birthdays coming up.',
+    description: 'What needs you, from every space — Today, Upcoming and Anytime (the to-dos with no date). Tap one to set a priority or a reminder.',
     path: '/today',
   },
   {
-    icon: ListChecks,
-    title: 'Lists',
-    description: 'Your to-dos, plus lists the app makes as you go — movies, books, groceries, birthdays. Just say “add Dune to my reading list”.',
-    path: '/lists',
-  },
-  {
-    icon: NotebookText,
-    title: 'Notes',
-    description: 'Anything worth remembering — a meeting, an idea, what someone said — lands here as a few short points.',
-    path: '/notes',
-  },
-  {
-    icon: ListTree,
-    title: 'Initiatives',
-    description: 'Your own categories — Job, Fitness, Personal, anything. Notes are sorted into them automatically; tap one at the top of Tasks or Notes to see just its tasks and notes.',
+    icon: LayoutGrid,
+    title: 'Spaces',
+    description: 'Your own spaces — Job, Fitness, Personal, anything. Each one gathers everything that belongs to it: notes, to-dos and things you collect, like movies or books. Say “add Dune to my reading list” and it lands in the right one.',
     path: '/notes',
   },
   {

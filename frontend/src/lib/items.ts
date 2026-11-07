@@ -1,5 +1,5 @@
 import type { Repeat, Task } from '../api/types'
-import { isoLocal } from './dates'
+import { isoLocal, timeLabel } from './dates'
 import { taskInitiativeId } from './taskOptions'
 
 export const REPEAT_OPTIONS: { value: Repeat; label: string }[] = [
@@ -40,10 +40,19 @@ export function byDue(a: Task, b: Task): number {
   return (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999') || (a.due_time ?? '99').localeCompare(b.due_time ?? '99')
 }
 
-/** Where an item lives: the main Tasks list, or its own list's page. `open` opens it there. */
-export function itemPath(listId: number | null | undefined, open?: number): string {
-  const base = listId ? `/lists/${listId}` : '/tasks'
-  return open ? `${base}?open=${open}` : base
+/** Where an item opens: Today shows any item's sheet (`?open=<id>`), whatever its list or date. */
+export function itemPath(open?: number): string {
+  return open ? `/today?open=${open}` : '/today'
+}
+
+/** What an item reminds you about on its own (no bell set), in words - or '' when it doesn't. */
+export function autoReminderText(task: Task): string {
+  if (task.remind_on || !task.due_date) return ''
+  const hours = /^hours:(\d+)$/.exec(task.repeat ?? '')
+  if (hours) return `Every ${hours[1]} hours, 9 AM–9 PM`
+  if (task.due_time) return `At ${timeLabel(task.due_time.slice(0, 5))} on the day`
+  if (task.repeat === 'yearly') return 'The evening before, 8 PM'
+  return ''
 }
 
 /** Open items per initiative (-1 = Others), for the chips at the foot of Today, Lists and a list. */

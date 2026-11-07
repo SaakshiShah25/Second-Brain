@@ -1,16 +1,17 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeftRight, Check, ChevronRight, FolderInput, NotebookText, Trash2 } from 'lucide-react'
+import { ArrowLeftRight, Bell, Check, ChevronRight, FolderInput, NotebookText, Trash2 } from 'lucide-react'
 import { useDeleteItem, useEditTask, useUpdateTaskFields, useUpdateTaskOwner, useUpdateTaskStatus } from '../api/tasks'
 import { useInitiatives } from '../api/initiatives'
 import { useLists } from '../api/lists'
 import type { Task } from '../api/types'
-import { dueLabel, fullDate } from '../lib/dates'
+import { dueLabel, fullDate, shortDate, timeLabel } from '../lib/dates'
 import { notePoints } from '../lib/initiativeFilter'
-import { isOverdue, REPEAT_OPTIONS, repeatLabel } from '../lib/items'
-import { taskInitiativeId } from '../lib/taskOptions'
+import { autoReminderText, isOverdue, REPEAT_OPTIONS, repeatLabel } from '../lib/items'
+import { DEFAULT_REMIND_TIME, PRIORITIES, ON_PRIORITY, priorityOf, taskInitiativeId, tint } from '../lib/taskOptions'
 import Button from './Button'
 import CategorySheet from './CategorySheet'
+import { PriorityBars, ReminderSheet } from './TaskOptions'
 import ConfirmDialog from './ConfirmDialog'
 import Sheet from './Sheet'
 import { toast } from './Toast'
@@ -29,6 +30,11 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
   const updateFields = useUpdateTaskFields()
   const { data: initiatives = [] } = useInitiatives()
   const [choosingCategory, setChoosingCategory] = useState(false)
+  const [choosingReminder, setChoosingReminder] = useState(false)
+  const priority = priorityOf(task)
+  const reminder = task.remind_on
+    ? `${shortDate(task.remind_on)}, ${timeLabel((task.remind_time ?? DEFAULT_REMIND_TIME).slice(0, 5))}`
+    : autoReminderText(task)
   const categoryId = taskInitiativeId(task)
   const categoryName = categoryId === null ? 'Others' : (initiatives.find((i) => i.id === categoryId)?.name ?? 'Others')
   const [editing, setEditing] = useState(false)
@@ -79,7 +85,39 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
         <p className="mb-4 text-[0.9375rem] text-text-muted">{meta.join(' · ')}</p>
         {task.detail && !editing && <p className="mb-4 whitespace-pre-wrap text-[0.9375rem] leading-relaxed">{task.detail}</p>}
 
-        {/* Which category it belongs to - one tap to change it. */}
+        {/* How much it matters, and when to be nudged - the same two for every kind of item. */}
+        <div className="mb-3 flex gap-1.5" role="group" aria-label="Priority">
+          {PRIORITIES.map((p) => {
+            const active = priority === p.value
+            return (
+              <button
+                key={p.value}
+                type="button"
+                disabled={updateFields.isPending}
+                onClick={() => !active && updateFields.mutate({ taskId: task.id, fields: { priority: p.value } }, { onError: () => toast("Couldn't change that - please try again.") })}
+                className="pressable flex h-10 flex-1 items-center justify-center gap-1 rounded-full border text-[0.8125rem] font-semibold disabled:opacity-60"
+                style={active ? { backgroundColor: p.color, borderColor: p.color, color: ON_PRIORITY } : { borderColor: tint(p.color, 45), color: p.color }}
+              >
+                <PriorityBars priority={p.value} inverted={active} />
+                {p.label}
+              </button>
+            )
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={() => setChoosingReminder(true)}
+          className="pressable mb-3 flex w-full items-center gap-3 rounded-2xl border border-border bg-bg-elevated px-3.5 py-3 text-left"
+        >
+          <Bell size={17} strokeWidth={2} className="flex-shrink-0 text-text-muted" style={task.remind_on ? { color: 'var(--sb-accent)' } : undefined} />
+          <span className="min-w-0 flex-1 text-[0.9375rem]">
+            <span className="text-text-muted">Reminder · </span>
+            <span className="font-medium">{reminder || 'None - tap to set one'}</span>
+          </span>
+          <ChevronRight size={16} strokeWidth={2} className="flex-shrink-0 text-text-faint" />
+        </button>
+
+        {/* Which space it belongs to - one tap to change it. */}
         <button
           type="button"
           onClick={() => setChoosingCategory(true)}
@@ -87,7 +125,7 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
         >
           <FolderInput size={17} strokeWidth={2} className="flex-shrink-0 text-text-muted" />
           <span className="min-w-0 flex-1 text-[0.9375rem]">
-            <span className="text-text-muted">Category · </span>
+            <span className="text-text-muted">Space · </span>
             <span className="font-medium">{categoryName}</span>
           </span>
           <ChevronRight size={16} strokeWidth={2} className="flex-shrink-0 text-text-faint" />
@@ -214,15 +252,31 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
         </div>
       </Sheet>
 
+      {choosingReminder && (
+        <ReminderSheet
+          task={task}
+          onClose={() => setChoosingReminder(false)}
+          onPick={(date, time) =>
+            updateFields.mutate(
+              { taskId: task.id, fields: { remind_on: date, remind_time: time } },
+              {
+                onSuccess: () => toast(date ? `Reminder set for ${shortDate(date)}, ${timeLabel(time ?? DEFAULT_REMIND_TIME)}` : 'Reminder removed'),
+                onError: (e) => toast(e instanceof Error && e.message ? e.message : "Couldn't set that reminder - please try again."),
+              },
+            )
+          }
+        />
+      )}
+
       {choosingCategory && (
         <CategorySheet
-          title="Which category does this belong to?"
+          title="Which space does this belong to?"
           currentId={categoryId}
           onClose={() => setChoosingCategory(false)}
           onPick={async (id) => {
             if (id === categoryId) return
             await updateFields.mutateAsync({ taskId: task.id, fields: { initiative_id: id } })
-            toast(id === null ? 'Moved to Others' : `Moved to ${initiatives.find((i) => i.id === id)?.name ?? 'that category'}`)
+            toast(id === null ? 'Moved to Others' : `Moved to ${initiatives.find((i) => i.id === id)?.name ?? 'that space'}`)
           }}
         />
       )}

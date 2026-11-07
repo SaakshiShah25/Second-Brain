@@ -19,7 +19,7 @@ export default function Receipt({ items }: { items: CreatedItem[] }) {
           <button
             key={item.id}
             type="button"
-            onClick={() => navigate(itemPath(item.list_id, item.id))}
+            onClick={() => navigate(itemPath(item.id))}
             className="pressable flex w-full items-center gap-3 px-3.5 py-2.5 text-left"
           >
             <span className="w-5 flex-shrink-0 text-center text-[1rem] leading-none">{item.list_emoji || '☑️'}</span>

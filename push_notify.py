@@ -290,8 +290,8 @@ def send_task_reminders(now_utc: Optional[datetime] = None, sender: Optional[Cal
 def item_reminder(item: dict, timezone_name: str, now_utc: Optional[datetime] = None):
     """(occurrence key, message) when this item's own reminder is due now and hasn't been sent
     for this occurrence yet, else None. See the module docstring for when each kind fires."""
-    if not item.get("due_date"):
-        return None
+    if not item.get("due_date") or item.get("remind_on"):
+        return None  # (an item with a bell set is reminded by that, once - see send_task_reminders)
     local = _local_now(timezone_name, now_utc)
     now = local.replace(tzinfo=None)
     due = date.fromisoformat(item["due_date"])

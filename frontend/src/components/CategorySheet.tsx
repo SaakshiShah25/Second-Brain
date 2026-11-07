@@ -6,8 +6,8 @@ import CategoryBubbles from './CategoryBubbles'
 import Sheet from './Sheet'
 import { Input } from './fields'
 
-// "Which category?" as a bottom sheet of bubbles, with a way to make a new one on the spot. `onPick(null)` means
-// Others (no category). Used to change where a logged note went and to move a task.
+// "Which space?" as a bottom sheet of bubbles, with a way to make a new one on the spot. `onPick(null)` means
+// Others (no space). Used to change where a logged note went and to move a task.
 export default function CategorySheet({
   title,
   currentId,
@@ -49,7 +49,7 @@ export default function CategorySheet({
       await onPick(made.id)
       onClose()
     } catch (e) {
-      setError(e instanceof Error && e.message ? e.message : "Couldn't create that category.")
+      setError(e instanceof Error && e.message ? e.message : "Couldn't create that space.")
       setBusy(false)
     }
   }
@@ -69,7 +69,7 @@ export default function CategorySheet({
         <div className="mt-4 flex flex-col gap-2">
           <Input
             autoFocus
-            placeholder="New category name"
+            placeholder="New space name"
             value={name}
             maxLength={40}
             onChange={(e) => setName(e.target.value)}

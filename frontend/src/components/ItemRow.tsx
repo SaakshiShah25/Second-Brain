@@ -1,7 +1,8 @@
-import { Check, Repeat as RepeatIcon, TriangleAlert } from 'lucide-react'
+import { Bell, Check, Repeat as RepeatIcon, TriangleAlert } from 'lucide-react'
 import type { Task } from '../api/types'
-import { dueLabel, friendlyDate, timeLabel } from '../lib/dates'
+import { dueLabel, friendlyDate, shortDate, timeLabel } from '../lib/dates'
 import { isOverdue, repeatLabel } from '../lib/items'
+import { PRIORITIES, priorityOf } from '../lib/taskOptions'
 
 // One item: a Things-style round checkbox, its wording, and one quiet line of facts (whose it
 // is, when, how often, which list). `showList` adds the list chip - on Today, where items from
@@ -23,6 +24,9 @@ export default function ItemRow({
   compactDate?: boolean
 }) {
   const overdue = isOverdue(task)
+  // A task you marked high or low colours its tick circle (normal keeps the plain grey).
+  const priority = priorityOf(task)
+  const priorityColor = priority === 'normal' ? undefined : PRIORITIES.find((p) => p.value === priority)?.color
   const done = task.status === 'done'
   const list = task.item_list
   const when = task.due_date
@@ -42,6 +46,13 @@ export default function ItemRow({
       <span key="r" className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap">
         <RepeatIcon size={12} strokeWidth={2.2} />
         {repeatLabel(task.repeat)}
+      </span>
+    ) : null,
+    task.remind_on && !done ? (
+      <span key="b" className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap text-accent">
+        <Bell size={12} strokeWidth={2.2} />
+        {shortDate(task.remind_on)}
+        {task.remind_time && `, ${timeLabel(task.remind_time.slice(0, 5))}`}
       </span>
     ) : null,
     showList && list ? (
@@ -64,8 +75,9 @@ export default function ItemRow({
       >
         <span
           className={`flex h-[1.375rem] w-[1.375rem] items-center justify-center rounded-full border-2 transition-colors ${
-            done ? 'border-success bg-success text-white' : task.owner === 'them' && !list ? 'border-them-task' : 'border-text-faint'
+            done ? 'border-success bg-success text-white' : task.owner === 'them' && !list ? 'border-them-task' : priorityColor ? '' : 'border-text-faint'
           }`}
+          style={!done && priorityColor && !(task.owner === 'them' && !list) ? { borderColor: priorityColor } : undefined}
         >
           {done && <Check size={13} strokeWidth={3} />}
         </span>
