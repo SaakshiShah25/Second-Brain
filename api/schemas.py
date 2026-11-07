@@ -90,6 +90,7 @@ class TaskCreate(BaseModel):
     due_date: Optional[str] = Field(None, max_length=10)
     due_time: Optional[str] = Field(None, max_length=8)
     repeat: Optional[str] = Field(None, max_length=20)
+    initiative_id: Optional[int] = None                    # the category it belongs to; null = Others
 
 
 class ListCreate(BaseModel):

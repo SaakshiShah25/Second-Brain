@@ -5,10 +5,13 @@ import type { Task } from '../api/types'
 import Button from '../components/Button'
 import ItemRow from '../components/ItemRow'
 import ItemSheet from '../components/ItemSheet'
+import InitiativeBar from '../components/InitiativeBar'
 import PageHeader from '../components/PageHeader'
 import { useConnection } from '../lib/connection'
 import { isoLocal } from '../lib/dates'
-import { byDue, todayIso } from '../lib/items'
+import { matchesInitiative, useInitiativeFilter } from '../lib/initiativeFilter'
+import { byDue, openCountsByInitiative, todayIso } from '../lib/items'
+import { taskInitiativeId } from '../lib/taskOptions'
 import { useOpenItem } from '../lib/useOpenItem'
 
 const UPCOMING_DAYS = 7
@@ -46,7 +49,10 @@ export default function TodayPage() {
   const connection = useConnection()
   const offline = connection.offline || connection.unreachable
   const updateStatus = useUpdateTaskStatus()
-  const all = data?.tasks ?? []
+  const everything = data?.tasks ?? []
+  const [initiativeFilter] = useInitiativeFilter()
+  // The chips at the foot narrow Today to one category's things.
+  const all = everything.filter((t) => matchesInitiative(initiativeFilter, taskInitiativeId(t)))
   const sheet = useOpenItem(all)
 
   const today = todayIso()
@@ -66,7 +72,7 @@ export default function TodayPage() {
   const subtitle = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
 
   return (
-    <div>
+    <div className="flex flex-1 flex-col">
       <PageHeader title="Today" subtitle={subtitle} showProfile />
 
       {!data && (
@@ -106,6 +112,8 @@ export default function TodayPage() {
       )}
 
       {sheet.active && <ItemSheet task={sheet.active} onClose={sheet.close} />}
+
+      <InitiativeBar counts={openCountsByInitiative(everything)} />
     </div>
   )
 }

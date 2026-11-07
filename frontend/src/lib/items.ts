@@ -1,5 +1,6 @@
 import type { Repeat, Task } from '../api/types'
 import { isoLocal } from './dates'
+import { taskInitiativeId } from './taskOptions'
 
 export const REPEAT_OPTIONS: { value: Repeat; label: string }[] = [
   { value: 'daily', label: 'Every day' },
@@ -43,4 +44,15 @@ export function byDue(a: Task, b: Task): number {
 export function itemPath(listId: number | null | undefined, open?: number): string {
   const base = listId ? `/lists/${listId}` : '/tasks'
   return open ? `${base}?open=${open}` : base
+}
+
+/** Open items per initiative (-1 = Others), for the chips at the foot of Today, Lists and a list. */
+export function openCountsByInitiative(tasks: Task[]): Map<number, number> {
+  const map = new Map<number, number>()
+  for (const t of tasks) {
+    if (t.status !== 'open') continue
+    const key = taskInitiativeId(t) ?? -1
+    map.set(key, (map.get(key) ?? 0) + 1)
+  }
+  return map
 }

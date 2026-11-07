@@ -1,5 +1,6 @@
 import type { Interaction, Task } from '../api/types'
-import { dueLabel, fullDate } from './dates'
+import { dueLabel, fullDate, shortDate } from './dates'
+import { noteCounts, noteSections } from './noteSections'
 import { notePoints } from './initiativeFilter'
 
 // One note as a PDF, made on the device - the note never leaves it for this. jsPDF and the font
@@ -30,8 +31,8 @@ export function notePdfFileName(note: Interaction): string {
   return `${slug || 'note'}-${note.date ?? 'undated'}.pdf`
 }
 
-/** The note (plus the items that came from it) as a PDF file. */
-export async function buildNotePdf(note: Interaction, items: Task[]): Promise<File> {
+/** A fresh A4 document with the font loaded and the drawing helpers every export shares. */
+async function startPdf() {
   const [{ jsPDF }, regular, bold] = await Promise.all([
     import('jspdf'),
     fontBase64('/fonts/NotoSans-Regular.ttf'),
@@ -77,15 +78,54 @@ export async function buildNotePdf(note: Interaction, items: Task[]): Promise<Fi
       text(line, { indent: 14, gap: 2 })
     }
   }
+  /** The accent rule under a title block. */
+  const rule = () => {
+    doc.setDrawColor(ACCENT)
+    doc.setLineWidth(1.5)
+    doc.line(MARGIN, y, MARGIN + 40, y)
+    y += 14
+  }
+  /** Adds the footer to every page and returns the finished file. */
+  const finish = (fileName: string) => {
+    const pages = doc.getNumberOfPages()
+    const exported = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i)
+      doc.setFont('Noto', 'normal')
+      doc.setFontSize(8.5)
+      doc.setTextColor(MUTED)
+      doc.text(`Exported from MyConfía · ${exported}`, MARGIN, PAGE.h - 28)
+      if (pages > 1) doc.text(`${i} / ${pages}`, PAGE.w - MARGIN, PAGE.h - 28, { align: 'right' })
+    }
+    return new File([doc.output('blob')], fileName, { type: 'application/pdf' })
+  }
+  return {
+    doc,
+    ensure,
+    text,
+    heading,
+    bullets,
+    rule,
+    finish,
+    get y() {
+      return y
+    },
+    set y(v: number) {
+      y = v
+    },
+  }
+}
+
+/** The note (plus the items that came from it) as a PDF file. */
+export async function buildNotePdf(note: Interaction, items: Task[]): Promise<File> {
+  const pdf = await startPdf()
+  const { doc, ensure, text, heading, bullets } = pdf
 
   // Header: category and date, then where it happened.
   text(clean(note.initiative?.name) || 'Note', { size: 20, bold: true, gap: 2 })
   const place = clean(note.location) || clean(note.geo_address)
   text([fullDate(note.date), place].filter(Boolean).join('  ·  '), { size: 10.5, color: MUTED, gap: 10 })
-  doc.setDrawColor(ACCENT)
-  doc.setLineWidth(1.5)
-  doc.line(MARGIN, y, MARGIN + 40, y)
-  y += 14
+  pdf.rule()
 
   const points = notePoints(note.summary)
   if (points.length) {
@@ -106,10 +146,10 @@ export async function buildNotePdf(note: Interaction, items: Task[]): Promise<Fi
       ensure(18)
       doc.setDrawColor(MUTED)
       doc.setLineWidth(0.8)
-      doc.rect(MARGIN, y + 3.5, 9, 9)
+      doc.rect(MARGIN, pdf.y + 3.5, 9, 9)
       if (t.status === 'done') {
         doc.setDrawColor(INK)
-        doc.lines([[2.5, 3], [5, -6.5]], MARGIN + 1.8, y + 8.2)
+        doc.lines([[2.5, 3], [5, -6.5]], MARGIN + 1.8, pdf.y + 8.2)
       }
       const facts = [t.owner === 'them' ? 'waiting on them' : '', t.due_date ? `due ${dueLabel(t.due_date, t.due_time)}` : '']
         .filter(Boolean)
@@ -122,19 +162,42 @@ export async function buildNotePdf(note: Interaction, items: Task[]): Promise<Fi
     text(clean(note.raw_text), { size: 10.5, color: '#44403c' })
   }
 
-  // Footer on every page.
-  const pages = doc.getNumberOfPages()
-  const exported = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-  for (let i = 1; i <= pages; i++) {
-    doc.setPage(i)
-    doc.setFont('Noto', 'normal')
-    doc.setFontSize(8.5)
-    doc.setTextColor(MUTED)
-    doc.text(`Exported from MyConfía · ${exported}`, MARGIN, PAGE.h - 28)
-    if (pages > 1) doc.text(`${i} / ${pages}`, PAGE.w - MARGIN, PAGE.h - 28, { align: 'right' })
+  return pdf.finish(notePdfFileName(note))
+}
+
+export function initiativePdfFileName(name: string): string {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  return `${slug || 'notes'}-${new Date().toISOString().slice(0, 10)}.pdf`
+}
+
+/** A whole initiative as one PDF: its key points, decisions and concerns by topic, then the notes as written. */
+export async function buildInitiativePdf(name: string, notes: Interaction[]): Promise<File> {
+  const pdf = await startPdf()
+  const { text, heading, bullets } = pdf
+
+  text(clean(name) || 'Notes', { size: 20, bold: true, gap: 2 })
+  text(noteCounts(notes), { size: 10.5, color: MUTED, gap: 10 })
+  pdf.rule()
+
+  for (const s of noteSections(notes)) {
+    if (s.title) heading(s.title)
+    for (const g of s.groups) {
+      if (g.kind !== 'point') text(`${g.label}:`, { bold: true, gap: 2 })
+      bullets(g.items.map((it) => (it.date ? `${it.text}  (${shortDate(it.date)})` : it.text)))
+    }
   }
 
-  return new File([doc.output('blob')], notePdfFileName(note), { type: 'application/pdf' })
+  const sorted = [...notes].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.id - a.id)
+  if (sorted.some((n) => clean(n.raw_text))) {
+    heading('Source notes')
+    for (const n of sorted) {
+      if (!clean(n.raw_text)) continue
+      text(fullDate(n.date), { size: 10, bold: true, color: MUTED, gap: 1 })
+      text(clean(n.raw_text), { size: 10.5, color: '#44403c', gap: 8 })
+    }
+  }
+
+  return pdf.finish(initiativePdfFileName(name))
 }
 
 /** Hands the PDF to the phone: the share sheet where there is one (save to Files, send on

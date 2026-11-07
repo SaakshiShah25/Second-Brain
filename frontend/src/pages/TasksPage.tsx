@@ -403,12 +403,10 @@ export default function TasksPage() {
 
   return (
     <DndContext sensors={sensors} collisionDetection={collide} onDragStart={(e) => setDraggingId(Number(e.active.id))} onDragEnd={handleDragEnd} onDragCancel={() => setDraggingId(null)}>
-    <div>
+    <div className="flex flex-1 flex-col">
       <PageHeader title="Tasks" showProfile />
 
       <QuickAdd listId={null} placeholder="Add a task" />
-
-      <InitiativeBar counts={openCounts} className="mb-4" />
 
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-[0.9375rem] text-text-muted">{!data ? '' : open.length === 0 ? 'Nothing open' : `${open.length} open`}</p>
@@ -492,6 +490,8 @@ export default function TasksPage() {
               </>
             )
           })()}
+
+      <InitiativeBar counts={openCounts} />
 
       {activeTask && (
         <Sheet onClose={() => setActiveTaskId(null)}>

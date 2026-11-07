@@ -791,6 +791,25 @@ def get_all_user_emails() -> dict:
         page += 1
 
 
+def get_all_users() -> dict:
+    """{user_id: {"email", "created_at", "last_sign_in_at"}} for every account - the admin page's
+    "who isn't using it" list."""
+    users, page = {}, 1
+    while True:
+        batch = get_client().auth.admin.list_users(page=page, per_page=1000)
+        for u in batch:
+            users[u.id] = {"email": u.email, "created_at": str(u.created_at or ""),
+                           "last_sign_in_at": str(u.last_sign_in_at or "") or None}
+        if len(batch) < 1000:
+            return users
+        page += 1
+
+
+def get_storage_by_user() -> list:
+    """Per-user row counts and byte sizes (migration 43). Counts/sizes only, never content."""
+    return get_client().rpc("admin_storage_by_user").execute().data or []
+
+
 if __name__ == "__main__":
     # Quick connectivity check: confirms env vars are set and the tables
     # from schema.sql exist.

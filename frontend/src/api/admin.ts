@@ -2,6 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from './client'
 
 // Mirrors api/routers/admin.py's /overview.
+export interface UserStorage {
+  notes: number; note_bytes: number; tasks: number; task_bytes: number
+  documents: number; document_bytes: number; index_chunks: number; index_bytes: number
+}
+
 export interface AdminOverview {
   days: number
   generated_at: string
@@ -19,8 +24,14 @@ export interface AdminOverview {
     errors: number
     limits: number
     last_seen: string | null
+    by_feature: Record<string, number>
+    storage: UserStorage | null
     monthly: Record<'capture' | 'question', { used: number; cap: number | null } | null>
   }[]
+  inactive: { user_id: string; email: string; joined: string | null; last_sign_in: string | null; storage: UserStorage | null }[]
+  scale: { model: string; tokens_per_user_day: number; users_supported: number | null }[]
+  storage: { available: boolean } & UserStorage
+  accounts: number
   limits: { name: string; count: number; last: string | null; info: string; top_users: string[] }[]
   errors: { at: string; where: string; error_id: string; status: number | null; type: string | null; message: string | null; user: string | null }[]
   daily: { day: string; requests: number; captures: number; questions: number; tokens: number; errors: number; limits: number }[]

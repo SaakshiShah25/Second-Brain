@@ -34,7 +34,7 @@ export function useEditTask() {
 export function useCreateItem() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: { description: string; list_id: number | null; due_date?: string | null; repeat?: Repeat | null }) =>
+    mutationFn: (body: { description: string; list_id: number | null; due_date?: string | null; repeat?: Repeat | null; initiative_id?: number | null }) =>
       api.post<{ id: number }>('/api/tasks', body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })

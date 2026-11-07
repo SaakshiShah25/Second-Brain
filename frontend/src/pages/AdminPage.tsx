@@ -1,16 +1,27 @@
 import { useState, type ReactNode } from 'react'
-import { AlertTriangle, Bug, Gauge, RefreshCw, Users } from 'lucide-react'
-import { useAdminOverview, type AdminOverview } from '../api/admin'
+import { AlertTriangle, Bug, Database, Gauge, RefreshCw, TrendingUp, UserX, Users } from 'lucide-react'
+import { useAdminOverview, type AdminOverview, type UserStorage } from '../api/admin'
 import PageHeader from '../components/PageHeader'
 import Segmented from '../components/Segmented'
 
 // The owner's view (api/routers/admin.py): how much of today's free AI
 // budget is left and what that still buys, who used what, where limits
 // are being hit, and every recent error with the reference code the user
-// was shown. Admins only - set by ADMIN_EMAILS / ALERT_EMAIL on the server.
+// was shown. Admins only - the list is hardcoded in api/routers/admin.py.
 
 const shortModel = (m: string) => m.replace('openai/gpt-oss-', '').replace('cohere', 'Cohere')
 const num = (n: number) => n.toLocaleString()
+
+function bytes(n: number) {
+  if (n < 1024) return `${n} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let v = n / 1024
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
+  return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`
+}
+
+const stored = (s: UserStorage) => s.note_bytes + s.task_bytes + s.document_bytes + s.index_bytes
 
 function when(iso: string | null) {
   if (!iso) return '-'
@@ -148,6 +159,16 @@ function UsersCard({ o }: { o: AdminOverview }) {
                 {u.errors > 0 && <span className="text-danger"> · {u.errors} errors</span>}
                 {u.limits > 0 && <span className="text-[#d9731f]"> · {u.limits} limit hits</span>}
               </p>
+              {Object.keys(u.by_feature).length > 0 && (
+                <p className="mt-0.5 text-[0.75rem] text-text-faint">
+                  {Object.entries(u.by_feature).map(([f, t]) => `${f} ${num(t)}`).join(' · ')}
+                </p>
+              )}
+              {u.storage && (
+                <p className="mt-0.5 text-[0.75rem] text-text-faint">
+                  {bytes(stored(u.storage))} stored · {u.storage.notes} notes · {u.storage.documents} docs
+                </p>
+              )}
               <div className="mt-2 grid grid-cols-2 gap-3">
                 {(['capture', 'question'] as const).map((a) => {
                   const m = u.monthly[a]
@@ -162,6 +183,79 @@ function UsersCard({ o }: { o: AdminOverview }) {
                   )
                 })}
               </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  )
+}
+
+function Scale({ o }: { o: AdminOverview }) {
+  if (o.scale.length === 0) return null
+  return (
+    <Card icon={TrendingUp} title="How far this stretches" aside={`${num(o.accounts)} accounts`}>
+      <ul className="flex flex-col gap-2.5">
+        {o.scale.map((s) => (
+          <li key={s.model} className="flex items-baseline justify-between gap-2 text-[0.9375rem]">
+            <span className="font-medium">{shortModel(s.model)}</span>
+            <span className="text-right text-[0.8125rem] text-text-muted">
+              ~{num(s.tokens_per_user_day)} tokens per active user a day
+              {s.users_supported !== null && <> · daily limit fits ≈ {num(s.users_supported)} active users</>}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-[0.75rem] leading-snug text-text-faint">
+        Based on the period selected above; the free tier's daily limit is per model.
+      </p>
+    </Card>
+  )
+}
+
+function Storage({ o }: { o: AdminOverview }) {
+  const s = o.storage
+  const rows = [
+    { label: 'notes', n: s.notes, b: s.note_bytes },
+    { label: 'tasks', n: s.tasks, b: s.task_bytes },
+    { label: 'documents', n: s.documents, b: s.document_bytes },
+    { label: 'search index', n: s.index_chunks, b: s.index_bytes },
+  ]
+  return (
+    <Card icon={Database} title="Storage" aside={s.available ? bytes(stored(s)) : undefined}>
+      {!s.available ? (
+        <Empty>Run scripts/migration_43_admin_storage.sql to see storage per user.</Empty>
+      ) : (
+        <table className="w-full text-left text-[0.8125rem]">
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.label} className="border-t border-border first:border-t-0">
+                <td className="py-1.5">{r.label}</td>
+                <td className="py-1.5 text-right text-text-muted">{num(r.n)}</td>
+                <td className="py-1.5 text-right">{bytes(r.b)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Card>
+  )
+}
+
+function Inactive({ o }: { o: AdminOverview }) {
+  return (
+    <Card icon={UserX} title="Not using it" aside={o.inactive.length ? `${o.inactive.length}` : undefined}>
+      {o.inactive.length === 0 ? (
+        <Empty>Every account was active in this period.</Empty>
+      ) : (
+        <ul className="flex flex-col divide-y divide-border">
+          {o.inactive.map((u) => (
+            <li key={u.user_id} className="py-2.5 first:pt-0 last:pb-0">
+              <p className="truncate text-[0.9375rem] font-medium">{u.email}</p>
+              <p className="text-[0.8125rem] text-text-muted">
+                joined {u.joined ?? '-'} · last sign-in {when(u.last_sign_in)}
+                {u.storage ? ` · ${bytes(stored(u.storage))} stored` : ''}
+              </p>
             </li>
           ))}
         </ul>
@@ -300,6 +394,9 @@ export default function AdminPage() {
           <Totals o={data} />
           <Limits o={data} />
           <UsersCard o={data} />
+          <Inactive o={data} />
+          <Scale o={data} />
+          <Storage o={data} />
           <Errors o={data} />
           <Features o={data} />
           <Daily o={data} />

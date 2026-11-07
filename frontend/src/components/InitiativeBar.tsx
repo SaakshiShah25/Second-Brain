@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { SlidersHorizontal } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
@@ -7,12 +7,12 @@ import Chip, { ChipRow } from './Chip'
 import InitiativesManager from './InitiativesManager'
 import Sheet from './Sheet'
 
-// The one initiative picker, at the top of both Today and Notes. The
+// The one initiative picker, pinned to the bottom of both Tasks and Notes - right under the thumb. The
 // selection is shared (lib/initiativeFilter), so switching tabs keeps the
 // focus. `counts` (keyed by initiative id, -1 for Others) adds a small
 // number to each chip - e.g. open tasks on Today; chips with no count
 // still show, so an initiative never disappears just because it's quiet.
-export default function InitiativeBar({ counts, className = '' }: { counts?: Map<number, number>; className?: string }) {
+export default function InitiativeBar({ counts, search, hideChips = false }: { counts?: Map<number, number>; search?: ReactNode; hideChips?: boolean }) {
   const { data: initiatives } = useInitiatives()
   const [filter, setFilter] = useInitiativeFilter()
   const [managing, setManaging] = useState(false)
@@ -29,7 +29,11 @@ export default function InitiativeBar({ counts, className = '' }: { counts?: Map
 
   return (
     <>
-      <ChipRow className={className}>
+      {/* mt-auto pushes it to the foot of a short page; sticky keeps it on screen while a long page scrolls. */}
+      <div className="sticky bottom-0 z-10 -mx-4 -mb-6 mt-auto border-t border-border bg-bg/95 pt-2.5 pb-2.5 backdrop-blur-xl">
+      {search && <div className={`px-4 ${hideChips ? '' : 'mb-2.5'}`}>{search}</div>}
+      {!hideChips && (
+      <ChipRow className="!mx-0">
         <Chip active={filter === null} onClick={() => setFilter(null)}>
           All
         </Chip>
@@ -51,6 +55,8 @@ export default function InitiativeBar({ counts, className = '' }: { counts?: Map
           <SlidersHorizontal size={15} strokeWidth={2} />
         </Chip>
       </ChipRow>
+      )}
+      </div>
 
       {managing && (
         <Sheet onClose={() => setManaging(false)} title="Initiatives" tall>

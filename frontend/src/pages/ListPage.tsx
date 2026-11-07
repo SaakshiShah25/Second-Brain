@@ -7,12 +7,15 @@ import type { Task } from '../api/types'
 import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ItemRow from '../components/ItemRow'
+import InitiativeBar from '../components/InitiativeBar'
 import ItemSheet from '../components/ItemSheet'
 import PageHeader from '../components/PageHeader'
 import QuickAdd from '../components/QuickAdd'
 import Sheet from '../components/Sheet'
 import { Input, Label } from '../components/fields'
-import { byDue } from '../lib/items'
+import { matchesInitiative, useInitiativeFilter } from '../lib/initiativeFilter'
+import { byDue, openCountsByInitiative } from '../lib/items'
+import { taskInitiativeId } from '../lib/taskOptions'
 import { useOpenItem } from '../lib/useOpenItem'
 
 // One list (Movies, Books, Birthdays...): a quick-add box, what's open - dated things first,
@@ -33,7 +36,9 @@ export default function ListPage() {
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const list = lists?.find((l) => l.id === listId)
-  const items = (data?.tasks ?? []).filter((t) => t.list_id === listId)
+  const inList = (data?.tasks ?? []).filter((t) => t.list_id === listId)
+  const [initiativeFilter] = useInitiativeFilter()
+  const items = inList.filter((t) => matchesInitiative(initiativeFilter, taskInitiativeId(t)))
   const sheet = useOpenItem(items)
   const open = items.filter((t) => t.status === 'open').sort((a, b) => byDue(a, b) || a.id - b.id)
   const done = items.filter((t) => t.status === 'done').sort((a, b) => b.id - a.id)
@@ -52,7 +57,7 @@ export default function ListPage() {
   }
 
   return (
-    <div>
+    <div className="flex flex-1 flex-col">
       <PageHeader
         backTo="/lists"
         backLabel="Lists"
@@ -169,7 +174,7 @@ export default function ListPage() {
       {confirmDelete && (
         <ConfirmDialog
           title={`Delete “${list.name}”?`}
-          message={`This deletes the list and the ${items.length} ${items.length === 1 ? 'thing' : 'things'} in it. This cannot be undone.`}
+          message={`This deletes the list and the ${inList.length} ${inList.length === 1 ? 'thing' : 'things'} in it. This cannot be undone.`}
           confirmLabel="Delete list"
           busy={deleteList.isPending}
           busyLabel="Deleting…"
@@ -177,6 +182,8 @@ export default function ListPage() {
           onCancel={() => setConfirmDelete(false)}
         />
       )}
+
+      <InitiativeBar counts={openCountsByInitiative(inList)} />
     </div>
   )
 }
