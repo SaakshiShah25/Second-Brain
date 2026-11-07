@@ -78,6 +78,7 @@ def _capture_db(saved):
         create_task=create_task, create_list=create_list,
         get_list_by_name=lambda u, name: lists.get(name.lower()),
         get_lists=lambda u: list(lists.values()),
+        get_list_initiative=lambda u, list_id: saved.get("home", {}).get(list_id),
         get_initiative=lambda u, i: None,
     )
 
@@ -253,3 +254,21 @@ def test_an_item_with_a_bell_is_not_also_reminded_automatically():
     at4pm = datetime(2026, 11, 7, 16, 5, tzinfo=timezone.utc)
     assert pn.item_reminder(item, "UTC", at4pm) is not None            # no bell: reminded at its time
     assert pn.item_reminder({**item, "remind_on": "2026-11-06"}, "UTC", at4pm) is None   # bell set: that one rules
+
+
+def test_a_new_entry_with_no_space_goes_to_the_space_its_list_already_lives_in():
+    import api.routers.capture as cap
+    saved = {"tasks": [], "lists_created": [], "indexed": [], "home": {5: 2}}   # the Reading list is in space 2
+    _wire(cap, saved)
+    cap._process_extracted("u", "x", {"keep_note": False, "follow_ups": [
+        {"description": "Sapiens", "list": "reading list"},      # list 5 -> space 2
+        {"description": "Oppenheimer", "list": "Movies"},        # a new list, no history -> no space
+    ]})
+    by_desc = {d: kw["initiative_id"] for _, d, kw in saved["tasks"]}
+    assert by_desc["Sapiens"] == 2 and by_desc["Oppenheimer"] is None
+    # a space said outright (picked on Home, or named by the model) always wins
+    saved["tasks"].clear()
+    cap.db.get_initiative = lambda u, i: {"id": i, "name": "Personal"}
+    cap._process_extracted("u", "x", {"keep_note": False, "follow_ups": [{"description": "Dune", "list": "reading list"}]},
+                           forced_initiative_id=9)
+    assert saved["tasks"][0][2]["initiative_id"] == 9

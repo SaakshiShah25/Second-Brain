@@ -117,6 +117,7 @@ class _ListResolver:
         self.user_id = user_id
         self.cache: dict = {}
         self._lists = None
+        self._spaces: dict = {}
 
     def _existing(self, name: str) -> Optional[dict]:
         """The user's list that means the same as `name` - "Films" finds "Movies", "my reading list" finds
@@ -138,6 +139,14 @@ class _ListResolver:
             title = text_utils.canonical_list_title(name) or (name[:1].upper() + name[1:])
             self.cache[key] = self._existing(name) or db.create_list(self.user_id, title, text_utils.list_emoji(title))
         return self.cache[key]
+
+    def home_space(self, item_list: Optional[dict]) -> Optional[int]:
+        """The space this list's items already live in (looked up once per list per capture)."""
+        if not item_list:
+            return None
+        if item_list["id"] not in self._spaces:
+            self._spaces[item_list["id"]] = db.get_list_initiative(self.user_id, item_list["id"])
+        return self._spaces[item_list["id"]]
 
 
 def _parse_items(extracted: dict) -> list:
@@ -221,8 +230,10 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
             due_date = first_occurrence(due_date, repeat)  # "Mom's birthday, 14 March" said in November -> next March
         item_list = lists.resolve(item.get("list"))
         list_id = item_list["id"] if item_list else None
+        # Nothing said where it belongs: it goes to the space its list already lives in.
+        item_space = initiative_id if initiative_id is not None else lists.home_space(item_list)
         task_id = db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner,
-                                 due_time=due_time, initiative_id=initiative_id, list_id=list_id,
+                                 due_time=due_time, initiative_id=item_space, list_id=list_id,
                                  repeat=repeat, detail=item["detail"])
         task_ids.append(task_id)
         tasks_created.append({
