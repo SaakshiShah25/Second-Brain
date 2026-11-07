@@ -452,6 +452,20 @@ def create_list(user_id: str, name: str, emoji: str = None) -> dict:
         return get_list_by_name(user_id, name)
 
 
+def get_list_initiative(user_id: str, list_id: int):
+    """The space most of this list's items are in (None when none of them has one), so a new entry added
+    without saying where it belongs ("add Sapiens to my reading list") goes next to the others."""
+    try:
+        rows = (get_client().table("task").select("initiative_id").eq("user_id", user_id).eq("list_id", list_id)
+                .not_.is_("initiative_id", "null").limit(50).execute().data)
+    except Exception:
+        return None
+    counts: dict = {}
+    for r in rows:
+        counts[r["initiative_id"]] = counts.get(r["initiative_id"], 0) + 1
+    return max(counts, key=counts.get) if counts else None
+
+
 def update_list(user_id: str, list_id: int, **fields):
     if fields:
         get_client().table("item_list").update(fields).eq("id", list_id).eq("user_id", user_id).execute()

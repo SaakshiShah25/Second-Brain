@@ -46,7 +46,8 @@ export default function NotesPage() {
   const itemGroups = useMemo(() => {
     const map = new Map<number, Task[]>()
     for (const t of taskData?.tasks ?? []) {
-      if (t.status !== 'open') continue
+      // Open things, plus finished entries of a label (a book you've read stays findable under its space).
+      if (t.status !== 'open' && !t.list_id) continue
       const id = taskInitiativeId(t) ?? 0
       ;(map.get(id) ?? map.set(id, []).get(id)!).push(t)
     }
@@ -57,7 +58,7 @@ export default function NotesPage() {
     const map = new Map<number, number>()
     const ids = new Set([...groups.keys(), ...itemGroups.keys()])
     for (const id of ids) {
-      const n = (groups.get(id)?.notes.length ?? 0) + (itemGroups.get(id)?.length ?? 0)
+      const n = (groups.get(id)?.notes.length ?? 0) + (itemGroups.get(id)?.filter((t) => t.status === 'open').length ?? 0)
       if (n) map.set(id === 0 ? -1 : id, n)
     }
     return map
