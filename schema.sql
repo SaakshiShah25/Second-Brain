@@ -1047,3 +1047,6 @@ update task set initiative_id = interaction.initiative_id
 create index if not exists task_initiative_idx on task (initiative_id);
 create index if not exists task_remind_on_idx on task (remind_on) where remind_on is not null;
 notify pgrst, 'reload schema';
+
+-- 39. The reminder job runs every minute from Supabase (pg_cron + pg_net + Vault), not GitHub
+--     Actions. Fill in the two placeholders in scripts/migration_39_reminder_cron.sql and run it.

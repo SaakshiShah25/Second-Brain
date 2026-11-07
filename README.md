@@ -106,9 +106,10 @@ Web Push, sent by the backend (`push_notify.py`), shown by the app's service wor
 1. **Keys, once:** `python scripts/generate_vapid_keys.py you@example.com`, then set the three `VAPID_*` values on Render
    (and locally in `.env`). Never change the pair afterwards — devices subscribed with the old one stop working.
 2. **Database:** run `scripts/migration_36_push.sql` (schema.sql section 36, the `push_subscription` table) in the Supabase SQL Editor.
-3. **Scheduler:** `.github/workflows/task-reminders.yml` calls `POST /api/push/send-due` every 30 minutes with the
-   `CRON_SECRET` header (repo secrets `RENDER_API_URL` and `CRON_SECRET`; the same `CRON_SECRET` must be set on Render).
-   Each device gets each reminder at most once a day, inside a 90-minute window after 9:00 / 17:00 local time.
+3. **Scheduler:** a Supabase pg_cron job calls `POST /api/push/send-due` every minute with the `CRON_SECRET` header.
+   Set it up by filling in the backend URL and `CRON_SECRET` in `scripts/migration_39_reminder_cron.sql` and running it in
+   the SQL Editor (the same `CRON_SECRET` must be set on Render; don't commit the filled-in copy). Each device still gets
+   each reminder at most once a day. `.github/workflows/task-reminders.yml` is kept for firing one tick by hand.
 4. **Per device:** Settings → Notifications → Task reminders. iPhone needs iOS 16.4+ and the app added to the Home Screen first.
    The Android app (a Trusted Web Activity) shows them only if notification delegation is enabled in that app.
 
