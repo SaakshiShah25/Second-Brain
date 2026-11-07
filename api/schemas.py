@@ -96,11 +96,13 @@ class TaskCreate(BaseModel):
 class ListCreate(BaseModel):
     name: str = Field(..., max_length=40)
     emoji: Optional[str] = Field(None, max_length=8)
+    initiative_id: Optional[int] = None                    # the space it lives in (needs migration 43)
 
 
 class ListUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=40)
     emoji: Optional[str] = Field(None, max_length=8)
+    initiative_id: Optional[int] = None
 
 
 class PushKeys(BaseModel):

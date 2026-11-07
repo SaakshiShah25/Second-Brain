@@ -3,8 +3,9 @@ import { useSearchParams } from 'react-router-dom'
 import { Search, X } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { useNotes } from '../api/notes'
+import { useLists } from '../api/lists'
 import { useTasks } from '../api/tasks'
-import type { Interaction, Task } from '../api/types'
+import type { Interaction, ItemList, Task } from '../api/types'
 import Button from '../components/Button'
 import EmptyState from '../components/EmptyState'
 import InitiativeBar from '../components/InitiativeBar'
@@ -26,6 +27,7 @@ export default function NotesPage() {
   const offline = connection.offline || connection.unreachable
   const { data: initiatives } = useInitiatives()
   const { data: taskData } = useTasks('all')
+  const { data: allLists } = useLists()
   const [filter, setFilter] = useInitiativeFilter()
   const [query, setQuery] = useState('')
   // ?open=<note id> (from a task's "View the note") opens that note straight away.
@@ -70,7 +72,16 @@ export default function NotesPage() {
     : []
 
   // Initiatives with something in them, in the user's own order; Others last.
-  const has = (id: number) => !!groups.get(id)?.notes.length || !!itemGroups.get(id)?.length
+  // Labels (lists) by the space they were made for; one with no home yet sits under Others.
+  const labelGroups = useMemo(() => {
+    const map = new Map<number, ItemList[]>()
+    for (const l of allLists ?? []) {
+      const id = l.initiative_id ?? 0
+      ;(map.get(id) ?? map.set(id, []).get(id)!).push(l)
+    }
+    return map
+  }, [allLists])
+  const has = (id: number) => !!groups.get(id)?.notes.length || !!itemGroups.get(id)?.length || !!labelGroups.get(id)?.length
   const blocks = [
     ...(initiatives ?? []).filter((i) => has(i.id)).map((i) => ({ id: i.id, initiative: i })),
     ...(has(0) ? [{ id: 0, initiative: null }] : []),
@@ -149,6 +160,7 @@ export default function NotesPage() {
           initiative={focusInitiative}
           notes={(groups.get(focusId) ?? empty).notes}
           items={itemGroups.get(focusId) ?? []}
+          labels={labelGroups.get(focusId) ?? []}
         />
       ) : (
         <div className="flex flex-col gap-3">

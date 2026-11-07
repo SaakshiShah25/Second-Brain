@@ -440,11 +440,31 @@ def get_list_by_name(user_id: str, name: str):
     return rows[0] if rows else None
 
 
-def create_list(user_id: str, name: str, emoji: str = None) -> dict:
-    """Returns the existing list instead when one with this name is already there - two captures
-    a moment apart can both decide a "Movies" list is needed."""
+_list_space_ok = False
+
+
+def list_space_supported() -> bool:
+    """True once item_list.initiative_id exists (scripts/migration_43_list_space.sql). Only a yes is remembered."""
+    global _list_space_ok
+    if _list_space_ok:
+        return True
     try:
-        resp = get_client().table("item_list").insert({"user_id": user_id, "name": name, "emoji": emoji}).execute()
+        get_client().table("item_list").select("initiative_id").limit(1).execute()
+    except Exception:
+        return False
+    _list_space_ok = True
+    return True
+
+
+def create_list(user_id: str, name: str, emoji: str = None, initiative_id: int = None) -> dict:
+    """Returns the existing list instead when one with this name is already there - two captures
+    a moment apart can both decide a "Movies" list is needed. `initiative_id` is the space it lives in
+    (kept only once migration 43 has run)."""
+    row = {"user_id": user_id, "name": name, "emoji": emoji}
+    if initiative_id is not None and list_space_supported():
+        row["initiative_id"] = initiative_id
+    try:
+        resp = get_client().table("item_list").insert(row).execute()
         return resp.data[0]
     except APIError as e:
         if e.code != _UNIQUE_VIOLATION:
@@ -453,8 +473,12 @@ def create_list(user_id: str, name: str, emoji: str = None) -> dict:
 
 
 def get_list_initiative(user_id: str, list_id: int):
-    """The space most of this list's items are in (None when none of them has one), so a new entry added
-    without saying where it belongs ("add Sapiens to my reading list") goes next to the others."""
+    """The space a list lives in: the one it was given ("create a reading list in Personal"), else the space most
+    of its items are in (None when neither), so a new entry added without saying where it belongs
+    ("add Sapiens to my reading list") goes next to the others."""
+    home = (get_list(user_id, list_id) or {}).get("initiative_id")
+    if home:
+        return home
     try:
         rows = (get_client().table("task").select("initiative_id").eq("user_id", user_id).eq("list_id", list_id)
                 .not_.is_("initiative_id", "null").limit(50).execute().data)

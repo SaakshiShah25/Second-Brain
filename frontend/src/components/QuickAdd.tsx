@@ -4,7 +4,16 @@ import { useCreateItem } from '../api/tasks'
 import { useInitiativeFilter } from '../lib/initiativeFilter'
 
 // The add-a-line box at the top of a list: type "Dune", press return, it's on the list.
-export default function QuickAdd({ listId, placeholder }: { listId: number | null; placeholder: string }) {
+export default function QuickAdd({
+  listId,
+  placeholder,
+  initiativeId,
+}: {
+  listId: number | null
+  placeholder: string
+  // The space the new item belongs to, when the place it is added in already says (a label's block in a space).
+  initiativeId?: number | null
+}) {
   const [text, setText] = useState('')
   const createItem = useCreateItem()
   // With a space in focus (the chips at the foot of the screen), what you add belongs to it.
@@ -15,7 +24,11 @@ export default function QuickAdd({ listId, placeholder }: { listId: number | nul
     const description = text.trim()
     if (!description || createItem.isPending) return
     createItem.mutate(
-      { description, list_id: listId, ...(typeof focus === 'number' && focus > 0 ? { initiative_id: focus } : {}) },
+      {
+        description,
+        list_id: listId,
+        ...(initiativeId ? { initiative_id: initiativeId } : typeof focus === 'number' && focus > 0 ? { initiative_id: focus } : {}),
+      },
       { onSuccess: () => setText('') },
     )
   }

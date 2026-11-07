@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { useUpdateTaskStatus } from '../api/tasks'
-import type { Task } from '../api/types'
+import type { ItemList, Task } from '../api/types'
 import { byDue } from '../lib/items'
 import DragToSpace, { Draggable } from './DragToSpace'
 import ItemRow from './ItemRow'
 import ItemSheet from './ItemSheet'
+import QuickAdd from './QuickAdd'
 
 /** "2 to-dos · 3 in lists" - the open non-note things in an initiative, for its summary line. */
 export function thingCounts(items: Task[]): string {
@@ -19,11 +20,14 @@ function Block({
   title,
   items,
   done = [],
+  add,
   onToggle,
   onOpen,
 }: {
   title: string
   items: Task[]
+  // A quick-add box for this label (a label's block, not the to-dos).
+  add?: { listId: number; spaceId: number | null; name: string }
   // Finished entries stay findable (a book you've read), folded away under the open ones.
   done?: Task[]
   onToggle: (t: Task) => void
@@ -36,6 +40,7 @@ function Block({
         {title}
         <span className="font-medium normal-case tracking-normal opacity-80"> · {items.length}</span>
       </h3>
+      {add && <QuickAdd listId={add.listId} initiativeId={add.spaceId} placeholder={`Add to ${add.name}`} />}
       {items.length > 0 && (
         <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
           {items.map((t) => (
@@ -72,18 +77,20 @@ function Block({
 // Everything in an initiative that isn't a note: its open to-dos, then one block per list that has
 // something of this initiative's in it ("🎬 Movies"). Together with the notes above, the initiative
 // page is the whole map of what belongs to it.
-export default function InitiativeThings({ items }: { items: Task[] }) {
+export default function InitiativeThings({ items, labels = [], spaceId = null }: { items: Task[]; labels?: ItemList[]; spaceId?: number | null }) {
   const updateStatus = useUpdateTaskStatus()
   const [openId, setOpenId] = useState<number | null>(null)
   const open = items.filter((t) => t.status === 'open').sort((a, b) => byDue(a, b) || a.id - b.id)
   const active = items.find((t) => t.id === openId) ?? null
   const todos = open.filter((t) => !t.list_id)
-  const lists = new Map<number, { title: string; items: Task[]; done: Task[] }>()
+  const lists = new Map<number, { title: string; name: string; items: Task[]; done: Task[] }>()
+  // A label made for this space ("create a reading list in Personal") shows from the start, empty or not.
+  for (const l of labels) lists.set(l.id, { title: `${l.emoji ? `${l.emoji} ` : ''}${l.name}`, name: l.name, items: [], done: [] })
   // One block per label, in the order they first appear; a label whose entries are all done still shows (folded).
   for (const t of [...open, ...items.filter((x) => x.status === 'done').sort((a, b) => b.id - a.id)]) {
     if (!t.list_id) continue
     const l = t.item_list
-    const entry = lists.get(t.list_id) ?? { title: `${l?.emoji ? `${l.emoji} ` : ''}${l?.name ?? 'List'}`, items: [], done: [] }
+    const entry = lists.get(t.list_id) ?? { title: `${l?.emoji ? `${l.emoji} ` : ''}${l?.name ?? 'List'}`, name: l?.name ?? 'list', items: [], done: [] }
     ;(t.status === 'open' ? entry.items : entry.done).push(t)
     lists.set(t.list_id, entry)
   }
@@ -97,7 +104,7 @@ export default function InitiativeThings({ items }: { items: Task[] }) {
     <div className="mb-4">
       {todos.length > 0 && <Block title="To-dos" items={todos} {...rowProps} />}
       {[...lists.entries()].map(([id, l]) => (
-        <Block key={id} title={l.title} items={l.items} done={l.done} {...rowProps} />
+        <Block key={id} title={l.title} items={l.items} done={l.done} add={{ listId: id, spaceId, name: l.name }} {...rowProps} />
       ))}
       {active && <ItemSheet task={active} onClose={() => setOpenId(null)} />}
     </div>

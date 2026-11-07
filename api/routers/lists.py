@@ -25,6 +25,11 @@ def _clean_name(name) -> str:
     return name
 
 
+def _check_space(user_id: str, initiative_id) -> None:
+    if initiative_id is not None and not db.get_initiative(user_id, initiative_id):
+        raise HTTPException(400, "That space doesn't exist.")
+
+
 @router.get("")
 def get_lists(user_id: str = Depends(get_current_user_id)):
     return db.get_lists(user_id)
@@ -35,7 +40,8 @@ def create_list(body: ListCreate, user_id: str = Depends(get_current_user_id)):
     name = _clean_name(body.name)
     if db.get_list_by_name(user_id, name):
         raise HTTPException(409, f"You already have a list called '{name}'.")
-    return db.create_list(user_id, name, body.emoji or text_utils.list_emoji(name))
+    _check_space(user_id, body.initiative_id)
+    return db.create_list(user_id, name, body.emoji or text_utils.list_emoji(name), initiative_id=body.initiative_id)
 
 
 @router.patch("/{list_id}")
@@ -51,6 +57,10 @@ def update_list(list_id: int, body: ListUpdate, user_id: str = Depends(get_curre
         fields["name"] = name
     if body.emoji is not None:
         fields["emoji"] = body.emoji.strip() or text_utils.list_emoji(fields.get("name", ""))
+    if "initiative_id" in body.model_fields_set:
+        _check_space(user_id, body.initiative_id)
+        if db.list_space_supported():
+            fields["initiative_id"] = body.initiative_id
     return db.update_list(user_id, list_id, **fields)
 
 

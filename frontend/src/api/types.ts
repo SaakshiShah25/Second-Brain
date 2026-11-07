@@ -13,6 +13,7 @@ export interface ItemList {
   emoji: string | null
   position: number | null
   created_at: string
+  initiative_id?: number | null // the space it lives in (needs migration 43); null = none yet
 }
 
 // Every to-do and list entry is a Task (an "item").
@@ -189,7 +190,16 @@ export interface ChatBlockedResult {
   reason: 'unsafe' | 'out_of_scope' | 'unavailable'
   answer: string
 }
-export type ChatResult = ChatCaptureResult | ChatAskResult | ChatBlockedResult
+// "Create a reading list in Personal" / "make a space called Health": an instruction to the app, carried out. `capture`
+// is set when the message went on to add something ("...and add Dune").
+export interface ChatCommandResult {
+  intent: 'command'
+  status: 'answered'
+  answer: string
+  changed: ('lists' | 'initiatives')[]
+  capture?: CaptureSavedResult
+}
+export type ChatResult = ChatCaptureResult | ChatAskResult | ChatBlockedResult | ChatCommandResult
 
 // ---------- Settings (theme, font size, Terms of Service) ----------
 

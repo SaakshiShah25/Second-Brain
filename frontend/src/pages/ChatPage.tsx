@@ -182,6 +182,11 @@ export default function ChatPage() {
       })
     } else if (result.intent === 'capture') {
       handleSavedCapture(result)
+    } else if (result.intent === 'command') {
+      // An instruction to the app (create a list / a space) that was carried out: say what happened.
+      appendMessage('assistant', result.answer, { status: true })
+      for (const what of result.changed) queryClient.invalidateQueries({ queryKey: [what] })
+      if (result.capture) handleSavedCapture(result.capture)
     } else {
       appendMessage('assistant', result.answer, result.sources?.length ? { sources: result.sources } : {})
     }

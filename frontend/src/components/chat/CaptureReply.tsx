@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Check, MapPin, Pencil, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { useCreateInitiative, useInitiatives } from '../../api/initiatives'
 import { useUpdateInteraction } from '../../api/notes'
+import { useUpdateTaskFields } from '../../api/tasks'
 import type { CapturePart, CaptureSavedResult } from '../../api/types'
 import { dueLabel } from '../../lib/dates'
 import { notePoints } from '../../lib/initiativeFilter'
@@ -197,6 +198,65 @@ function Section({
   )
 }
 
+// A part that saved only items ("add Dune to my reading list"): the same header as a note part - which space they
+// went to, with a pencil to change it - then the items as tappable lines (a tap opens one to change its label, date
+// or reminder). Changing the space moves all of the part's items, so a wrong guess is one tap, not an undo.
+function ItemsSection({
+  part,
+  color,
+  Icon,
+  onChange,
+}: {
+  part: CapturePart
+  color: string
+  Icon?: LucideIcon
+  onChange: (patch: Partial<CapturePart>) => void
+}) {
+  const updateFields = useUpdateTaskFields()
+  const { data: initiatives = [] } = useInitiatives()
+  const [changing, setChanging] = useState(false)
+  return (
+    <section className="py-1 pl-3.5" style={{ borderLeft: `3px solid ${color}` }}>
+      <p className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[1rem] font-bold" style={{ color }}>
+        <span className="flex items-center gap-1.5">
+          {Icon && <Icon size={16} strokeWidth={2.4} className="flex-shrink-0" />}
+          Space: {part.initiative_name ?? 'Others'}
+        </span>
+        <button
+          type="button"
+          onClick={() => setChanging(true)}
+          aria-label="Change space"
+          title="Change space"
+          className="pressable flex h-7 w-7 items-center justify-center rounded-full border border-border-strong text-text-muted"
+        >
+          <Pencil size={13} strokeWidth={2.2} />
+        </button>
+      </p>
+      {part.change_note && (
+        <p className="mb-2 flex items-center gap-1.5 text-[0.8125rem] font-medium" style={{ color }}>
+          <Check size={14} strokeWidth={2.6} className="flex-shrink-0" />
+          {part.change_note}
+        </p>
+      )}
+      <Receipt items={part.tasks_created} />
+      {changing && (
+        <CategorySheet
+          title="Which space should these go in?"
+          currentId={part.initiative_id}
+          onClose={() => setChanging(false)}
+          onPick={async (id) => {
+            if (id === part.initiative_id) return
+            await Promise.all(part.tasks_created.map((t) => updateFields.mutateAsync({ taskId: t.id, fields: { initiative_id: id } })))
+            const name = id === null ? null : (initiatives.find((i) => i.id === id)?.name ?? part.initiative_name)
+            onChange({ initiative_id: id, initiative_name: name, change_note: name ? `Moved to ${name}` : 'Moved to Others' })
+            toast(name ? `Moved to ${name}` : 'Moved to Others')
+          }}
+        />
+      )}
+    </section>
+  )
+}
+
 export default function CaptureReply({
   result,
   onChange,
@@ -213,11 +273,26 @@ export default function CaptureReply({
   const { data: initiatives } = useInitiatives()
   if (undone) return <p className="text-[0.875rem] italic text-text-muted">Undone - nothing from this was kept.</p>
   const notes = result.parts.filter((p) => p.interaction_id != null)
-  // A part with no note is just items ("add Dune to my reading list"): shown as one receipt of tappable lines.
-  const itemsOnly = result.parts.filter((p) => p.interaction_id == null).flatMap((p) => p.tasks_created)
+  // A part with no note is just items ("add Dune to my reading list"): its own section with a space to change.
+  const itemParts = result.parts.filter((p) => p.interaction_id == null && p.tasks_created.length > 0)
+  const styleOf = (part: CapturePart) => {
+    const initiative = initiatives?.find((i) => i.id === part.initiative_id)
+    return getInitiativeStyle(initiative ?? (part.initiative_name ? { id: part.initiative_id ?? 0, name: part.initiative_name, color: null } : null))
+  }
   return (
     <div className="flex flex-col gap-3.5 rounded-2xl border border-border bg-bg-card px-4 py-3.5">
-      {itemsOnly.length > 0 && <Receipt items={itemsOnly} />}
+      {itemParts.map((part, i) => {
+        const style = styleOf(part)
+        return (
+          <ItemsSection
+            key={`items-${i}`}
+            part={part}
+            color={style?.color ?? OTHERS_COLOR}
+            Icon={style?.Icon}
+            onChange={(patch) => onChange?.({ ...result, parts: result.parts.map((p) => (p === part ? { ...p, ...patch } : p)) })}
+          />
+        )
+      })}
       {notes.map((part) => {
         const initiative = initiatives?.find((i) => i.id === part.initiative_id)
         const style = getInitiativeStyle(initiative ?? (part.initiative_name ? { id: part.initiative_id ?? 0, name: part.initiative_name, color: null } : null))
@@ -254,7 +329,7 @@ export default function CaptureReply({
       )}
       {onUndo && (
         <UndoButton
-          label={notes.length && itemsOnly.length ? 'Undo - delete the note and these' : notes.length ? 'Undo - delete this note' : 'Undo'}
+          label={notes.length && itemParts.length ? 'Undo - delete the note and these' : notes.length ? 'Undo - delete this note' : 'Undo - remove these'}
           onUndo={onUndo}
         />
       )}
