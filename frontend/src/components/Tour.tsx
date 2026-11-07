@@ -7,6 +7,7 @@ import {
   NotebookText,
   Settings as SettingsIcon,
   ListChecks,
+  CalendarCheck,
   type LucideIcon,
 } from 'lucide-react'
 import { useUsageMode } from '../lib/usageMode'
@@ -56,21 +57,27 @@ const STEPS: Step[] = [
     path: '/',
   },
   {
+    icon: CalendarCheck,
+    title: 'Today',
+    description: 'What needs you today, from every list — overdue things, today’s reminders and routines, and birthdays coming up.',
+    path: '/today',
+  },
+  {
     icon: ListChecks,
-    title: 'Tasks',
-    description: 'Every to-do from your notes, grouped under its initiative — tick it off, or change who owes it and by when.',
-    path: '/tasks',
+    title: 'Lists',
+    description: 'Your to-dos, plus lists the app makes as you go — movies, books, groceries, birthdays. Just say “add Dune to my reading list”.',
+    path: '/lists',
   },
   {
     icon: NotebookText,
     title: 'Notes',
-    description: 'Every note lands here as a few short points, with its tasks ready to tick off.',
+    description: 'Anything worth remembering — a meeting, an idea, what someone said — lands here as a few short points.',
     path: '/notes',
   },
   {
     icon: ListTree,
     title: 'Initiatives',
-    description: 'Your own categories — Job, Fitness, Personal, anything. Notes are sorted into them automatically; tap one at the top of Today or Notes to see just its tasks and notes.',
+    description: 'Your own categories — Job, Fitness, Personal, anything. Notes are sorted into them automatically; tap one at the top of Tasks or Notes to see just its tasks and notes.',
     path: '/notes',
   },
   {

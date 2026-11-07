@@ -38,6 +38,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from postgrest.exceptions import APIError
 from supabase import create_client, Client
 
 import crypto_utils
@@ -88,7 +89,7 @@ def get_client() -> Client:
 
 _ENCRYPTED_TEXT_FIELDS = {
     "interaction": ["raw_text", "summary", "location", "appearance", "geo_address"],
-    "task": ["description"],
+    "task": ["description", "detail"],
     "search_chunk": ["title", "text"],
 }
 _ENCRYPTED_JSON_FIELDS = {
@@ -271,7 +272,10 @@ def reminder_time_supported() -> bool:
     return True
 
 
-def create_task(user_id: str, interaction_id, description, due_date=None, owner="me", due_time=None, initiative_id=None):
+def create_task(user_id: str, interaction_id, description, due_date=None, owner="me", due_time=None, initiative_id=None,
+                list_id=None, repeat=None, detail=None):
+    """One item. `interaction_id` is the note it came from, or None for an item captured on its own
+    ("add Dune to my reading list"); `list_id` None means the main Tasks list."""
     row = {
         "user_id": user_id,
         "interaction_id": interaction_id,
@@ -283,6 +287,10 @@ def create_task(user_id: str, interaction_id, description, due_date=None, owner=
         row["due_time"] = due_time
     if task_extras_supported():
         row["initiative_id"] = initiative_id  # the task's own category: starts as its note's, can be moved later
+    # Only sent when set, so a plain to-do still saves on a database without the lists columns (schema.sql section 40).
+    for key, value in (("list_id", list_id), ("repeat", repeat), ("detail", detail)):
+        if value:
+            row[key] = value
     try:
         resp = get_client().table("task").insert(_encrypt_fields("task", row)).execute()
     except Exception as e:
@@ -306,15 +314,14 @@ def get_tasks_for_interactions(user_id: str, interaction_ids: list):
 
 def get_all_tasks_with_context(user_id: str, status: str = None):
     """
-    Fetches every task joined with its note's date/summary/initiative - used
-    by the Tasks page so each task can show which category it
-    belongs to without a separate round-trip per task.
+    Fetches every item joined with its note's date/summary/initiative and its
+    list - the Today, Lists and Tasks pages all read from this one call.
     Optional `status` filter ('open'/'done'); None returns all statuses.
     Ordered by due_date (nulls last).
     """
     query = (
         get_client().table("task")
-        .select("*, interaction(id, date, summary, initiative(id, name))")
+        .select("*, interaction(id, date, summary, initiative(id, name)), item_list(id, name, emoji)")
         .eq("user_id", user_id)
     )
     if status:
@@ -381,6 +388,75 @@ def get_task(user_id: str, task_id: int):
     """Single task by id (None-safe via .single() raising if absent)."""
     resp = get_client().table("task").select("*").eq("id", task_id).eq("user_id", user_id).single().execute()
     return _decrypt_row("task", resp.data)
+
+
+def delete_task(user_id: str, task_id: int):
+    get_client().table("task").delete().eq("id", task_id).eq("user_id", user_id).execute()
+
+
+def get_reminder_candidates(user_ids: list, until_date: str) -> list:
+    """Open items that can raise their own push reminder - ones with a time of day or a repeat -
+    due on or before `until_date`, for these users. Read by push_notify.send_due every minute."""
+    if not user_ids:
+        return []
+    resp = (
+        get_client().table("task")
+        .select("id, user_id, description, due_date, due_time, repeat, reminded_key, item_list(name, emoji)")
+        .in_("user_id", list(user_ids)).eq("status", "open")
+        .not_.is_("due_date", "null").lte("due_date", until_date)
+        .or_("due_time.not.is.null,repeat.not.is.null")
+        .execute()
+    )
+    return _decrypt_rows("task", resp.data)
+
+
+def mark_task_reminded(task_id: int, key: str):
+    get_client().table("task").update({"reminded_key": key}).eq("id", task_id).execute()
+
+
+# ---------- Lists (schema.sql section 40) ----------
+
+_UNIQUE_VIOLATION = "23505"
+
+
+def get_lists(user_id: str) -> list:
+    return (get_client().table("item_list").select("*").eq("user_id", user_id)
+            .order("position", nullsfirst=False).order("created_at").execute().data)
+
+
+def get_list(user_id: str, list_id: int):
+    rows = get_client().table("item_list").select("*").eq("id", list_id).eq("user_id", user_id).execute().data
+    return rows[0] if rows else None
+
+
+def get_list_by_name(user_id: str, name: str):
+    """Case-insensitive exact match (ilike with no wildcards), like get_initiative_by_name."""
+    escaped = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    rows = get_client().table("item_list").select("*").eq("user_id", user_id).ilike("name", escaped).execute().data
+    return rows[0] if rows else None
+
+
+def create_list(user_id: str, name: str, emoji: str = None) -> dict:
+    """Returns the existing list instead when one with this name is already there - two captures
+    a moment apart can both decide a "Movies" list is needed."""
+    try:
+        resp = get_client().table("item_list").insert({"user_id": user_id, "name": name, "emoji": emoji}).execute()
+        return resp.data[0]
+    except APIError as e:
+        if e.code != _UNIQUE_VIOLATION:
+            raise
+        return get_list_by_name(user_id, name)
+
+
+def update_list(user_id: str, list_id: int, **fields):
+    if fields:
+        get_client().table("item_list").update(fields).eq("id", list_id).eq("user_id", user_id).execute()
+    return get_list(user_id, list_id)
+
+
+def delete_list(user_id: str, list_id: int):
+    """Its items go with it (task.list_id is ON DELETE CASCADE)."""
+    get_client().table("item_list").delete().eq("id", list_id).eq("user_id", user_id).execute()
 
 
 # ---------- Interaction management (editing) ----------

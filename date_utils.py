@@ -168,3 +168,94 @@ def to_valid_time(value) -> Optional[str]:
             hour += 12
         return f"{hour:02d}:{minute:02d}"
     return None
+
+
+# ---------- Repeating items (schema.sql section 40) ----------
+#
+# Stored values: daily | weekdays | weekly | monthly | yearly | hours:N. A repeating item has
+# ONE due date - the next occurrence. Ticking it off moves that date on instead of closing it.
+
+_REPEAT_WORDS = {
+    "daily": "daily", "every day": "daily", "everyday": "daily", "each day": "daily",
+    "every night": "daily", "every morning": "daily", "every evening": "daily", "nightly": "daily",
+    "weekdays": "weekdays", "every weekday": "weekdays", "on weekdays": "weekdays",
+    "weekly": "weekly", "every week": "weekly",
+    "monthly": "monthly", "every month": "monthly",
+    "yearly": "yearly", "every year": "yearly", "annually": "yearly", "annual": "yearly",
+}
+_EVERY_N_HOURS = re.compile(r"^(?:hours:|every\s+)(\d{1,2})(?:\s*(?:hours?|hrs?|h))?$")
+_EVERY_HOUR = re.compile(r"^(?:hourly|every\s+hour)$")
+
+
+def normalize_repeat(value) -> Optional[str]:
+    """The model's (or the app's) wording -> a stored repeat value, else None.
+    'every 2 hours' -> 'hours:2'; anything not clearly a repeat is dropped, never guessed."""
+    if not value or not isinstance(value, str):
+        return None
+    text = " ".join(value.strip().lower().split())
+    if text in _REPEAT_WORDS:
+        return _REPEAT_WORDS[text]
+    if _EVERY_HOUR.match(text):
+        return "hours:1"
+    m = _EVERY_N_HOURS.match(text)
+    if m and 1 <= int(m.group(1)) <= 12:
+        return f"hours:{int(m.group(1))}"
+    return None
+
+
+def repeat_hours(repeat) -> Optional[int]:
+    """N for an 'hours:N' repeat, else None."""
+    if isinstance(repeat, str) and repeat.startswith("hours:") and repeat[6:].isdigit():
+        return int(repeat[6:])
+    return None
+
+
+def _add_months_keep_day(d: date, months: int, day: int) -> date:
+    """`months` after d, on `day` - or that month's last day when it is shorter (31 Jan -> 28 Feb)."""
+    first = _add_months(d, months)
+    next_first = _add_months(first, 1)
+    return first.replace(day=min(day, (next_first - timedelta(days=1)).day))
+
+
+def _step(d: date, repeat: str, anchor_day: int, anchor_month: int) -> date:
+    if repeat == "weekly":
+        return d + timedelta(weeks=1)
+    if repeat == "monthly":
+        return _add_months_keep_day(d, 1, anchor_day)
+    if repeat == "yearly":
+        return _add_months_keep_day(date(d.year + 1, anchor_month, 1), 0, anchor_day)
+    if repeat == "weekdays":
+        d += timedelta(days=1)
+        while d.weekday() >= 5:
+            d += timedelta(days=1)
+        return d
+    return d + timedelta(days=1)  # daily, hours:N (an hourly nudge is "done for today")
+
+
+def first_occurrence(due_date, repeat, today: date = None) -> Optional[str]:
+    """The first occurrence on or after today for a NEW repeating item - "Mom's birthday,
+    14 March" said in November is next March, not this past one. Non-repeating: unchanged."""
+    today = today or date.today()
+    if not due_date or not repeat:
+        return due_date
+    d = date.fromisoformat(due_date)
+    day, month = d.day, d.month
+    while d < today:
+        d = _step(d, repeat, day, month)
+    if repeat == "weekdays":
+        while d.weekday() >= 5:
+            d += timedelta(days=1)
+    return d.isoformat()
+
+
+def next_occurrence(due_date, repeat, today: date = None) -> str:
+    """Where a repeating item moves when it is ticked off: the first occurrence after both its
+    current date and today. Ticking an overdue daily item lands on tomorrow, not on a day that
+    has already gone by; ticking a weekly one early moves it a week on."""
+    today = today or date.today()
+    d = date.fromisoformat(due_date) if due_date else today
+    day, month = d.day, d.month
+    d = _step(d, repeat, day, month)
+    while d <= today:
+        d = _step(d, repeat, day, month)
+    return d.isoformat()

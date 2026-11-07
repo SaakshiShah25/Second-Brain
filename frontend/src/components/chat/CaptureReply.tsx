@@ -7,6 +7,7 @@ import { dueLabel } from '../../lib/dates'
 import { notePoints } from '../../lib/initiativeFilter'
 import { getInitiativeStyle } from '../../lib/initiativeStyle'
 import Button from '../Button'
+import Receipt, { UndoButton } from './Receipt'
 import CategorySheet from '../CategorySheet'
 import { toast } from '../Toast'
 import { Input } from '../fields'
@@ -63,7 +64,7 @@ function Suggestion({ part, color, onResolved }: { part: CapturePart; color: str
     setError('')
     try {
       const made = await createInitiative.mutateAsync({ name: clean })
-      await updateInteraction.mutateAsync({ interactionId: part.interaction_id, fields: { initiative_id: made.id } })
+      await updateInteraction.mutateAsync({ interactionId: part.interaction_id!, fields: { initiative_id: made.id } })
       onResolved({ initiative_id: made.id, initiative_name: made.name, suggested_initiative: null, change_note: `Created ${made.name} and filed this under it${part.tasks_created.length ? ' - with its ' + (part.tasks_created.length === 1 ? 'task' : part.tasks_created.length + ' tasks') : ''}` })
       toast(`Created ${made.name}`)
     } catch (e) {
@@ -155,7 +156,9 @@ function Section({
           <List
             items={part.tasks_created.map((t) => (
               <>
+                {t.list_name && <span>{t.list_emoji} </span>}
                 {t.description}
+                {t.list_name && <span className="text-text-muted"> → {t.list_name}</span>}
                 {t.due_date && <span className="text-text-muted"> · due {dueLabel(t.due_date, t.due_time)}</span>}
                 {t.owner === 'them' && <span className="text-them-task"> · someone else owes this</span>}
               </>
@@ -182,7 +185,7 @@ function Section({
           onClose={() => setChanging(false)}
           onPick={async (id) => {
             // The note moves, and so do the tasks it created (the Tasks tab groups them by their note's category).
-            await updateInteraction.mutateAsync({ interactionId: part.interaction_id, fields: { initiative_id: id } })
+            await updateInteraction.mutateAsync({ interactionId: part.interaction_id!, fields: { initiative_id: id } })
             if (id === part.initiative_id) return
             const name = id === null ? null : initiatives.find((i) => i.id === id)?.name ?? part.initiative_name
             onChange({ initiative_id: id, initiative_name: name, suggested_initiative: null, change_note: movedNote(name, part.tasks_created.length) })
@@ -197,15 +200,25 @@ function Section({
 export default function CaptureReply({
   result,
   onChange,
+  undone,
+  onUndo,
 }: {
   result: CaptureSavedResult
   // Called with the updated reply when the user changes where a part went (so the card keeps showing the truth).
   onChange?: (result: CaptureSavedResult) => void
+  // Takes back everything this capture saved; `undone` once it has.
+  undone?: boolean
+  onUndo?: () => Promise<void>
 }) {
   const { data: initiatives } = useInitiatives()
+  if (undone) return <p className="text-[0.875rem] italic text-text-muted">Undone - nothing from this was kept.</p>
+  const notes = result.parts.filter((p) => p.interaction_id != null)
+  // A part with no note is just items ("add Dune to my reading list"): shown as one receipt of tappable lines.
+  const itemsOnly = result.parts.filter((p) => p.interaction_id == null).flatMap((p) => p.tasks_created)
   return (
     <div className="flex flex-col gap-3.5 rounded-2xl border border-border bg-bg-card px-4 py-3.5">
-      {result.parts.map((part) => {
+      {itemsOnly.length > 0 && <Receipt items={itemsOnly} />}
+      {notes.map((part) => {
         const initiative = initiatives?.find((i) => i.id === part.initiative_id)
         const style = getInitiativeStyle(initiative ?? (part.initiative_name ? { id: part.initiative_id ?? 0, name: part.initiative_name, color: null } : null))
         return (
@@ -238,6 +251,12 @@ export default function CaptureReply({
             {result.geo_address ?? 'Attached location'}
           </a>
         </p>
+      )}
+      {onUndo && (
+        <UndoButton
+          label={notes.length && itemsOnly.length ? 'Undo - delete the note and these' : notes.length ? 'Undo - delete this note' : 'Undo'}
+          onUndo={onUndo}
+        />
       )}
     </div>
   )

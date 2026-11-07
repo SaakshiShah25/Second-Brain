@@ -63,18 +63,27 @@ def _note_chunk(n: dict) -> dict:
 
 def _task_chunk(t: dict) -> dict:
     inter = t.get("interaction") or {}
-    owner = "I owe this" if t.get("owner") == "me" else "Someone else owes this to me"
-    title = f"Task · {t.get('description', '')[:60]}"
+    lst = t.get("item_list") or {}
+    if lst:
+        title = f"{lst.get('name')} · {t.get('description', '')[:60]}"
+        head = f"Item in the list \"{lst.get('name')}\" ({'done' if t.get('status') == 'done' else 'open'})"
+    else:
+        owner = "I owe this" if t.get("owner") == "me" else "Someone else owes this to me"
+        title = f"Task · {t.get('description', '')[:60]}"
+        head = f"Task ({t.get('status')}) - {owner}"
+    when = (f", due {t['due_date']}" + (f" at {str(t['due_time'])[:5]}" if t.get("due_time") else "")
+            if t.get("due_date") else ("" if lst else ", no due date"))
     text = "\n".join(p for p in [
-        f"Task ({t.get('status')}) - {owner}" + (f", due {t['due_date']}" + (f" at {str(t['due_time'])[:5]}" if t.get("due_time") else "")
-                                           if t.get("due_date") else ", no due date"),
+        head + when + (f", repeats {t['repeat']}" if t.get("repeat") else ""),
         t.get("description", ""),
+        t.get("detail") or "",
         f"From a note on {inter.get('date')}: {inter.get('summary') or ''}" if inter else "",
     ] if p)
     return {"kind": "task", "entity_id": t["id"], "title": title, "text": text,
-            "item_date": t.get("due_date") or inter.get("date"), "person_ids": [],
-            "initiative_id": (inter.get("initiative") or {}).get("id"),
-            "meta": {"status": t.get("status"), "owner": t.get("owner")}}
+            "item_date": t.get("due_date") or inter.get("date") or (t.get("created_at") or "")[:10] or None,
+            "person_ids": [],
+            "initiative_id": t.get("initiative_id") or (inter.get("initiative") or {}).get("id"),
+            "meta": {"status": t.get("status"), "owner": t.get("owner"), "list": lst.get("name")}}
 
 
 def _build(user_id: str, wanted: Optional[dict] = None) -> list:

@@ -1,7 +1,8 @@
 """
-api/routers/capture.py — Logging a note: text (and voice, via transcription)
-goes through extraction.py, is saved as a note with its follow-up tasks, and
-is queued for the search index. `_capture_text_core` is also what
+api/routers/capture.py — Logging a capture: text (and voice, via transcription)
+goes through extraction.py and is saved as items (to-dos, list entries, routines,
+dates) and - only when there is something to remember - a note per initiative.
+Everything saved is queued for the search index. `_capture_text_core` is also what
 api/routers/chat.py calls for the main chat input.
 """
 
@@ -28,7 +29,7 @@ from timing import step
 from api.auth import get_current_user_id
 from api.rate_limit import limiter
 from api.schemas import CaptureRequest
-from date_utils import resolve_relative_phrase, to_valid_time
+from date_utils import first_occurrence, normalize_repeat, resolve_relative_phrase, to_valid_time
 
 router = APIRouter()
 
@@ -108,14 +109,51 @@ def _existing_initiative_for_suggestion(user_id: str, group: dict) -> Optional[i
     return existing["id"] if existing else None
 
 
+class _ListResolver:
+    """Turns the list names the model gives into lists for one capture, creating a list the first
+    time it's needed. The main Tasks list is no list at all (None)."""
+
+    def __init__(self, user_id: str):
+        self.user_id = user_id
+        self.cache: dict = {}
+
+    def resolve(self, name) -> Optional[dict]:
+        name = " ".join(str(name or "").split())[:40]
+        if not name or name.lower() in text_utils.MAIN_LIST_NAMES:
+            return None
+        key = name.lower()
+        if key not in self.cache:
+            existing = db.get_list_by_name(self.user_id, name)
+            self.cache[key] = existing or db.create_list(self.user_id, name[:1].upper() + name[1:],
+                                                         text_utils.list_emoji(name))
+        return self.cache[key]
+
+
+def _parse_items(extracted: dict) -> list:
+    """extraction.py's follow_ups as clean dicts; empty ones dropped."""
+    items = []
+    for item in extracted.get("follow_ups", []) or []:
+        if not isinstance(item, dict):
+            item = {"description": str(item)}
+        desc = text_utils.clean_task_text(item.get("description", ""))
+        if not desc:
+            continue
+        owner = item.get("owner") if item.get("owner") in ("me", "them") else "me"
+        detail = " ".join(str(item.get("detail") or "").split())[:1000] or None
+        items.append({**item, "description": desc, "owner": owner, "detail": detail})
+    return items
+
+
 def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, interaction_date: str,
                              initiative_id: Optional[int] = None,
                              geo_lat: Optional[float] = None, geo_lng: Optional[float] = None,
                              geo_address: Optional[str] = None, maps_url: Optional[str] = None,
                              embedding=None, batch: Optional[str] = None,
-                             source_id: Optional[int] = None) -> dict:
-    """Saves ONE initiative's share of a logged message as its own note (with its own tasks) and returns what to
-    tell the user about it. `raw_text` is the message as written; `extracted` holds this initiative's points,
+                             source_id: Optional[int] = None, save_note: bool = True,
+                             lists: Optional[_ListResolver] = None) -> dict:
+    """Saves ONE initiative's share of a logged message as its own note (with its own items) and returns what to
+    tell the user about it. With `save_note` False (a message that is only to-dos and list entries) just the
+    items are saved and `interaction_id` comes back None. `raw_text` is the message as written; `extracted` holds this initiative's points,
     decisions, concerns and follow-ups. The notes that came from the same message are tied together: either by
     `source_id` (they point at the first note, which holds the original text once) or, when that column isn't
     available yet, by a shared `batch` id with the original text repeated on each."""
@@ -123,8 +161,8 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
     # concerns and tasks are single lines, so a stray list marker at their start is dropped.
     decisions = [d for d in (text_utils.strip_bullet(x) for x in extracted.get("decisions") or []) if d]
     concerns = [c for c in (text_utils.strip_bullet(x) for x in extracted.get("concerns") or []) if c]
-    follow_ups = extracted.get("follow_ups", []) or []
-    task_texts = [text_utils.clean_task_text(i.get("description", "") if isinstance(i, dict) else str(i)) for i in follow_ups]
+    items = _parse_items(extracted)
+    task_texts = [i["description"] for i in items]
     # Every fact is shown once: a point that merely restates a decision, concern or task is dropped
     # (the extraction prompt asks for this too; this keeps it true even if the model repeats itself).
     summary = text_utils.dedupe_points(
@@ -133,70 +171,90 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
     section = text_utils.clean_section(extracted.get("section"))
 
     _t_db0 = time.perf_counter()
-    interaction_id = db.create_interaction(
-        user_id,
-        initiative_id=initiative_id,
-        raw_text=raw_text,
-        source_id=source_id,
-        date=interaction_date,
-        location=extracted.get("location"),
-        summary=summary,
-        topics=extracted.get("topics", []),
-        embedding=embedding,
-        geo_lat=geo_lat,
-        geo_lng=geo_lng,
-        geo_address=geo_address,
-        maps_url=maps_url,
-        decisions=decisions,
-        concerns=concerns,
-        # the topic label groups the note on its initiative's page; the batch id ties the notes of one message together
-        extracted_facts={k: v for k, v in (("section", section), ("batch", batch)) if v} or None,
-    )
+    interaction_id = None
+    if save_note:
+        interaction_id = db.create_interaction(
+            user_id,
+            initiative_id=initiative_id,
+            raw_text=raw_text,
+            source_id=source_id,
+            date=interaction_date,
+            location=extracted.get("location"),
+            summary=summary,
+            topics=extracted.get("topics", []),
+            embedding=embedding,
+            geo_lat=geo_lat,
+            geo_lng=geo_lng,
+            geo_address=geo_address,
+            maps_url=maps_url,
+            decisions=decisions,
+            concerns=concerns,
+            # the topic label groups the note on its initiative's page; the batch id ties the notes of one message together
+            extracted_facts={k: v for k, v in (("section", section), ("batch", batch)) if v} or None,
+        )
 
     tasks_created = []
     task_ids = []
     skipped_due_dates = []
-    for item in extracted.get("follow_ups", []) or []:
-        if isinstance(item, dict):
-            task_desc, raw_due_date = text_utils.clean_task_text(item.get("description", "")), item.get("due_date")
-            owner = item.get("owner") or "me"
-        else:
-            task_desc, raw_due_date, owner = text_utils.clean_task_text(str(item)), None, "me"
-        if not task_desc:
-            continue
-        if owner not in ("me", "them"):
-            owner = "me"
+    lists = lists or _ListResolver(user_id)
+    for item in items:
+        task_desc, raw_due_date, owner = item["description"], item.get("due_date"), item["owner"]
+        repeat = normalize_repeat(item.get("repeat"))
         due_date = resolve_relative_phrase(raw_due_date)
-        due_time = to_valid_time(item.get("due_time")) if isinstance(item, dict) else None
-        if due_time and not due_date:
-            due_date = date.today().isoformat()  # "finish it by 7pm" with no day means today
-        if raw_due_date and not due_date:
+        due_time = to_valid_time(item.get("due_time"))
+        if (due_time or repeat) and not due_date:
+            due_date = date.today().isoformat()  # "finish it by 7pm" / "every night" with no day starts today
+        if raw_due_date and not resolve_relative_phrase(raw_due_date):
             skipped_due_dates.append({"description": task_desc, "raw_due_date": raw_due_date})
-        task_ids.append(db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner,
-                                       due_time=due_time, initiative_id=initiative_id))
-        tasks_created.append({"description": task_desc, "due_date": due_date, "due_time": due_time, "owner": owner})
+        if repeat:
+            due_date = first_occurrence(due_date, repeat)  # "Mom's birthday, 14 March" said in November -> next March
+        item_list = lists.resolve(item.get("list"))
+        list_id = item_list["id"] if item_list else None
+        task_id = db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner,
+                                 due_time=due_time, initiative_id=initiative_id, list_id=list_id,
+                                 repeat=repeat, detail=item["detail"])
+        task_ids.append(task_id)
+        tasks_created.append({
+            "id": task_id, "description": task_desc, "due_date": due_date, "due_time": due_time, "owner": owner,
+            "repeat": repeat, "list_id": list_id,
+            "list_name": item_list["name"] if item_list else None,
+            "list_emoji": item_list.get("emoji") if item_list else None,
+        })
 
     print(f"[timing] db_writes: {time.perf_counter() - _t_db0:.2f}s")
 
     # Keep the search index in step (background - no added latency).
-    search_index.enqueue(user_id, "note", [interaction_id])
+    if interaction_id:
+        search_index.enqueue(user_id, "note", [interaction_id])
     search_index.enqueue(user_id, "task", task_ids)
 
     return {
+        # None when the message was only items - nothing was kept as a note.
         "interaction_id": interaction_id,
+        "note_saved": interaction_id is not None,
         "initiative_id": initiative_id,
         # Only ever non-null when initiative_id is null - extraction.py's prompt keeps the two mutually
         # exclusive. The frontend offers "add this as a new initiative?" off of this, and re-tags the note
         # via PATCH /api/notes/{id} once the user says yes.
-        "suggested_initiative": extracted.get("suggested_initiative") or None,
+        "suggested_initiative": (extracted.get("suggested_initiative") or None) if interaction_id else None,
         # Name, not just the id, so the chat UI can say where this part landed (None = Others).
         "initiative_name": (db.get_initiative(user_id, initiative_id) or {}).get("name") if initiative_id else None,
-        "summary": summary,
+        "summary": summary if interaction_id else "",
         "tasks_created": tasks_created,
         "skipped_due_dates": skipped_due_dates,
-        "decisions": decisions,
-        "concerns": concerns,
+        "decisions": decisions if interaction_id else [],
+        "concerns": concerns if interaction_id else [],
     }
+
+
+def _list_names(user_id: str) -> list:
+    """The user's list names for extraction.py - empty (rather than failing the capture) if the
+    lists table isn't there yet."""
+    try:
+        return [row["name"] for row in db.get_lists(user_id)]
+    except Exception as e:
+        print(f"[warn] couldn't read lists (run scripts/migration_40_lists.sql?): {e}")
+        return []
 
 
 def _process_extracted(user_id: str, raw_text: str, extracted: dict,
@@ -208,6 +266,11 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
     there."""
     interaction_date, date_warning = _resolve_interaction_date(extracted)
     groups = extraction.note_groups(raw_text, extracted)
+    # A message that is only instructions ("add Dune to my reading list", "call mom tomorrow") saves just its
+    # items. Anything else - or a message that produced no items at all, so the input is never lost - is also
+    # kept as a note.
+    has_items = any(g.get("follow_ups") for g in groups)
+    keep_note = extracted.get("keep_note") is not False or not has_items
     forced = forced_initiative_id is not None and db.get_initiative(user_id, forced_initiative_id)
     if forced:
         groups = [extraction.collapse_groups(raw_text, groups)]
@@ -215,18 +278,21 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
     # Opt-in device location (see ChatInput.tsx) - geo_address is only ever populated if a GOOGLE_MAPS_API_KEY
     # is configured; maps_url always works (no key needed). Looked up once, shared by every note.
     geo_address = maps_url = None
-    if geo_lat is not None and geo_lng is not None:
+    if keep_note and geo_lat is not None and geo_lng is not None:
         maps_url = google_maps.build_maps_url(geo_lat, geo_lng)
         geo_address = google_maps.reverse_geocode(geo_lat, geo_lng)
 
     # The original text is the same for every note of this message, so it is embedded once.
-    with step("embedding"):
-        embedding = embeddings.compute_embedding((raw_text or "").strip())
+    embedding = None
+    if keep_note:
+        with step("embedding"):
+            embedding = embeddings.compute_embedding((raw_text or "").strip())
     # A message that lands in several initiatives is saved once, with the original text on its first note; the other
     # notes only point at it (so deleting or editing the original reaches every initiative it touches).
-    link = len(groups) > 1 and db.source_links_supported()
-    batch = uuid.uuid4().hex[:12] if len(groups) > 1 and not link else None
+    link = keep_note and len(groups) > 1 and db.source_links_supported()
+    batch = uuid.uuid4().hex[:12] if keep_note and len(groups) > 1 and not link else None
 
+    lists = _ListResolver(user_id)
     saved = []
     for group in groups:
         # the date and the place the message mentions apply to every note made from it
@@ -246,7 +312,10 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
             geo_lat=geo_lat, geo_lng=geo_lng, geo_address=geo_address, maps_url=maps_url,
             embedding=None if follower else embedding, batch=batch,
             source_id=saved[0]["interaction_id"] if follower else None,
+            save_note=keep_note, lists=lists,
         ))
+    if not keep_note:
+        saved = [p for p in saved if p["tasks_created"]]  # a group with no items has nothing to show
 
     return {
         "status": "saved",
@@ -289,12 +358,15 @@ async def _capture_text_core(user_id: str, raw_text: str, geo_lat: Optional[floa
         await run_in_threadpool(_enforce, user_id, "interactions_logged")
     with step("get_initiatives"):
         initiatives = await run_in_threadpool(db.get_initiatives, user_id)
+        list_names = await run_in_threadpool(_list_names, user_id)
     initiative_names = [i["name"] for i in initiatives]
     if on_stage:
         await on_stage("extracting")
     try:
         with step("extraction"):
-            extracted = await run_in_threadpool(extraction.extract_info, raw_text, None, initiative_names)
+            # An obvious list add ("add Dune to my reading list") is read in code - no LLM call.
+            extracted = extraction.quick_extract(raw_text, list_names) or await run_in_threadpool(
+                extraction.extract_info, raw_text, None, initiative_names, list_names)
     except RateLimitError:
         raise HTTPException(429, llm_budget.BUSY_MESSAGE)
     except Exception as e:
@@ -353,7 +425,9 @@ async def capture_voice(
     initiatives = db.get_initiatives(user_id)
     initiative_names = [i["name"] for i in initiatives]
     try:
-        extracted = extraction.extract_info(text, None, initiative_names)
+        list_names = _list_names(user_id)
+        extracted = extraction.quick_extract(text, list_names) or extraction.extract_info(
+            text, None, initiative_names, list_names)
     except RateLimitError:
         raise HTTPException(429, llm_budget.BUSY_MESSAGE)
     except Exception as e:

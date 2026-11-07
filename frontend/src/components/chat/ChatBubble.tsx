@@ -10,9 +10,9 @@ import CaptureReply from './CaptureReply'
 
 const SOURCE_ICON = { note: NotebookText, task: ListChecks }
 
-// Where a tap on a source chip goes: the Tasks tab for a task, Notes for a note.
+// Where a tap on a source chip goes: straight to the item (Lists finds its list), Notes for a note.
 function sourceTarget(s: AnswerSource): string {
-  return s.kind === 'task' ? '/tasks' : '/notes'
+  return s.kind === 'task' ? `/lists?open=${s.id}` : '/notes'
 }
 
 function Sources({ sources }: { sources: AnswerSource[] }) {
@@ -21,7 +21,7 @@ function Sources({ sources }: { sources: AnswerSource[] }) {
     <div className="no-scrollbar -mx-4 mt-2 flex gap-1.5 overflow-x-auto px-4">
       {sources.map((s) => {
         const Icon = SOURCE_ICON[s.kind] ?? NotebookText
-        const label = s.title.replace(/^(Note|Task|Follow-up) · /, '')
+        const label = s.kind === 'task' ? s.title.replace(/^Task · /, '') : s.title.replace(/^(Note|Follow-up) · /, '')
         return (
           <button
             key={s.ref}
@@ -45,12 +45,15 @@ export default function ChatBubble({
   message,
   onSaveAsNote,
   onCaptureChange,
+  onUndo,
 }: {
   message: ChatMessage
   // Only passed for the latest message while nothing is in flight.
   onSaveAsNote?: (text: string) => void
   // The reply to a logged note was edited (category changed or confirmed): the new version to keep.
   onCaptureChange?: (capture: CaptureSavedResult) => void
+  // Takes back what a capture saved (only on capture replies that haven't been undone).
+  onUndo?: () => Promise<void>
 }) {
   const bodyRef = useRef<HTMLDivElement>(null)
   if (message.role === 'user') {
@@ -72,7 +75,7 @@ export default function ChatBubble({
     <div className="pr-2" style={{ animation: 'fade-in 0.2s ease-out' }}>
       <div ref={bodyRef} className="prose-chat text-[0.9375rem] leading-relaxed text-text">
         {message.capture ? (
-          <CaptureReply result={message.capture} onChange={onCaptureChange} />
+          <CaptureReply result={message.capture} onChange={onCaptureChange} undone={message.undone} onUndo={onUndo} />
         ) : (
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
         )}

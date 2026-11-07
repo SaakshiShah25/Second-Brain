@@ -77,6 +77,29 @@ class TaskStatusUpdate(BaseModel):
     remind_on: Optional[str] = Field(None, max_length=10)      # YYYY-MM-DD, null clears the reminder
     remind_time: Optional[str] = Field(None, max_length=8)     # HH:MM that day; null = the default, 9 AM (needs migration 41)
     initiative_id: Optional[int] = None                         # move the task to another category; null = Others
+    # Lists and repeats (needs scripts/migration_40_lists.sql).
+    list_id: Optional[int] = None                          # null = the main Tasks list
+    repeat: Optional[str] = Field(None, max_length=20)     # daily | weekdays | weekly | monthly | yearly | hours:N
+    detail: Optional[str] = Field(None, max_length=1000)
+
+
+class TaskCreate(BaseModel):
+    """An item typed straight into a list (the quick-add box), no capture involved."""
+    description: str = Field(..., max_length=500)
+    list_id: Optional[int] = None
+    due_date: Optional[str] = Field(None, max_length=10)
+    due_time: Optional[str] = Field(None, max_length=8)
+    repeat: Optional[str] = Field(None, max_length=20)
+
+
+class ListCreate(BaseModel):
+    name: str = Field(..., max_length=40)
+    emoji: Optional[str] = Field(None, max_length=8)
+
+
+class ListUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=40)
+    emoji: Optional[str] = Field(None, max_length=8)
 
 
 class PushKeys(BaseModel):

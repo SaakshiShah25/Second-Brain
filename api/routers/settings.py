@@ -63,16 +63,18 @@ def complete_tour(user_id: str = Depends(get_current_user_id)):
 @router.get("/export")
 def export_data(user_id: str = Depends(get_current_user_id)):
     """Everything the user has stored, decrypted, as one JSON download -
-    notes, tasks, initiatives and settings. Search vectors and other
+    notes, tasks and list items, lists, initiatives and settings. Search vectors and other
     derived data are left out; they're rebuilt from these."""
     drop = {"embedding", "user_id"}
     clean = lambda rows: [{k: v for k, v in r.items() if k not in drop} for r in rows]
-    tasks = [{k: v for k, v in t.items() if k != "interaction"} for t in db.get_all_tasks_with_context(user_id)]
+    tasks = [{k: v for k, v in t.items() if k not in ("interaction", "item_list", "reminded_key")}
+             for t in db.get_all_tasks_with_context(user_id)]
     body = {
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "email": db.get_user_email(user_id),
         "initiatives": clean(db.get_initiatives(user_id)),
         "notes": clean(db.get_all_interactions_with_context(user_id)),
+        "lists": clean(db.get_lists(user_id)),
         "tasks": clean(tasks),
         "settings": {k: v for k, v in db.get_user_preference(user_id).items() if k not in drop},
     }
