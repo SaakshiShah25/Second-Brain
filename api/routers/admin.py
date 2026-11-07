@@ -3,11 +3,13 @@ api/routers/admin.py — the admin page's data (frontend/src/pages/AdminPage.tsx
 and the daily report email. Everything is computed from app_event rows
 (observability.py) - no paid analytics service.
 
-Who is an admin: ADMIN_EMAILS (comma-separated), defaulting to ALERT_EMAIL.
+Who is an admin: the ADMIN_EMAILS list below (hardcoded, not an env var).
 
   GET  /api/admin/me            {"admin": bool} - shows/hides the Settings link
   GET  /api/admin/overview      AI budget left today and how many more
-                                captures/questions that buys, per-user usage,
+                                captures/questions that buys, per-user usage
+                                (tokens by feature, storage), accounts that
+                                aren't using the app, a scaling estimate,
                                 where limits are being hit, recent errors
   POST /api/admin/daily-report  cron (X-Cron-Secret): emails yesterday's
                                 summary to ALERT_EMAIL and deletes events
@@ -50,9 +52,11 @@ LIMIT_INFO = {
 ACTIONS = {"interactions_logged": "capture", "ai_questions_asked": "question"}
 
 
+ADMIN_EMAILS = ("sanketyou8@gmail.com", "shahsaakshi25@gmail.com")
+
+
 def _admins() -> list:
-    raw = os.environ.get("ADMIN_EMAILS") or os.environ.get("ALERT_EMAIL") or ""
-    return [e.strip().lower() for e in raw.split(",") if e.strip()]
+    return list(ADMIN_EMAILS)
 
 
 def _is_admin(user_id: str) -> bool:
@@ -93,8 +97,17 @@ def _overview(days: int) -> dict:
     events, persisted = _events(min(since, now.replace(hour=0, minute=0, second=0, microsecond=0)))
     in_range = [e for e in events if e["created_at"] >= since.isoformat()]
     today = now.date().isoformat()
-    emails = db.get_all_user_emails()
+    try:
+        accounts = db.get_all_users()
+    except Exception:
+        accounts = {}
+    emails = {uid: a["email"] for uid, a in accounts.items()}
     label = lambda uid: emails.get(uid, uid or "(system)")
+    try:
+        storage = {r["user_id"]: {k: v for k, v in r.items() if k != "user_id"} for r in db.get_storage_by_user()}
+        storage_ok = True
+    except Exception:   # migration 43 not applied yet
+        storage, storage_ok = {}, False
 
     # ---- AI budget today ----
     snap = llm_budget.snapshot()
@@ -154,7 +167,9 @@ def _overview(days: int) -> dict:
 
     # ---- per user ----
     users = defaultdict(lambda: {"captures": 0, "questions": 0, "tokens": 0, "requests": 0, "errors": 0,
-                                 "limits": 0, "last_seen": None})
+                                 "limits": 0, "last_seen": None, "by_feature": Counter()})
+    user_days = set()   # (user, day) pairs with AI use - for the scaling estimate
+    model_user_day = defaultdict(int)
     for e in in_range:
         uid = e.get("user_id")
         if not uid:
@@ -167,6 +182,9 @@ def _overview(days: int) -> dict:
                 u[key] += 1
         elif e["kind"] == "llm":
             u["tokens"] += e["tokens"] or 0
+            u["by_feature"][e["name"]] += e["tokens"] or 0
+            user_days.add((uid, _day(e["created_at"])))
+            model_user_day[e["model"]] += e["tokens"] or 0
         elif e["kind"] == "request":
             u["requests"] += 1
         elif e["kind"] == "error":
@@ -183,8 +201,24 @@ def _overview(days: int) -> dict:
                                    "cap": entitlements.FREE_LIMITS.get(resource)}
             except Exception:
                 monthly[action] = None
-        user_rows.append({"user_id": uid, "email": label(uid), **u, "monthly": monthly})
+        user_rows.append({"user_id": uid, "email": label(uid), **u, "monthly": monthly,
+                          "by_feature": dict(u["by_feature"].most_common(6)), "storage": storage.get(uid)})
     user_rows.sort(key=lambda r: -r["tokens"])
+
+    # ---- accounts that did nothing in this period ----
+    inactive = sorted(
+        ({"user_id": uid, "email": a["email"], "joined": a["created_at"][:10] or None,
+          "last_sign_in": a["last_sign_in_at"], "storage": storage.get(uid)}
+         for uid, a in accounts.items() if uid not in users),
+        key=lambda r: r["last_sign_in"] or "",
+    )
+
+    # ---- how far the free tier stretches: a model's daily budget / what one active user-day costs ----
+    scale = []
+    for model, tokens in sorted(model_user_day.items(), key=lambda kv: -kv[1]):
+        per_user_day = tokens / max(1, len(user_days))
+        scale.append({"model": model, "tokens_per_user_day": round(per_user_day),
+                      "users_supported": int(llm_budget.DAILY_TOKEN_LIMIT // per_user_day) if per_user_day else None})
 
     # ---- limits ----
     lim = defaultdict(lambda: {"count": 0, "last": None, "users": Counter()})
@@ -234,6 +268,11 @@ def _overview(days: int) -> dict:
         "capacity": capacity,
         "features": features,
         "users": user_rows,
+        "inactive": inactive,
+        "scale": scale,
+        "storage": {"available": storage_ok, **{k: sum(r.get(k) or 0 for r in storage.values()) for k in (
+            "notes", "note_bytes", "tasks", "task_bytes", "documents", "document_bytes", "index_chunks", "index_bytes")}},
+        "accounts": len(accounts),
         "limits": limits,
         "errors": errors,
         "daily": [{"day": k, **v} for k, v in sorted(daily.items())],

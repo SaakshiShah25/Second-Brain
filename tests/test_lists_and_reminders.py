@@ -200,3 +200,22 @@ if __name__ == "__main__":
             failed += 1; print(f"  FAIL {name}: {type(e).__name__}: {e}")
     print(f"\n{len(tests) - failed}/{len(tests)} passed")
     sys.exit(1 if failed else 0)
+
+
+def test_an_item_added_by_hand_belongs_to_the_category_it_was_added_under():
+    import api.routers.tasks as tr
+    from api.schemas import TaskCreate
+    made = []
+    tr.db = types.SimpleNamespace(
+        get_list=lambda u, i: {"id": i},
+        get_initiative=lambda u, i: {"id": i} if i == 2 else None,
+        create_task=lambda u, interaction_id, text, **kw: made.append((interaction_id, text, kw)) or 55,
+    )
+    tr.search_index = types.SimpleNamespace(enqueue=lambda *a, **k: None)
+    assert tr.create_task(TaskCreate(description="Dune", list_id=5, initiative_id=2), "u") == {"id": 55}
+    assert made[0][0] is None and made[0][2]["initiative_id"] == 2 and made[0][2]["list_id"] == 5
+    try:
+        tr.create_task(TaskCreate(description="Dune", initiative_id=99), "u")
+        assert False
+    except Exception as e:
+        assert getattr(e, "status_code", None) == 400

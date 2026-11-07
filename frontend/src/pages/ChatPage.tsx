@@ -347,7 +347,8 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="flex h-11 items-center gap-2">
+      {/* Sticky: after a long conversation the profile button must still be in reach without scrolling back up. */}
+      <header className="sticky top-0 z-20 -mx-4 -mt-2 flex h-[3.25rem] items-center gap-2 bg-bg px-4 pt-2">
         <span className="flex h-8 w-8 items-center justify-center text-text">
           <ConfiaLogo size={24} />
         </span>

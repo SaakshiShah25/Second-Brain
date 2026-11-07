@@ -1105,3 +1105,6 @@ notify pgrst, 'reload schema';
 
 -- 42. The reminder job runs every minute from Supabase (pg_cron + pg_net + Vault), not GitHub
 --     Actions. Fill in the two placeholders in scripts/migration_42_reminder_cron.sql and run it.
+
+-- 43. Per-user storage totals for the admin page (api/routers/admin.py). Counts and byte sizes only,
+--     service-role only. Run scripts/migration_43_admin_storage.sql.

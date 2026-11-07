@@ -1,15 +1,19 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeftRight, Check, NotebookText, Trash2 } from 'lucide-react'
-import { useDeleteItem, useEditTask, useUpdateTaskOwner, useUpdateTaskStatus } from '../api/tasks'
+import { ArrowLeftRight, Check, ChevronRight, FolderInput, NotebookText, Trash2 } from 'lucide-react'
+import { useDeleteItem, useEditTask, useUpdateTaskFields, useUpdateTaskOwner, useUpdateTaskStatus } from '../api/tasks'
+import { useInitiatives } from '../api/initiatives'
 import { useLists } from '../api/lists'
 import type { Task } from '../api/types'
 import { dueLabel, fullDate } from '../lib/dates'
 import { notePoints } from '../lib/initiativeFilter'
 import { isOverdue, REPEAT_OPTIONS, repeatLabel } from '../lib/items'
+import { taskInitiativeId } from '../lib/taskOptions'
 import Button from './Button'
+import CategorySheet from './CategorySheet'
 import ConfirmDialog from './ConfirmDialog'
 import Sheet from './Sheet'
+import { toast } from './Toast'
 import { Input, Label, Select, Textarea } from './fields'
 
 // One item, opened from any list or from Today: what it is, where it came from, and everything
@@ -22,6 +26,11 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
   const updateStatus = useUpdateTaskStatus()
   const updateOwner = useUpdateTaskOwner()
   const deleteItem = useDeleteItem()
+  const updateFields = useUpdateTaskFields()
+  const { data: initiatives = [] } = useInitiatives()
+  const [choosingCategory, setChoosingCategory] = useState(false)
+  const categoryId = taskInitiativeId(task)
+  const categoryName = categoryId === null ? 'Others' : (initiatives.find((i) => i.id === categoryId)?.name ?? 'Others')
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [form, setForm] = useState({ description: '', date: '', time: '', repeat: '', listId: '', detail: '' })
@@ -69,6 +78,20 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
         <p className="mb-1 text-lg leading-snug font-semibold">{task.description}</p>
         <p className="mb-4 text-[0.9375rem] text-text-muted">{meta.join(' · ')}</p>
         {task.detail && !editing && <p className="mb-4 whitespace-pre-wrap text-[0.9375rem] leading-relaxed">{task.detail}</p>}
+
+        {/* Which category it belongs to - one tap to change it. */}
+        <button
+          type="button"
+          onClick={() => setChoosingCategory(true)}
+          className="pressable mb-4 flex w-full items-center gap-3 rounded-2xl border border-border bg-bg-elevated px-3.5 py-3 text-left"
+        >
+          <FolderInput size={17} strokeWidth={2} className="flex-shrink-0 text-text-muted" />
+          <span className="min-w-0 flex-1 text-[0.9375rem]">
+            <span className="text-text-muted">Category · </span>
+            <span className="font-medium">{categoryName}</span>
+          </span>
+          <ChevronRight size={16} strokeWidth={2} className="flex-shrink-0 text-text-faint" />
+        </button>
 
         {/* Where this item came from - tap to read (and edit) that note. */}
         {task.interaction && (
@@ -190,6 +213,19 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
           </Button>
         </div>
       </Sheet>
+
+      {choosingCategory && (
+        <CategorySheet
+          title="Which category does this belong to?"
+          currentId={categoryId}
+          onClose={() => setChoosingCategory(false)}
+          onPick={async (id) => {
+            if (id === categoryId) return
+            await updateFields.mutateAsync({ taskId: task.id, fields: { initiative_id: id } })
+            toast(id === null ? 'Moved to Others' : `Moved to ${initiatives.find((i) => i.id === id)?.name ?? 'that category'}`)
+          }}
+        />
+      )}
 
       {confirmDelete && (
         <ConfirmDialog

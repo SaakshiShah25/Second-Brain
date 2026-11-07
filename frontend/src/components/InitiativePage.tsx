@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, FileText } from 'lucide-react'
-import type { Interaction } from '../api/types'
+import type { Interaction, Task } from '../api/types'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
+import ExportInitiativeButton from './ExportInitiativeButton'
 import InteractionCard, { ItemList } from './InteractionCard'
+import InitiativeThings, { thingCounts } from './InitiativeThings'
 import { noteCounts, noteItems, noteSections } from '../lib/noteSections'
 import { shortDate } from '../lib/dates'
 
@@ -13,6 +15,8 @@ interface Props {
   id: number
   initiative: Ini
   notes: Interaction[]
+  // The to-dos and list entries that belong to this initiative (everything that isn't a note).
+  items?: Task[]
 }
 
 function Heading({ initiative, size = 'md' }: { initiative: Ini; size?: 'md' | 'lg' }) {
@@ -36,7 +40,7 @@ function Heading({ initiative, size = 'md' }: { initiative: Ini; size?: 'md' | '
 const PREVIEW_POINTS = 4
 
 // One initiative on the Notes overview: how many notes it holds and a glimpse of its latest points. Tapping opens the full page.
-export function InitiativeBlock({ initiative, notes, onOpen }: Props & { onOpen: () => void }) {
+export function InitiativeBlock({ initiative, notes, items = [], onOpen }: Props & { onOpen: () => void }) {
   // The newest notes' key points first, a handful in all - all of it extracted when the notes were logged.
   const latest = [...notes]
     .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.id - a.id)
@@ -44,14 +48,15 @@ export function InitiativeBlock({ initiative, notes, onOpen }: Props & { onOpen:
     .slice(0, PREVIEW_POINTS)
 
   return (
-    <section className="rounded-2xl border border-border bg-bg-card">
+    <section className="relative rounded-2xl border border-border bg-bg-card">
       <button type="button" onClick={onOpen} className="pressable block w-full px-4 pt-3.5 pb-3.5 text-left">
         <span className="flex items-center gap-2">
           <Heading initiative={initiative} />
-          <ChevronRight size={18} strokeWidth={2} className="ml-auto flex-shrink-0 text-text-faint" />
+          {/* room for the export button, which sits above this tap target */}
+          <ChevronRight size={18} strokeWidth={2} className="ml-auto mr-9 flex-shrink-0 text-text-faint" />
         </span>
         <span className="mt-1.5 block pl-[2.625rem] text-[0.8125rem] text-text-faint">
-          {noteCounts(notes)}
+          {[notes.length ? noteCounts(notes) : '', thingCounts(items)].filter(Boolean).join(' · ') || 'Nothing yet'}
         </span>
         {latest.length > 0 && (
           <span className="mt-3 block">
@@ -59,6 +64,7 @@ export function InitiativeBlock({ initiative, notes, onOpen }: Props & { onOpen:
           </span>
         )}
       </button>
+      <ExportInitiativeButton name={initiative?.name ?? 'Others'} notes={notes} className="absolute top-2.5 right-8" />
     </section>
   )
 }
@@ -66,7 +72,7 @@ export function InitiativeBlock({ initiative, notes, onOpen }: Props & { onOpen:
 // The whole initiative as one page: the key points, decisions and concerns that were extracted from its notes when
 // they were logged, grouped under each note's topic label - then the notes themselves, as written ("Source notes").
 // Nothing here calls an AI model.
-export function InitiativeView({ initiative, notes }: Props) {
+export function InitiativeView({ initiative, notes, items = [] }: Props) {
   const [showSource, setShowSource] = useState(false)
   // Tapping an item opens the note it came from.
   const [openNoteId, setOpenNoteId] = useState<number | null>(null)
@@ -77,9 +83,14 @@ export function InitiativeView({ initiative, notes }: Props) {
   return (
     <div>
       <div className="mb-4 rounded-2xl border border-border bg-bg-card p-4">
-        <Heading initiative={initiative} size="lg" />
+        <div className="flex items-center gap-2">
+          <Heading initiative={initiative} size="lg" />
+          <ExportInitiativeButton name={initiative?.name ?? 'Others'} notes={notes} className="ml-auto" />
+        </div>
 
-        <p className="mt-2 pl-[3.125rem] text-[0.8125rem] text-text-faint">{noteCounts(notes)}</p>
+        <p className="mt-2 pl-[3.125rem] text-[0.8125rem] text-text-faint">
+          {[notes.length ? noteCounts(notes) : '', thingCounts(items)].filter(Boolean).join(' · ') || 'Nothing yet'}
+        </p>
 
         {sections.map((s) => (
           <div key={s.key} className="mt-5">
@@ -119,10 +130,12 @@ export function InitiativeView({ initiative, notes }: Props) {
         ))}
         {sections.length === 0 && (
           <p className="mt-3 text-[0.9375rem] text-text-muted">
-            {notes.length === 0 ? 'No notes here yet.' : 'No key points were extracted - see the source notes below.'}
+            {notes.length === 0 ? (items.length ? 'No notes here yet - its to-dos and lists are below.' : 'No notes here yet.') : 'No key points were extracted - see the source notes below.'}
           </p>
         )}
       </div>
+
+      <InitiativeThings items={items} />
 
       {openNote && (
         // The note's sheet floats above the page, so the card itself stays out of sight.

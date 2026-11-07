@@ -1,17 +1,23 @@
 import { useState, type FormEvent } from 'react'
 import { Plus } from 'lucide-react'
 import { useCreateItem } from '../api/tasks'
+import { useInitiativeFilter } from '../lib/initiativeFilter'
 
 // The add-a-line box at the top of a list: type "Dune", press return, it's on the list.
 export default function QuickAdd({ listId, placeholder }: { listId: number | null; placeholder: string }) {
   const [text, setText] = useState('')
   const createItem = useCreateItem()
+  // With a category in focus (the chips at the foot of the screen), what you add belongs to it.
+  const [focus] = useInitiativeFilter()
 
   function submit(e: FormEvent) {
     e.preventDefault()
     const description = text.trim()
     if (!description || createItem.isPending) return
-    createItem.mutate({ description, list_id: listId }, { onSuccess: () => setText('') })
+    createItem.mutate(
+      { description, list_id: listId, ...(typeof focus === 'number' && focus > 0 ? { initiative_id: focus } : {}) },
+      { onSuccess: () => setText('') },
+    )
   }
 
   return (

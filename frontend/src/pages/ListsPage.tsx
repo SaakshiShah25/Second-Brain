@@ -5,10 +5,13 @@ import { useCreateList, useLists } from '../api/lists'
 import { useTasks } from '../api/tasks'
 import Button from '../components/Button'
 import { ListGroup, ListRow } from '../components/ListGroup'
+import InitiativeBar from '../components/InitiativeBar'
 import PageHeader from '../components/PageHeader'
 import Sheet from '../components/Sheet'
 import { Input, Label } from '../components/fields'
-import { itemPath, todayIso } from '../lib/items'
+import { matchesInitiative, useInitiativeFilter } from '../lib/initiativeFilter'
+import { itemPath, openCountsByInitiative, todayIso } from '../lib/items'
+import { taskInitiativeId } from '../lib/taskOptions'
 
 const Emoji = ({ children }: { children: string }) => <span className="text-[1.125rem] leading-none">{children}</span>
 
@@ -23,6 +26,8 @@ export default function ListsPage() {
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const tasks = useMemo(() => data?.tasks ?? [], [data])
+  const [initiativeFilter] = useInitiativeFilter()
+  const focused = useMemo(() => tasks.filter((t) => matchesInitiative(initiativeFilter, taskInitiativeId(t))), [tasks, initiativeFilter])
 
   // ?open=<id> (from a chat receipt or an answer's source): go to that item's own list.
   const openId = Number(params.get('open')) || null
@@ -34,7 +39,7 @@ export default function ListsPage() {
 
   const today = todayIso()
   const counts = new Map<number | null, { open: number; due: number }>()
-  for (const t of tasks) {
+  for (const t of focused) {
     if (t.status !== 'open') continue
     const key = t.list_id ?? null
     const c = counts.get(key) ?? { open: 0, due: 0 }
@@ -44,7 +49,7 @@ export default function ListsPage() {
   }
   const detail = (key: number | null) => {
     const c = counts.get(key)
-    if (!c) return data ? 'Empty' : ''
+    if (!c) return data ? (initiativeFilter === null ? 'Empty' : 'Nothing here') : ''
     return `${c.open} open${c.due ? ` · ${c.due} due` : ''}`
   }
 
@@ -64,8 +69,11 @@ export default function ListsPage() {
     )
   }
 
+  // With a category in focus, only the lists that hold something of its are shown.
+  const visible = (key: number | null) => initiativeFilter === null || counts.has(key)
+
   return (
-    <div>
+    <div className="flex flex-1 flex-col">
       <PageHeader
         title="Lists"
         showProfile
@@ -82,8 +90,8 @@ export default function ListsPage() {
       />
 
       <ListGroup>
-        <ListRow leading={<Emoji>☑️</Emoji>} label="Tasks" detail={detail(null)} to="/tasks" />
-        {(lists ?? []).map((l) => (
+        {visible(null) && <ListRow leading={<Emoji>☑️</Emoji>} label="Tasks" detail={detail(null)} to="/tasks" />}
+        {(lists ?? []).filter((l) => visible(l.id)).map((l) => (
           <ListRow key={l.id} leading={<Emoji>{l.emoji || '📝'}</Emoji>} label={l.name} detail={detail(l.id)} to={`/lists/${l.id}`} />
         ))}
       </ListGroup>
@@ -94,6 +102,8 @@ export default function ListsPage() {
           make one.
         </p>
       )}
+
+      <InitiativeBar counts={openCountsByInitiative(tasks)} />
 
       {creating && (
         <Sheet onClose={() => setCreating(false)}>
