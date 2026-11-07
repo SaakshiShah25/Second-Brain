@@ -10,8 +10,8 @@ Two kinds of notification:
 Tapping either opens the Tasks tab.
 
 How it runs
-    A scheduled job (.github/workflows/task-reminders.yml, every 5 minutes) calls POST
-    /api/push/send-due. send_due() looks at each stored device, works out its local time from the
+    A Supabase pg_cron job (scripts/migration_42_reminder_cron.sql, every minute) calls POST
+    /api/push/send-due (.github/workflows/task-reminders.yml fires one tick by hand). send_due() looks at each stored device, works out its local time from the
     time zone it registered, and sends a summary when it is inside a slot's window and that slot has
     not been sent today (last_9am / last_5pm hold the local date it last went out). Task reminders
     are sent by send_task_reminders() on the first run at or after their moment and marked

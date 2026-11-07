@@ -1055,3 +1055,6 @@ notify pgrst, 'reload schema';
 --     choosing a time says to run this first.
 alter table task add column if not exists remind_time time;
 notify pgrst, 'reload schema';
+
+-- 42. The reminder job runs every minute from Supabase (pg_cron + pg_net + Vault), not GitHub
+--     Actions. Fill in the two placeholders in scripts/migration_42_reminder_cron.sql and run it.
