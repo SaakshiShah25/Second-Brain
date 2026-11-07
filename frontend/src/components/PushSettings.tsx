@@ -97,7 +97,7 @@ export default function PushSettings() {
         message ? (
           <span className={message.tone === 'error' ? 'text-danger' : undefined}>{message.text}</span>
         ) : (
-          `Twice a day, at 9 AM and 5 PM (${deviceTimeZone()}), you get your open tasks grouped by category. Nothing is sent when you have none.`
+          `Twice a day, at 9 AM and 5 PM (${deviceTimeZone()}), you get your open tasks grouped by space. Nothing is sent when you have none.`
         )
       }
     >
@@ -106,7 +106,7 @@ export default function PushSettings() {
         iconColor="var(--sb-text-muted)"
         soft
         label="Task reminders"
-        detail={blocked ? 'Blocked in your browser settings' : '9 AM and 5 PM, grouped by category'}
+        detail={blocked ? 'Blocked in your browser settings' : '9 AM and 5 PM, grouped by space'}
         trailing={<Toggle on={on} onChange={toggle} label="Task reminders" />}
       />
       {on && <ListRow icon={Bell} iconColor="var(--sb-text-muted)" soft label="Send me a test now" chevron onClick={test} disabled={busy} />}

@@ -51,7 +51,7 @@ function ColorPicker({ value, onChange }: { value: string | null; onChange: (col
 
 // Initiative CRUD (add/rename/delete) - lives on the Notes page as its
 // own tab rather than buried in Settings, since initiatives are exactly
-// the categories the Notes page's own filter chips use. Settings is for
+// the spaces the Notes page's own filter chips use. Settings is for
 // config you set up once and forget; this is something the user is
 // expected to come back to regularly as their notes evolve.
 export default function InitiativesManager() {
@@ -90,7 +90,7 @@ export default function InitiativesManager() {
   return (
     <div>
       <p className="mb-3 px-1 text-[0.9375rem] leading-relaxed text-text-muted">
-        Your own categories — Job, Fitness, Personal, anything. New notes are sorted into them automatically. Use the arrows to put them in the order you like.
+        Your own spaces — Job, Fitness, Personal, anything. New notes are sorted into them automatically. Use the arrows to put them in the order you like.
       </p>
 
       <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card empty:hidden">

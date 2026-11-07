@@ -12,7 +12,7 @@ import Sheet from './Sheet'
 // First-run question: what will this account be used for? Asked once
 // (TourGate shows it before the welcome tour while settings.usage_mode is
 // null), then editable any time in Settings. Picking a mode also offers a
-// matching set of starter categories, so a personal user doesn't start
+// matching set of starter spaces, so a personal user doesn't start
 // with "Clients" and a work user doesn't start with "Family".
 export default function UsageModeSheet() {
   const updateSettings = useUpdateSettings()
@@ -28,7 +28,7 @@ export default function UsageModeSheet() {
   const [error, setError] = useState('')
 
   const existing = useMemo(() => initiatives ?? [], [initiatives])
-  // An existing category that already holds notes can't be dropped here -
+  // An existing space that already holds notes can't be dropped here -
   // this screen is for choosing a starting set, not for deleting data.
   const inUse = useMemo(() => {
     const ids = new Set((notes ?? []).map((n) => n.initiative_id).filter(Boolean))
@@ -43,7 +43,7 @@ export default function UsageModeSheet() {
   }
 
   // Suggestions for the chosen mode, then any of the user's own existing
-  // categories that aren't in that list.
+  // spaces that aren't in that list.
   const options = useMemo(() => {
     if (!mode) return []
     const names = [...SUGGESTED_INITIATIVES[mode].names]
@@ -77,7 +77,7 @@ export default function UsageModeSheet() {
         if (!selected.has(key) && current && !inUse.has(key)) await deleteInitiative.mutateAsync(current.id)
       }
       // Saved last: this is what closes the sheet (TourGate stops showing
-      // it once usage_mode is set), so categories are in place first.
+      // it once usage_mode is set), so spaces are in place first.
       await updateSettings.mutateAsync({ usage_mode: mode })
     } catch {
       setError("Couldn't save that — please try again.")
@@ -128,7 +128,7 @@ export default function UsageModeSheet() {
 
       {mode && (
         <div className="mt-6" style={{ animation: 'fade-in 0.2s ease-out' }}>
-          <p className="mb-1 text-[0.9375rem] font-semibold">Start with these categories</p>
+          <p className="mb-1 text-[0.9375rem] font-semibold">Start with these spaces</p>
           <p className="mb-3 text-sm text-text-muted">Notes get sorted into them automatically. Tap to add or remove.</p>
           <ChipRow className="flex-wrap !overflow-visible">
             {options.map((name) => {

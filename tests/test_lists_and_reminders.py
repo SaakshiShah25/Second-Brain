@@ -77,6 +77,7 @@ def _capture_db(saved):
         create_interaction=lambda u, **kw: saved.update(interaction=kw) or 7,
         create_task=create_task, create_list=create_list,
         get_list_by_name=lambda u, name: lists.get(name.lower()),
+        get_lists=lambda u: list(lists.values()),
         get_initiative=lambda u, i: None,
     )
 
@@ -219,3 +220,36 @@ def test_an_item_added_by_hand_belongs_to_the_category_it_was_added_under():
         assert False
     except Exception as e:
         assert getattr(e, "status_code", None) == 400
+
+
+def test_loose_wording_for_a_list_finds_the_one_you_already_have_instead_of_making_another():
+    import api.routers.capture as cap
+    saved = {"tasks": [], "lists_created": [], "indexed": []}
+    _wire(cap, saved)
+    extracted = {"keep_note": False, "follow_ups": [
+        {"description": "Dune", "list": "my reading list"},      # your "Reading list"
+        {"description": "Oppenheimer", "list": "Films"},          # no list yet: made once, as "Movies"
+        {"description": "Barbie", "list": "movie list"},          # the same pile, not a second list
+    ]}
+    cap._process_extracted("u", "x", extracted)
+    assert saved["lists_created"] == [("Movies", "🎬")]
+    by_desc = {d: kw["list_id"] for _, d, kw in saved["tasks"]}
+    assert by_desc["Dune"] == 5 and by_desc["Oppenheimer"] == by_desc["Barbie"] != 5
+
+
+def test_list_names_that_mean_the_same_share_a_key_but_different_piles_do_not():
+    import text_utils
+    same = [("Films", "Movies", "watch list"), ("Reading list", "books", "To read"), ("Grocery list", "Shopping", "groceries")]
+    for group in same:
+        assert len({text_utils.list_key(n) for n in group}) == 1, group
+    assert text_utils.list_key("Startup ideas") != text_utils.list_key("Ideas")
+    assert text_utils.list_key("Gift ideas") == text_utils.list_key("gift idea")
+    assert text_utils.canonical_list_title("films") == "Movies" and text_utils.canonical_list_title("Weekend trips") is None
+
+
+def test_an_item_with_a_bell_is_not_also_reminded_automatically():
+    item = {"id": 1, "description": "Call the bank", "due_date": "2026-11-07", "due_time": "16:00:00", "repeat": None,
+            "reminded_key": None, "item_list": None}
+    at4pm = datetime(2026, 11, 7, 16, 5, tzinfo=timezone.utc)
+    assert pn.item_reminder(item, "UTC", at4pm) is not None            # no bell: reminded at its time
+    assert pn.item_reminder({**item, "remind_on": "2026-11-06"}, "UTC", at4pm) is None   # bell set: that one rules

@@ -33,7 +33,7 @@ interface ChatInputProps {
   locationAttached?: boolean
   locationLoading?: boolean
   onToggleLocation?: () => void
-  // Category (initiative) for the next note: undefined `onSelectInitiative` hides the option.
+  // Space (initiative) for the next note: undefined `onSelectInitiative` hides the option.
   initiatives?: Initiative[]
   selectedInitiativeId?: number | null
   onSelectInitiative?: (id: number | null) => void
@@ -294,7 +294,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
           </ListGroup>
           {onSelectInitiative && (
             <section className="mb-2">
-              <h2 className="mb-2 px-1 text-[0.8125rem] font-medium uppercase tracking-wide text-text-faint">Category for this note</h2>
+              <h2 className="mb-2 px-1 text-[0.8125rem] font-medium uppercase tracking-wide text-text-faint">Space for this note</h2>
               <CategoryBubbles
                 initiatives={initiatives}
                 selectedId={selectedInitiativeId}
@@ -307,7 +307,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
               />
               <p className="mt-2 px-1 text-[0.8125rem] leading-relaxed text-text-faint">
                 {initiatives.length === 0
-                  ? 'No categories yet - log a note and Confía will suggest one.'
+                  ? 'No spaces yet - log a note and Confía will suggest one.'
                   : 'Used for the next note only. “Auto” lets Confía pick from what you write.'}
               </p>
             </section>

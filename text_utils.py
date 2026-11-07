@@ -287,3 +287,43 @@ def list_emoji(name: str) -> str:
         if re.search(pattern, lower):
             return emoji
     return "📝"
+
+
+# Different words for the same pile of things. Each group has the title a new list gets and every way of
+# saying it, so "films", "Watchlist" and "movies to watch" all land in ONE "Movies" list instead of three.
+# Only clear synonyms are merged - "Startup ideas" stays its own list, apart from "Ideas".
+_LIST_SYNONYMS = {
+    "Movies": ["movie", "movies", "film", "films", "movie list", "watchlist", "watch list", "to watch", "movies to watch", "films to watch"],
+    "Shows": ["show", "shows", "series", "tv", "tv shows", "tv series"],
+    "Books": ["book", "books", "book list", "reading", "reading list", "to read", "books to read"],
+    "Groceries": ["grocery", "groceries", "grocery list", "shopping", "shopping list", "supermarket"],
+    "Birthdays": ["birthday", "birthdays", "bday", "bdays"],
+    "Ideas": ["idea", "ideas", "idea list"],
+    "Gift ideas": ["gift", "gifts", "gift idea", "gift ideas", "present ideas"],
+    "Stocks to watch": ["stock", "stocks", "stocks to watch"],
+    "Places to visit": ["place", "places", "places to visit", "to visit"],
+    "Podcasts": ["podcast", "podcasts"],
+    "Recipes": ["recipe", "recipes"],
+}
+_LIST_ALIASES = {alt: title for title, alts in _LIST_SYNONYMS.items() for alt in alts}
+
+
+def _plain_list_name(name: str) -> str:
+    text = re.sub(r"[^\w\s]", " ", (name or "").lower())
+    text = " ".join(text.split())
+    return re.sub(r"^(?:my|the)\s+", "", text)
+
+
+def canonical_list_title(name: str):
+    """The standard title for a list the user named loosely ("films" -> "Movies"), else None."""
+    return _LIST_ALIASES.get(_plain_list_name(name))
+
+
+def list_key(name: str) -> str:
+    """What two list names are compared by: the same key means the same list ("Films", "movie list" and
+    "Movies" all give "movies"; other names are compared by their words with a plural 's' dropped)."""
+    plain = _plain_list_name(name)
+    title = _LIST_ALIASES.get(plain)
+    if title:
+        return title.lower()
+    return " ".join((w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w) for w in plain.split())

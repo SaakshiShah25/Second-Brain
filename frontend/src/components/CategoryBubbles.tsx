@@ -2,9 +2,9 @@ import { Check, Plus, type LucideIcon } from 'lucide-react'
 import type { Initiative } from '../api/types'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
 
-// The user's categories as tappable bubbles - one tap to choose. Used wherever a category is picked: for the
+// The user's spaces as tappable bubbles - one tap to choose. Used wherever a space is picked: for the
 // next note (the + on the chat input), to change where a logged note went, and to move a task.
-//   noneLabel  the "no category" bubble ("Auto" before logging, "Others" once logged); omit to hide it
+//   noneLabel  the "no space" bubble ("Auto" before logging, "Others" once logged); omit to hide it
 //   onCreate   shows a dashed "New" bubble
 export default function CategoryBubbles({
   initiatives,

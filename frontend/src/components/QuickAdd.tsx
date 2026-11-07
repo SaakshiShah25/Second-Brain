@@ -7,7 +7,7 @@ import { useInitiativeFilter } from '../lib/initiativeFilter'
 export default function QuickAdd({ listId, placeholder }: { listId: number | null; placeholder: string }) {
   const [text, setText] = useState('')
   const createItem = useCreateItem()
-  // With a category in focus (the chips at the foot of the screen), what you add belongs to it.
+  // With a space in focus (the chips at the foot of the screen), what you add belongs to it.
   const [focus] = useInitiativeFilter()
 
   function submit(e: FormEvent) {

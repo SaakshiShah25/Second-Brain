@@ -116,16 +116,27 @@ class _ListResolver:
     def __init__(self, user_id: str):
         self.user_id = user_id
         self.cache: dict = {}
+        self._lists = None
+
+    def _existing(self, name: str) -> Optional[dict]:
+        """The user's list that means the same as `name` - "Films" finds "Movies", "my reading list" finds
+        "Books" - so loose wording never makes a second list for the same pile."""
+        exact = db.get_list_by_name(self.user_id, name)
+        if exact:
+            return exact
+        if self._lists is None:
+            self._lists = db.get_lists(self.user_id)
+        key = text_utils.list_key(name)
+        return next((l for l in self._lists if text_utils.list_key(l["name"]) == key), None)
 
     def resolve(self, name) -> Optional[dict]:
         name = " ".join(str(name or "").split())[:40]
         if not name or name.lower() in text_utils.MAIN_LIST_NAMES:
             return None
-        key = name.lower()
+        key = text_utils.list_key(name)
         if key not in self.cache:
-            existing = db.get_list_by_name(self.user_id, name)
-            self.cache[key] = existing or db.create_list(self.user_id, name[:1].upper() + name[1:],
-                                                         text_utils.list_emoji(name))
+            title = text_utils.canonical_list_title(name) or (name[:1].upper() + name[1:])
+            self.cache[key] = self._existing(name) or db.create_list(self.user_id, title, text_utils.list_emoji(title))
         return self.cache[key]
 
 

@@ -15,7 +15,8 @@ import { useConnection } from '../lib/connection'
 import { useInitiativeFilter } from '../lib/initiativeFilter'
 import { taskInitiativeId } from '../lib/taskOptions'
 
-// Notes are organised by initiative, not by date: each initiative reads as
+// Spaces: everything is organised by initiative (a "space"), not by date - its notes, to-dos and things
+// it collects. Each space reads as
 // one page (its points in sections). "All" shows a
 // block per initiative; picking one opens its page. Searching shows the
 // matching notes themselves.
@@ -80,7 +81,7 @@ export default function NotesPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <PageHeader title="Notes" showProfile />
+      <PageHeader title="Spaces" showProfile />
 
       {openNote && (
         // The note's sheet floats above the page, so the card itself can stay out of sight.

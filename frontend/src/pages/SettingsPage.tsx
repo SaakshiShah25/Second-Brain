@@ -178,7 +178,7 @@ export default function SettingsPage() {
           iconColor="var(--sb-text-muted)"
           soft
           label={exporting ? 'Preparing…' : 'Download my data'}
-          detail="Every note, task and initiative, as a file"
+          detail="Every note, task and space, as a file"
           disabled={exporting}
           onClick={downloadData}
         />
