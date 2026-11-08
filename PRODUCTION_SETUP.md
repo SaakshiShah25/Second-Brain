@@ -114,6 +114,7 @@ Vercel → project → **Settings → Environment Variables**:
 | Variable | Value |
 |---|---|
 | `VITE_API_URL` | your Render backend URL |
+| `VITE_SUPPORT_EMAIL` | the address people should write to when something goes wrong (the error popup's "Contact us" button; hidden if unset) |
 | `VITE_SUPABASE_URL` | same as `frontend/.env.development` |
 | `VITE_SUPABASE_ANON_KEY` | same as `frontend/.env.development` |
 

@@ -19,7 +19,8 @@ load_dotenv()
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
-from fastapi.exception_handlers import http_exception_handler
+from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from postgrest.exceptions import APIError
@@ -153,7 +154,21 @@ async def _http_error(request, exc: StarletteHTTPException):
                                f"We've been alerted (reference {error_id}).", "error_id": error_id},
             headers=getattr(exc, "headers", None),
         )
+    elif 400 <= exc.status_code < 500 and exc.status_code != 401 and exc.detail != "invite_only":
+        # Something the person was told no to (a bad value, a missing item, not allowed): not our fault, but the
+        # ones that happen most are exactly what to fix in the app, so they are counted for the admin page.
+        observability.record("refused", _route_name(request), status=exc.status_code,
+                             detail={"message": observability._clip(exc.detail, 160), "area": _area(request.url.path)})
     return await http_exception_handler(request, exc)
+
+
+@app.exception_handler(RequestValidationError)
+async def _invalid_request(request, exc: RequestValidationError):
+    """A request the app itself got wrong (a field missing or the wrong type) - counted like any other refusal."""
+    observability.record("refused", _route_name(request), status=422,
+                         detail={"message": "invalid request: " + ", ".join(str(e.get("loc", ["?"])[-1]) for e in exc.errors())[:160],
+                                 "area": _area(request.url.path)})
+    return await request_validation_exception_handler(request, exc)
 
 
 @app.middleware("http")

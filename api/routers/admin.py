@@ -77,7 +77,13 @@ def _is_admin(user_id: str) -> bool:
 
 def require_admin(user_id: str = Depends(get_current_user_id)) -> str:
     if not _is_admin(user_id):
-        raise HTTPException(403, "Admins only.")
+        try:
+            who = db.get_user_email(user_id)
+        except Exception:
+            who = None
+        # Says which account was checked, so "wrong account" and "email lookup failed" can be told apart.
+        raise HTTPException(403, f"Admins only. You're signed in as {who}, which isn't an admin account."
+                            if who else "Admins only - and the server couldn't look up which account this is.")
     return user_id
 
 
@@ -252,6 +258,26 @@ def _overview(days: int) -> dict:
         for e in reversed(in_range) if e["kind"] == "error"
     ][:50]
 
+    # ---- the problems people run into most: failures, limits and refusals, counted by what and where ----
+    seen = defaultdict(lambda: {"count": 0, "users": set(), "last": None, "example": None})
+    for e in in_range:
+        if e["kind"] not in ("error", "limit", "refused"):
+            continue
+        d = e.get("detail") or {}
+        what = e["name"] if e["kind"] != "error" else f"{e['name']} ({d.get('type') or 'error'})"
+        p = seen[(e["kind"], what, e["status"])]
+        p["count"] += 1
+        p["last"] = e["created_at"]
+        p["example"] = d.get("message") or d.get("limit") or p["example"]
+        if e.get("user_id"):
+            p["users"].add(e["user_id"])
+    problems = sorted(
+        ({"kind": k, "what": w, "status": st, "count": v["count"], "users": len(v["users"]), "last": v["last"],
+          "example": v["example"], "info": LIMIT_INFO.get(w, "") if k == "limit" else ""}
+         for (k, w, st), v in seen.items()),
+        key=lambda p: -p["count"],
+    )[:15]
+
     # ---- per day ----
     daily = defaultdict(lambda: {"requests": 0, "captures": 0, "questions": 0, "tokens": 0, "errors": 0, "limits": 0})
     for e in in_range:
@@ -284,6 +310,7 @@ def _overview(days: int) -> dict:
         "accounts": len(accounts),
         "limits": limits,
         "errors": errors,
+        "problems": problems,
         "daily": [{"day": k, **v} for k, v in sorted(daily.items())],
         "totals": {
             "requests": len(requests),

@@ -4,7 +4,6 @@ import { useUpdateInitiative } from '../api/initiatives'
 import type { Interaction, ItemList as ListLabel, Task } from '../api/types'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
 import AddToSpace from './AddToSpace'
-import { toast } from './Toast'
 import ExportInitiativeButton from './ExportInitiativeButton'
 import InteractionCard, { ItemList } from './InteractionCard'
 import InitiativeThings, { thingCounts } from './InitiativeThings'
@@ -99,7 +98,7 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
                 if (!name || name === initiative.name) return (e.target.value = initiative.name)
                 updateInitiative.mutate(
                   { id: initiative.id, fields: { name } },
-                  { onError: (err) => (toast(err instanceof Error && err.message ? err.message : "Couldn't rename that."), (e.target.value = initiative.name)) },
+                  { onError: () => (e.target.value = initiative.name) },
                 )
               }}
               className="min-w-0 flex-1 rounded-lg border border-border-strong bg-bg-card px-2 py-1.5 text-xl font-semibold tracking-tight focus:border-accent focus:outline-none"

@@ -99,7 +99,7 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
                 key={p.value}
                 type="button"
                 disabled={updateFields.isPending}
-                onClick={() => !active && updateFields.mutate({ taskId: task.id, fields: { priority: p.value } }, { onError: () => toast("Couldn't change that - please try again.") })}
+                onClick={() => !active && updateFields.mutate({ taskId: task.id, fields: { priority: p.value } })}
                 className="pressable flex h-10 flex-1 items-center justify-center gap-1 rounded-full border text-[0.8125rem] font-semibold disabled:opacity-60"
                 style={active ? { backgroundColor: p.color, borderColor: p.color, color: ON_PRIORITY } : { borderColor: tint(p.color, 45), color: p.color }}
               >
@@ -269,7 +269,6 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
               { taskId: task.id, fields: { remind_on: date, remind_time: time } },
               {
                 onSuccess: () => toast(date ? `Reminder set for ${shortDate(date)}, ${timeLabel(time ?? DEFAULT_REMIND_TIME)}` : 'Reminder removed'),
-                onError: (e) => toast(e instanceof Error && e.message ? e.message : "Couldn't set that reminder - please try again."),
               },
             )
           }

@@ -116,6 +116,36 @@ function Totals({ o }: { o: AdminOverview }) {
   )
 }
 
+const PROBLEM_KIND = { error: 'failed on our side', limit: 'limit hit', refused: 'refused' } as const
+
+// What goes wrong most often, whatever the cause: crashes, limits and requests the app turned down - so the most
+// common ones get fixed first. Everything a person is shown an error for lands here.
+function Problems({ o }: { o: AdminOverview }) {
+  return (
+    <Card icon={AlertTriangle} title="Most common problems">
+      {o.problems.length === 0 ? (
+        <Empty>Nothing went wrong in this period.</Empty>
+      ) : (
+        <ul className="flex flex-col divide-y divide-border">
+          {o.problems.map((p) => (
+            <li key={`${p.kind}-${p.what}-${p.status}`} className="py-2.5 first:pt-0 last:pb-0">
+              <p className="flex items-baseline justify-between gap-2 text-[0.9375rem]">
+                <span className="min-w-0 font-medium">{p.what.replaceAll('_', ' ')}</span>
+                <span className="flex-shrink-0 text-[0.875rem] font-semibold">×{p.count}</span>
+              </p>
+              <p className="mt-0.5 text-[0.8125rem] text-text-muted">
+                {PROBLEM_KIND[p.kind]}
+                {p.status ? ` · ${p.status}` : ''} · {p.users} {p.users === 1 ? 'person' : 'people'} · {when(p.last)}
+              </p>
+              {(p.example || p.info) && <p className="mt-0.5 text-[0.8125rem] leading-snug text-text-faint">{p.example || p.info}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  )
+}
+
 function Limits({ o }: { o: AdminOverview }) {
   return (
     <Card icon={AlertTriangle} title="Where limits are hit">
@@ -392,6 +422,7 @@ export default function AdminPage() {
           )}
           <Budget o={data} />
           <Totals o={data} />
+          <Problems o={data} />
           <Limits o={data} />
           <UsersCard o={data} />
           <Inactive o={data} />
