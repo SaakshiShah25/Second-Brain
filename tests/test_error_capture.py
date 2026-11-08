@@ -36,6 +36,8 @@ def test_an_invalid_request_is_counted(monkeypatch):
 
 
 def test_the_admin_refusal_names_the_account_it_checked(monkeypatch):
+    import api.auth as auth
+    monkeypatch.setattr(auth, "_verified_email", {})
     app.dependency_overrides[get_current_user_id] = lambda: "u1"
     monkeypatch.setattr(db, "get_user_email", lambda uid: "someone@example.com")
     r = TestClient(app).get("/api/admin/me")           # /me answers, it doesn't refuse
@@ -63,3 +65,12 @@ def test_the_most_common_problems_are_ranked(monkeypatch):
     assert [(p["kind"], p["what"], p["count"]) for p in out["problems"]] == [
         ("refused", "POST /api/tasks", 3), ("limit", "api_rate_limit", 1)]
     assert out["problems"][0]["example"] == "An item needs some wording."
+
+
+def test_the_email_verified_for_the_token_decides_without_the_auth_admin_lookup(monkeypatch):
+    import api.auth as auth
+    auth._verified_email["u9"] = "sanketyou8@gmail.com"
+    monkeypatch.setattr(db, "get_user_email", lambda uid: (_ for _ in ()).throw(RuntimeError("auth admin api down")))
+    assert admin._is_admin("u9") is True
+    auth._verified_email["u9"] = "someone@example.com"
+    assert admin._is_admin("u9") is False

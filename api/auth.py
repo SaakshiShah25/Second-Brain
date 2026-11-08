@@ -59,6 +59,15 @@ def _verify(token: str):
     raise HTTPException(503, "Couldn't verify your login just now - please try again in a moment.")
 
 
+# The email Supabase just verified for each user's token, kept so a check that needs the email (the admin page) does
+# not depend on a second lookup through the Auth admin API. Always written by the request that is being served.
+_verified_email: dict = {}
+
+
+def verified_email(user_id: str):
+    return _verified_email.get(user_id)
+
+
 def get_current_user_id(authorization: str = Header(None)) -> str:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "Missing or invalid Authorization header")
@@ -67,6 +76,10 @@ def get_current_user_id(authorization: str = Header(None)) -> str:
     response = _verify(token)
     if not response or not response.user:
         raise HTTPException(401, "Invalid or expired session")
+
+    if len(_verified_email) > 500:
+        _verified_email.clear()
+    _verified_email[response.user.id] = (response.user.email or "").lower()
 
     if not is_invited(response.user.email):
         import observability
