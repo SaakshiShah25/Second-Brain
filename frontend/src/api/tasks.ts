@@ -26,6 +26,7 @@ export function useEditTask() {
     mutationFn: ({ taskId, ...fields }: { taskId: number } & ItemEdit) => api.patch(`/api/tasks/${taskId}`, fields),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['lists'] })
     },
   })
 }
@@ -38,6 +39,7 @@ export function useCreateItem() {
       api.post<{ id: number }>('/api/tasks', body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['lists'] })
     },
   })
 }
@@ -48,6 +50,7 @@ export function useDeleteItem() {
     mutationFn: (taskId: number) => api.delete(`/api/tasks/${taskId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['lists'] })
     },
   })
 }
@@ -82,6 +85,7 @@ export function useUpdateTaskStatus() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['lists'] })
     },
   })
 }
@@ -104,6 +108,7 @@ export function useUpdateTaskOwner() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['lists'] })
     },
   })
 }
@@ -127,6 +132,7 @@ export function useUpdateTaskFields() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['lists'] })
     },
   })
 }

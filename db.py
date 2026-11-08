@@ -433,11 +433,32 @@ def get_list(user_id: str, list_id: int):
     return rows[0] if rows else None
 
 
-def get_list_by_name(user_id: str, name: str):
-    """Case-insensitive exact match (ilike with no wildcards), like get_initiative_by_name."""
+def get_list_by_name(user_id: str, name: str, initiative_id=None, any_space: bool = True):
+    """Case-insensitive exact match (ilike with no wildcards), like get_initiative_by_name. A list belongs to one
+    space, so with `any_space=False` only the list in `initiative_id` (None = the ones with no space) counts."""
     escaped = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     rows = get_client().table("item_list").select("*").eq("user_id", user_id).ilike("name", escaped).execute().data
+    if not any_space and list_space_supported():
+        rows = [r for r in rows if (r.get("initiative_id") or None) == (initiative_id or None)]
     return rows[0] if rows else None
+
+
+def find_list(user_id: str, name: str, initiative_id=None, lists=None):
+    """The user's list that means the same as `name` ("Films" finds "Movies") in this space (None = no space).
+    Before migration 43 lists have no space, so the name alone decides."""
+    import text_utils
+    key = text_utils.list_key(name)
+    supported = list_space_supported()
+    for l in (get_lists(user_id) if lists is None else lists):
+        if text_utils.list_key(l["name"]) == key and (not supported or (l.get("initiative_id") or None) == (initiative_id or None)):
+            return l
+    return None
+
+
+def set_list_tasks_space(user_id: str, list_id: int, initiative_id) -> None:
+    """Every entry of a list takes the list's space (an entry lives where its list lives)."""
+    if task_extras_supported():
+        get_client().table("task").update({"initiative_id": initiative_id}).eq("list_id", list_id).eq("user_id", user_id).execute()
 
 
 _list_space_ok = False
@@ -469,7 +490,8 @@ def create_list(user_id: str, name: str, emoji: str = None, initiative_id: int =
     except APIError as e:
         if e.code != _UNIQUE_VIOLATION:
             raise
-        return get_list_by_name(user_id, name)
+        # The same name in the same space; before migration 44 the name alone is unique, so fall back to that.
+        return get_list_by_name(user_id, name, initiative_id, any_space=False) or get_list_by_name(user_id, name)
 
 
 def get_list_initiative(user_id: str, list_id: int):

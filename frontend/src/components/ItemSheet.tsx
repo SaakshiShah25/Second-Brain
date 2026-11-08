@@ -87,6 +87,9 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
         <p className="mb-4 text-[0.9375rem] text-text-muted">{meta.join(' · ')}</p>
         {task.detail && !editing && <p className="mb-4 whitespace-pre-wrap text-[0.9375rem] leading-relaxed">{task.detail}</p>}
 
+        {/* A list entry has neither: it is just on the list (tick it, or not). */}
+        {!task.list_id && (
+          <>
         {/* How much it matters, and when to be nudged - the same two for every kind of item. */}
         <div className="mb-3 flex gap-1.5" role="group" aria-label="Priority">
           {PRIORITIES.map((p) => {
@@ -118,6 +121,9 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
           </span>
           <ChevronRight size={16} strokeWidth={2} className="flex-shrink-0 text-text-faint" />
         </button>
+
+          </>
+        )}
 
         {/* Which space it belongs to - one tap to change it. */}
         <button

@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, ChevronUp, FileText } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, ChevronUp, FileText, Pencil } from 'lucide-react'
+import { useUpdateInitiative } from '../api/initiatives'
 import type { Interaction, ItemList as ListLabel, Task } from '../api/types'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
 import AddToSpace from './AddToSpace'
+import { toast } from './Toast'
 import ExportInitiativeButton from './ExportInitiativeButton'
 import InteractionCard, { ItemList } from './InteractionCard'
 import InitiativeThings, { thingCounts } from './InitiativeThings'
@@ -75,6 +77,9 @@ export function InitiativeBlock({ initiative, notes, items = [], onOpen }: Props
 // Nothing here calls an AI model.
 export function InitiativeView({ initiative, notes, items = [], labels = [], onCollapse }: Props & { onCollapse?: () => void }) {
   const [showSource, setShowSource] = useState(false)
+  // Edit mode: rename the space and its lists, remove to-dos, entries, lists and notes, all in one place.
+  const [editing, setEditing] = useState(false)
+  const updateInitiative = useUpdateInitiative()
   // Tapping an item opens the note it came from.
   const [openNoteId, setOpenNoteId] = useState<number | null>(null)
   const openNote = notes.find((n) => n.id === openNoteId) ?? null
@@ -85,10 +90,35 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
     <div>
       <div className="mb-4 rounded-2xl border border-border bg-bg-card p-4">
         <div className="flex items-center gap-2">
-          <Heading initiative={initiative} size="lg" />
+          {editing && initiative ? (
+            <input
+              defaultValue={initiative.name}
+              aria-label="Space name"
+              onBlur={(e) => {
+                const name = e.target.value.trim()
+                if (!name || name === initiative.name) return (e.target.value = initiative.name)
+                updateInitiative.mutate(
+                  { id: initiative.id, fields: { name } },
+                  { onError: (err) => (toast(err instanceof Error && err.message ? err.message : "Couldn't rename that."), (e.target.value = initiative.name)) },
+                )
+              }}
+              className="min-w-0 flex-1 rounded-lg border border-border-strong bg-bg-card px-2 py-1.5 text-xl font-semibold tracking-tight focus:border-accent focus:outline-none"
+            />
+          ) : (
+            <Heading initiative={initiative} size="lg" />
+          )}
           <span className="ml-auto flex items-center gap-2">
             <AddToSpace spaceId={initiative?.id ?? null} spaceName={initiative?.name ?? 'Others'} />
             <ExportInitiativeButton name={initiative?.name ?? 'Others'} notes={notes} />
+            <button
+              type="button"
+              onClick={() => setEditing((v) => !v)}
+              aria-label={editing ? 'Done editing' : 'Edit this space'}
+              aria-pressed={editing}
+              className={`pressable flex h-9 w-9 items-center justify-center rounded-full ${editing ? 'bg-accent-soft text-accent' : 'text-text-muted'}`}
+            >
+              {editing ? <Check size={18} strokeWidth={2.4} /> : <Pencil size={17} strokeWidth={2} />}
+            </button>
             {onCollapse && (
               <button
                 type="button"
@@ -150,7 +180,12 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
         )}
       </div>
 
-      <InitiativeThings items={items} labels={labels} spaceId={initiative?.id ?? null} />
+      {editing && (
+        <p className="mb-3 px-1 text-[0.8125rem] text-text-muted">
+          Editing: rename the space or a list, tap an item to change it, remove what you don't need, then tap ✓ when done.
+        </p>
+      )}
+      <InitiativeThings items={items} labels={labels} spaceId={initiative?.id ?? null} editing={editing} />
 
       {openNote && (
         // The note's sheet floats above the page, so the card itself stays out of sight.
@@ -164,14 +199,14 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
           <button
             type="button"
             onClick={() => setShowSource((v) => !v)}
-            aria-expanded={showSource}
+            aria-expanded={showSource || editing}
             className="pressable mb-2 flex items-center gap-1.5 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint"
           >
             Source notes
             <span className="font-medium normal-case tracking-normal">· {notes.length}</span>
-            <ChevronDown size={15} strokeWidth={2.2} className={showSource ? 'rotate-180' : ''} />
+            <ChevronDown size={15} strokeWidth={2.2} className={showSource || editing ? 'rotate-180' : ''} />
           </button>
-          {showSource && (
+          {(showSource || editing) && (
             <div className="flex flex-col gap-2.5">
               {[...notes]
                 .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.id - a.id)

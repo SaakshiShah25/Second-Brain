@@ -96,15 +96,23 @@ def _run_command(user_id: str, cmd: dict, picked_space_id) -> dict:
     elif picked_space_id:
         space = next((s for s in spaces if s["id"] == picked_space_id), None)
 
-    key = text_utils.list_key(cmd["name"])
-    existing = next((l for l in db.get_lists(user_id) if text_utils.list_key(l["name"]) == key), None)
+    lists = db.get_lists(user_id)
+    existing = db.find_list(user_id, cmd["name"], space["id"] if space else None, lists=lists)
     note = ""
+    if not existing and space and db.list_space_supported():
+        # A list with the name and no space yet is adopted by the space it was asked for.
+        loose = db.find_list(user_id, cmd["name"], None, lists=lists)
+        if loose:
+            db.update_list(user_id, loose["id"], initiative_id=space["id"])
+            db.set_list_tasks_space(user_id, loose["id"], space["id"])
+            existing, note = loose, f" I've put it in **{space['name']}**."
+    if not existing and not space:
+        # No space named: a list of that name in any space is the one meant.
+        key = text_utils.list_key(cmd["name"])
+        existing = next((l for l in lists if text_utils.list_key(l["name"]) == key), None)
     if existing:
         made = existing
-        if space and not existing.get("initiative_id") and db.list_space_supported():
-            db.update_list(user_id, existing["id"], initiative_id=space["id"])
-            note = f" I've put it in **{space['name']}**."
-        reply["answer"] = f"You already have **{existing['name']}**.{note}"
+        reply["answer"] = f"You already have **{existing['name']}**{'' if space or not existing.get('initiative_id') else ' in another space'}.{note}"
     else:
         title = cmd["name"][:40]
         made = db.create_list(user_id, title, text_utils.list_emoji(title), initiative_id=space["id"] if space else None)
@@ -112,7 +120,7 @@ def _run_command(user_id: str, cmd: dict, picked_space_id) -> dict:
         reply["answer"] = f"Created **{made.get('emoji') or ''} {made['name']}**{where}. Say “add … to my {made['name'].lower()}” to fill it."
         if space and not db.list_space_supported():
             reply["answer"] += " (To remember which space it lives in, run `scripts/migration_43_list_space.sql`.)"
-    reply.update(changed=["lists"], space_id=space["id"] if space else None, list_name=made["name"])
+    reply.update(changed=["lists"], space_id=(space["id"] if space else made.get("initiative_id")), list_name=made["name"])
     return reply
 
 

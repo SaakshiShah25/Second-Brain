@@ -1,4 +1,4 @@
-import { Bell, Check, Repeat as RepeatIcon, TriangleAlert } from 'lucide-react'
+import { Bell, Check, Repeat as RepeatIcon, Trash2, TriangleAlert } from 'lucide-react'
 import type { Task } from '../api/types'
 import { dueLabel, friendlyDate, shortDate, timeLabel } from '../lib/dates'
 import { isOverdue, repeatLabel } from '../lib/items'
@@ -14,6 +14,7 @@ export default function ItemRow({
   toggling = false,
   showList = false,
   compactDate = false,
+  onDelete,
 }: {
   task: Task
   onToggle: (task: Task) => void
@@ -22,6 +23,8 @@ export default function ItemRow({
   showList?: boolean
   // "Today, 4:00 PM" / "Thursday" instead of the full calendar date.
   compactDate?: boolean
+  // Editing a space: a remove button at the end of the row.
+  onDelete?: (task: Task) => void
 }) {
   const overdue = isOverdue(task)
   // A task you marked high or low colours its tick circle (normal keeps the plain grey).
@@ -66,12 +69,6 @@ export default function ItemRow({
   return (
     <div className="flex items-start gap-3 px-4 py-3">
       {/* Generous invisible hit area around the visible 22px circle. */}
-      {/* A list entry is just on the list (a book, a film): nothing to tick off unless it was ticked before. */}
-      {task.list_id && !done ? (
-        <span aria-hidden className="flex h-[1.375rem] w-[1.375rem] flex-shrink-0 items-center justify-center">
-          <span className="h-1.5 w-1.5 rounded-full bg-text-faint" />
-        </span>
-      ) : (
       <button
         type="button"
         onClick={() => onToggle(task)}
@@ -88,7 +85,6 @@ export default function ItemRow({
           {done && <Check size={13} strokeWidth={3} />}
         </span>
       </button>
-      )}
       <button type="button" onClick={() => onOpen(task)} className="pressable min-w-0 flex-1 text-left">
         <span className={`line-clamp-2 text-[0.9375rem] leading-snug ${done ? 'text-text-faint line-through' : ''}`}>
           {task.description}
@@ -100,6 +96,16 @@ export default function ItemRow({
           </span>
         )}
       </button>
+      {onDelete && (
+        <button
+          type="button"
+          onClick={() => onDelete(task)}
+          aria-label={`Remove ${task.description}`}
+          className="pressable -m-2 flex-shrink-0 p-2 text-text-faint hover:text-danger"
+        >
+          <Trash2 size={17} strokeWidth={1.9} />
+        </button>
+      )}
     </div>
   )
 }

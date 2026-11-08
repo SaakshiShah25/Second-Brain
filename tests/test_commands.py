@@ -8,6 +8,21 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import commands  # noqa: E402
 
 
+def find_list_stub(get_lists, supported=lambda: True):
+    """db.find_list for tests: same words, same space (None = no space)."""
+    import text_utils
+
+    def find_list(uid, name, initiative_id=None, lists=None):
+        key = text_utils.list_key(name)
+        for l in (get_lists() if lists is None else lists):
+            if text_utils.list_key(l["name"]) == key and (not supported() or (l.get("initiative_id") or None) == (initiative_id or None)):
+                return l
+        return None
+
+    return find_list
+
+
+
 def test_create_list_and_create_space_messages_are_recognised():
     assert commands.parse("create a new reading list in Personal") == {"kind": "create_list", "name": "Reading list", "space": "Personal"}
     assert commands.parse("Please make a list called Movies under the Personal space") == {"kind": "create_list", "name": "Movies", "space": "Personal"}
@@ -48,6 +63,8 @@ def _chat(monkeypatch, spaces, lists=None, supported=True):
         create_initiative=create_initiative,
         create_list=lambda uid, name, emoji=None, initiative_id=None: made["lists"].append((name, initiative_id)) or {"id": 7, "name": name, "emoji": emoji},
         update_list=lambda uid, lid, **f: made["updated"].append((lid, f)),
+        find_list=find_list_stub(lambda: lists, lambda: supported),
+        set_list_tasks_space=lambda uid, lid, sid: None,
         list_space_supported=lambda: supported,
     ))
     return chat, made

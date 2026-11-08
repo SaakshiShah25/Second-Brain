@@ -119,25 +119,30 @@ class _ListResolver:
         self._lists = None
         self._spaces: dict = {}
 
-    def _existing(self, name: str) -> Optional[dict]:
+    def _existing(self, name: str, space_id: Optional[int]) -> Optional[dict]:
         """The user's list that means the same as `name` - "Films" finds "Movies", "my reading list" finds
-        "Books" - so loose wording never makes a second list for the same pile."""
-        exact = db.get_list_by_name(self.user_id, name)
-        if exact:
-            return exact
+        "Books" - so loose wording never makes a second list for the same pile. A list belongs to one space, so
+        when the space is known only its list there counts; when it isn't, any list of that name will do."""
         if self._lists is None:
             self._lists = db.get_lists(self.user_id)
+        if space_id is not None:
+            return db.find_list(self.user_id, name, space_id, lists=self._lists)
         key = text_utils.list_key(name)
         return next((l for l in self._lists if text_utils.list_key(l["name"]) == key), None)
 
-    def resolve(self, name) -> Optional[dict]:
+    def resolve(self, name, space_id: Optional[int] = None) -> Optional[dict]:
         name = " ".join(str(name or "").split())[:40]
         if not name or name.lower() in text_utils.MAIN_LIST_NAMES:
             return None
-        key = text_utils.list_key(name)
+        key = (text_utils.list_key(name), space_id)
         if key not in self.cache:
-            title = text_utils.canonical_list_title(name) or (name[:1].upper() + name[1:])
-            self.cache[key] = self._existing(name) or db.create_list(self.user_id, title, text_utils.list_emoji(title))
+            found = self._existing(name, space_id)
+            if not found:
+                title = text_utils.canonical_list_title(name) or (name[:1].upper() + name[1:])
+                found = db.create_list(self.user_id, title, text_utils.list_emoji(title), initiative_id=space_id)
+                if self._lists is not None:
+                    self._lists.append(found)
+            self.cache[key] = found
         return self.cache[key]
 
     def home_space(self, item_list: Optional[dict]) -> Optional[int]:
@@ -229,7 +234,7 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
             skipped_due_dates.append({"description": task_desc, "raw_due_date": raw_due_date})
         if repeat:
             due_date = first_occurrence(due_date, repeat)  # "Mom's birthday, 14 March" said in November -> next March
-        item_list = lists.resolve(item.get("list"))
+        item_list = lists.resolve(item.get("list"), initiative_id)
         list_id = item_list["id"] if item_list else None
         # Nothing said where it belongs: it goes to the space its list already lives in.
         item_space = initiative_id if initiative_id is not None else lists.home_space(item_list)

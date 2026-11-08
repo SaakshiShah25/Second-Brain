@@ -38,9 +38,9 @@ def get_lists(user_id: str = Depends(get_current_user_id)):
 @router.post("")
 def create_list(body: ListCreate, user_id: str = Depends(get_current_user_id)):
     name = _clean_name(body.name)
-    if db.get_list_by_name(user_id, name):
-        raise HTTPException(409, f"You already have a list called '{name}'.")
     _check_space(user_id, body.initiative_id)
+    if db.find_list(user_id, name, body.initiative_id):
+        raise HTTPException(409, f"This space already has a list called '{name}'.")
     return db.create_list(user_id, name, body.emoji or text_utils.list_emoji(name), initiative_id=body.initiative_id)
 
 
@@ -51,16 +51,22 @@ def update_list(list_id: int, body: ListUpdate, user_id: str = Depends(get_curre
     fields = {}
     if body.name is not None:
         name = _clean_name(body.name)
-        other = db.get_list_by_name(user_id, name)
+        current = db.get_list(user_id, list_id)
+        other = db.find_list(user_id, name, current.get("initiative_id"))
         if other and other["id"] != list_id:
-            raise HTTPException(409, f"You already have a list called '{name}'.")
+            raise HTTPException(409, f"This space already has a list called '{name}'.")
         fields["name"] = name
     if body.emoji is not None:
         fields["emoji"] = body.emoji.strip() or text_utils.list_emoji(fields.get("name", ""))
     if "initiative_id" in body.model_fields_set:
         _check_space(user_id, body.initiative_id)
         if db.list_space_supported():
+            current = db.get_list(user_id, list_id)
+            other = db.find_list(user_id, fields.get("name") or current["name"], body.initiative_id)
+            if other and other["id"] != list_id:
+                raise HTTPException(409, f"That space already has a list called '{current['name']}'.")
             fields["initiative_id"] = body.initiative_id
+            db.set_list_tasks_space(user_id, list_id, body.initiative_id)  # its entries move with it
     return db.update_list(user_id, list_id, **fields)
 
 
