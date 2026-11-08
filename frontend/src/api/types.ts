@@ -29,6 +29,7 @@ export interface Task {
   priority?: 'high' | 'normal' | 'low'
   remind_on?: string | null // the day (YYYY-MM-DD) to get a push about this task
   remind_time?: string | null // HH:MM(:SS) that day; null = 9 AM (needs migration 41)
+  remind_before?: number | null // minutes before the due time to be reminded (needs migration 45)
   initiative_id?: number | null // the task's own category (it can be moved without moving its note); null = Others
   // The next four exist once scripts/migration_40_lists.sql has run.
   list_id?: number | null

@@ -394,6 +394,22 @@ def delete_task(user_id: str, task_id: int):
     get_client().table("task").delete().eq("id", task_id).eq("user_id", user_id).execute()
 
 
+_remind_before_ok = False
+
+
+def remind_before_supported() -> bool:
+    """True once task.remind_before exists (scripts/migration_45_remind_before.sql). Only a yes is remembered."""
+    global _remind_before_ok
+    if _remind_before_ok:
+        return True
+    try:
+        get_client().table("task").select("remind_before").limit(1).execute()
+    except Exception:
+        return False
+    _remind_before_ok = True
+    return True
+
+
 def get_reminder_candidates(user_ids: list, until_date: str) -> list:
     """Open items that can raise their own push reminder - ones with a time of day or a repeat -
     due on or before `until_date`, for these users. Read by push_notify.send_due every minute."""
@@ -403,12 +419,15 @@ def get_reminder_candidates(user_ids: list, until_date: str) -> list:
     columns = "id, user_id, description, due_date, due_time, repeat, reminded_key, item_list(name, emoji)"
     if task_extras_supported():
         columns += ", remind_on"
+    early = remind_before_supported()
+    if early:
+        columns += ", remind_before"
     resp = (
         get_client().table("task")
         .select(columns)
         .in_("user_id", list(user_ids)).eq("status", "open")
         .not_.is_("due_date", "null").lte("due_date", until_date)
-        .or_("due_time.not.is.null,repeat.not.is.null")
+        .or_("due_time.not.is.null,repeat.not.is.null" + (",remind_before.not.is.null" if early else ""))
         .execute()
     )
     return _decrypt_rows("task", resp.data)

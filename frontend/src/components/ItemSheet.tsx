@@ -12,7 +12,7 @@ import { autoReminderText, isOverdue, REPEAT_OPTIONS, repeatLabel } from '../lib
 import { DEFAULT_REMIND_TIME, PRIORITIES, ON_PRIORITY, priorityOf, taskInitiativeId, tint } from '../lib/taskOptions'
 import Button from './Button'
 import CategorySheet from './CategorySheet'
-import { PriorityBars, ReminderSheet } from './TaskOptions'
+import { beforeLabel, PriorityBars, ReminderSheet } from './TaskOptions'
 import ConfirmDialog from './ConfirmDialog'
 import Sheet from './Sheet'
 import { toast } from './Toast'
@@ -34,9 +34,13 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
   const [choosingCategory, setChoosingCategory] = useState(false)
   const [choosingReminder, setChoosingReminder] = useState(false)
   const priority = priorityOf(task)
-  const reminder = task.remind_on
-    ? `${shortDate(task.remind_on)}, ${timeLabel((task.remind_time ?? DEFAULT_REMIND_TIME).slice(0, 5))}`
-    : autoReminderText(task)
+  const early = task.remind_before ? `${beforeLabel(task.remind_before)} before it's due` : ''
+  const reminder = [
+    early,
+    task.remind_on ? `${shortDate(task.remind_on)}, ${timeLabel((task.remind_time ?? DEFAULT_REMIND_TIME).slice(0, 5))}` : early ? '' : autoReminderText(task),
+  ]
+    .filter(Boolean)
+    .join(' · ')
   const categoryId = taskInitiativeId(task)
   const categoryName = categoryId === null ? 'Others' : (initiatives.find((i) => i.id === categoryId)?.name ?? 'Others')
   const [editing, setEditing] = useState(false)
@@ -264,6 +268,15 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
         <ReminderSheet
           task={task}
           onClose={() => setChoosingReminder(false)}
+          onPickBefore={
+            task.due_date
+              ? (minutes) =>
+                  updateFields.mutate(
+                    { taskId: task.id, fields: { remind_before: minutes } },
+                    { onSuccess: () => toast(minutes ? `You'll be reminded ${beforeLabel(minutes)} before` : 'Early reminder removed') },
+                  )
+              : undefined
+          }
           onPick={(date, time) =>
             updateFields.mutate(
               { taskId: task.id, fields: { remind_on: date, remind_time: time } },

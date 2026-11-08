@@ -81,6 +81,7 @@ class TaskStatusUpdate(BaseModel):
     priority: Optional[str] = Field(None, max_length=10)       # "high" | "normal" | "low"
     remind_on: Optional[str] = Field(None, max_length=10)      # YYYY-MM-DD, null clears the reminder
     remind_time: Optional[str] = Field(None, max_length=8)     # HH:MM that day; null = the default, 9 AM (needs migration 41)
+    remind_before: Optional[int] = None                         # minutes before the due time to remind; null clears it (needs migration 45)
     initiative_id: Optional[int] = None                         # move the task to another category; null = Others
     # Lists and repeats (needs scripts/migration_40_lists.sql).
     list_id: Optional[int] = None                          # null = the main Tasks list

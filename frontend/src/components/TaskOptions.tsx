@@ -93,13 +93,29 @@ export function PriorityFlag({ priority, onPick }: { priority: Priority; onPick:
 
 // "Remind me" for one task: a time of day (9 AM unless changed), then quick choices counted from its due date, "at its due
 // time" when it has one, or any date.
+export const BEFORE_CHOICES: { minutes: number; label: string }[] = [
+  { minutes: 15, label: '15 min' },
+  { minutes: 30, label: '30 min' },
+  { minutes: 60, label: '1 hour' },
+  { minutes: 120, label: '2 hours' },
+  { minutes: 1440, label: '1 day' },
+  { minutes: 2880, label: '2 days' },
+]
+
+export function beforeLabel(minutes: number): string {
+  return BEFORE_CHOICES.find((c) => c.minutes === minutes)?.label ?? `${minutes} min`
+}
+
 export function ReminderSheet({
   task,
   onPick,
+  onPickBefore,
   onClose,
 }: {
   task: Task
   onPick: (date: string | null, time: string | null) => void
+  // "Remind me 30 minutes before it's due" (null = remove). Offered only for a task that has a date.
+  onPickBefore?: (minutes: number | null) => void
   onClose: () => void
 }) {
   const [time, setTime] = useState((task.remind_time ?? DEFAULT_REMIND_TIME).slice(0, 5))
@@ -123,6 +139,35 @@ export function ReminderSheet({
           Reminder set for <span className="font-semibold">{shortDate(task.remind_on)}</span>,{' '}
           {timeLabel((task.remind_time ?? DEFAULT_REMIND_TIME).slice(0, 5))}
         </p>
+      )}
+      {task.due_date && onPickBefore && (
+        <div className="mb-4">
+          <p className="mb-2 text-[0.9375rem] font-medium">
+            Remind me before {dueTime ? `${shortDate(task.due_date)}, ${timeLabel(dueTime)}` : `${shortDate(task.due_date)} (counted from 9 AM)`}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {BEFORE_CHOICES.map((c) => {
+              const active = task.remind_before === c.minutes
+              return (
+                <button
+                  key={c.minutes}
+                  type="button"
+                  onClick={() => {
+                    onPickBefore(active ? null : c.minutes)
+                    onClose()
+                  }}
+                  aria-pressed={active}
+                  className={`pressable h-10 rounded-full border px-3.5 text-[0.875rem] font-medium ${
+                    active ? 'border-accent/40 bg-accent-soft text-accent ring-1 ring-accent/40' : 'border-border-strong bg-bg-card'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-2 text-[0.8125rem] text-text-faint">Tap again to remove. This replaces the reminder at the due time.</p>
+        </div>
       )}
       {dueTime && task.due_date && (
         <button

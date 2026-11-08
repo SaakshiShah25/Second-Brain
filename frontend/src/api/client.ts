@@ -38,21 +38,43 @@ async function send(url: string, init: RequestInit): Promise<Response> {
 }
 
 // Sends a request with the signed-in user's token. A 401 means the token was rejected (it can expire while
-// the app sits in the background): get a fresh one and try once more before giving up. Only if that also
-// fails is the session really over - the user is signed out (RequireAuth then shows the login screen)
-// instead of being left with a bare "Invalid or expired session".
+// the app sits in the background): get a fresh one and try once more. The person is signed out only when Supabase
+// itself refuses the session - NOT when the refresh just couldn't happen (an iPhone resuming the app before its
+// network is back, a server blip), which used to log people out for nothing.
 const SESSION_OVER = 'Your session has expired - please sign in again.'
+const REFRESH_FAILED = "Couldn't refresh your sign-in just now - check your connection and try again."
+
+type Refresh = { token: string | null; refused: boolean }
+let refreshing: Promise<Refresh> | null = null
+
+// One refresh at a time: a screen fires several requests together, and refreshing in parallel used the single-use
+// refresh token twice, which Supabase treats as theft and ends the session.
+function refreshOnce(): Promise<Refresh> {
+  refreshing ??= supabase.auth
+    .refreshSession()
+    .then(({ data, error }): Refresh => {
+      if (data.session) return { token: data.session.access_token, refused: false }
+      const status = error && 'status' in error ? (error as { status?: number }).status : undefined
+      return { token: null, refused: typeof status === 'number' && status >= 400 && status < 500 }
+    })
+    .catch((): Refresh => ({ token: null, refused: false }))
+    .finally(() => {
+      refreshing = null
+    })
+  return refreshing
+}
 
 async function authedSend(url: string, build: (token: string | null) => RequestInit): Promise<Response> {
   const { data } = await supabase.auth.getSession()
   const res = await send(url, build(data.session?.access_token ?? null))
   if (res.status !== 401) return res
 
-  const refreshed = await supabase.auth.refreshSession()
-  const token = refreshed.data.session?.access_token
-  if (token) {
-    const retry = await send(url, build(token))
+  const refreshed = await refreshOnce()
+  if (refreshed.token) {
+    const retry = await send(url, build(refreshed.token))
     if (retry.status !== 401) return retry
+  } else if (!refreshed.refused) {
+    throw new ApiError(0, REFRESH_FAILED)
   }
   await supabase.auth.signOut({ scope: 'local' })
   throw new ApiError(401, SESSION_OVER)

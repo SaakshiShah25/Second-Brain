@@ -117,7 +117,7 @@ export function useUpdateTaskOwner() {
 export function useUpdateTaskFields() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ taskId, fields }: { taskId: number; fields: Partial<Pick<Task, 'priority' | 'remind_on' | 'remind_time' | 'initiative_id'>> }) =>
+    mutationFn: ({ taskId, fields }: { taskId: number; fields: Partial<Pick<Task, 'priority' | 'remind_on' | 'remind_time' | 'remind_before' | 'initiative_id'>> }) =>
       api.patch(`/api/tasks/${taskId}`, fields),
     onMutate: async ({ taskId, fields }) => {
       await queryClient.cancelQueries({ queryKey: ['tasks'] })

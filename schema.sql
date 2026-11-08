@@ -1164,3 +1164,6 @@ begin
     end loop;
 end $$;
 notify pgrst, 'reload schema';
+
+-- 45. "Remind me before": minutes before a task's due time to be reminded (null = none).
+alter table task add column if not exists remind_before integer;

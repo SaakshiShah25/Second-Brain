@@ -179,6 +179,7 @@ def _send_webpush(subscription: dict, message: dict) -> None:
             vapid_private_key=os.environ["VAPID_PRIVATE_KEY"],
             vapid_claims={"sub": os.environ.get("VAPID_SUBJECT", "mailto:admin@example.com")},
             ttl=6 * 3600,  # a reminder that is hours old is worth less than none
+            headers={"Urgency": "high"},  # delivered at once and allowed to make a sound, even in battery saver
         )
     except WebPushException as e:
         status = getattr(getattr(e, "response", None), "status_code", None)
@@ -287,10 +288,22 @@ def send_task_reminders(now_utc: Optional[datetime] = None, sender: Optional[Cal
     return result
 
 
+def before_label(minutes: int) -> str:
+    """30 -> "In 30 minutes", 60 -> "In 1 hour", 1440 -> "Tomorrow", 2880 -> "In 2 days"."""
+    if minutes >= 1440 and minutes % 1440 == 0:
+        days = minutes // 1440
+        return "Tomorrow" if days == 1 else f"In {days} days"
+    if minutes >= 60 and minutes % 60 == 0:
+        hours = minutes // 60
+        return "In 1 hour" if hours == 1 else f"In {hours} hours"
+    return f"In {minutes} minutes"
+
+
 def item_reminder(item: dict, timezone_name: str, now_utc: Optional[datetime] = None):
     """(occurrence key, message) when this item's own reminder is due now and hasn't been sent
     for this occurrence yet, else None. See the module docstring for when each kind fires."""
-    if not item.get("due_date") or item.get("remind_on"):
+    before = item.get("remind_before")
+    if not item.get("due_date") or (item.get("remind_on") and not before):
         return None  # (an item with a bell set is reminded by that, once - see send_task_reminders)
     local = _local_now(timezone_name, now_utc)
     now = local.replace(tzinfo=None)
@@ -299,7 +312,16 @@ def item_reminder(item: dict, timezone_name: str, now_utc: Optional[datetime] = 
     title = f"{lst['emoji']} {item['description']}" if lst.get("emoji") else item["description"]
     hours = date_utils.repeat_hours(item.get("repeat"))
 
-    if hours:
+    if before and not hours:
+        # "Remind me 30 minutes before": counted from the due time, or from 9 AM on the due date when it has none.
+        hh, mm = (int(x) for x in str(item.get("due_time") or f"{DEFAULT_REMIND_TIME}").split(":")[:2])
+        at = datetime.combine(due, time(hh, mm))
+        fire = at - timedelta(minutes=int(before))
+        if not (fire <= now < fire + ITEM_GRACE):
+            return None
+        key = f"before:{at.strftime('%Y-%m-%dT%H:%M')}:{int(before)}"
+        body = f"{before_label(int(before))} · {at.strftime('%-I:%M %p') if item.get('due_time') else due.strftime('%a %-d %b')}"
+    elif hours:
         start, end = NUDGE_HOURS
         if due > now.date() or not (start <= now.hour < end):
             return None
@@ -327,7 +349,7 @@ def _send_item_reminders(subs: list, now_utc: Optional[datetime], sender: Callab
     by_user: dict = {}
     for sub in subs:
         by_user.setdefault(sub["user_id"], []).append(sub)
-    until = ((now_utc or datetime.now(timezone.utc)) + timedelta(days=2)).date().isoformat()
+    until = ((now_utc or datetime.now(timezone.utc)) + timedelta(days=3)).date().isoformat()
     try:
         items = db.get_reminder_candidates(list(by_user), until)
     except Exception as e:

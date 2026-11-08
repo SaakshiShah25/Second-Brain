@@ -159,6 +159,22 @@ def update_task(task_id: int, body: TaskStatusUpdate, user_id: str = Depends(get
             changes["reminded_on"] = None
         if valid and not db.reminder_time_supported():
             raise HTTPException(503, "Choosing a time for a reminder isn't available yet - run scripts/migration_41_reminder_time.sql first.")
+    if "remind_before" in edits:
+        minutes = edits["remind_before"]
+        if minutes is not None:
+            current = db.get_task(user_id, task_id) or {}
+            if current.get("list_id"):
+                raise HTTPException(400, "A list entry can't have a reminder - only to-dos can.")
+            if not (changes.get("due_date") or edits.get("due_date") or current.get("due_date")):
+                raise HTTPException(400, "Give the task a date before asking to be reminded before it.")
+            if not 5 <= minutes <= 7 * 24 * 60:
+                raise HTTPException(400, "remind_before must be between 5 minutes and 7 days.")
+            if not db.remind_before_supported():
+                raise HTTPException(503, "Reminding before isn't available yet - run scripts/migration_45_remind_before.sql first.")
+        elif not db.remind_before_supported():
+            edits.pop("remind_before")  # nothing to clear
+        if "remind_before" in edits:
+            changes["remind_before"] = minutes
     if "initiative_id" in edits:
         if edits["initiative_id"] is not None and not db.get_initiative(user_id, edits["initiative_id"]):
             raise HTTPException(400, "That space doesn't exist.")
