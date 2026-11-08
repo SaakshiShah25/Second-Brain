@@ -287,3 +287,24 @@ def test_a_new_entry_with_no_space_goes_to_the_space_its_list_already_lives_in()
     cap._process_extracted("u", "x", {"keep_note": False, "follow_ups": [{"description": "Dune", "list": "reading list"}]},
                            forced_initiative_id=9)
     assert saved["tasks"][0][2]["initiative_id"] == 9
+
+
+def test_remind_me_before_fires_that_long_ahead_of_the_due_time_once():
+    item = _item(due_time="17:00:00", remind_before=30)
+    # 17:00 in Kolkata is 11:30 UTC, so 30 minutes before is 11:00 UTC
+    assert pn.item_reminder(item, "Asia/Kolkata", utc(10, 59)) is None
+    key, msg = pn.item_reminder(item, "Asia/Kolkata", utc(11, 0))
+    assert key == "before:2026-10-28T17:00:30" and msg["body"].startswith("In 30 minutes")
+    assert pn.item_reminder({**item, "reminded_key": key}, "Asia/Kolkata", utc(11, 1)) is None
+    # it replaces the reminder at the due time, and works even when a bell is set
+    assert pn.item_reminder({**item, "remind_on": "2026-10-28"}, "Asia/Kolkata", utc(11, 0)) is not None
+    assert pn.item_reminder(item, "Asia/Kolkata", utc(11, 30)) is not None  # still inside the grace window, not at due-time key
+
+
+def test_a_day_before_with_no_time_counts_from_nine_am():
+    item = _item(due_date="2026-10-29", remind_before=1440)
+    # 09:00 on the 28th in Kolkata = 03:30 UTC
+    assert pn.item_reminder(item, "Asia/Kolkata", utc(3, 29)) is None
+    key, msg = pn.item_reminder(item, "Asia/Kolkata", utc(3, 30))
+    assert msg["body"].startswith("Tomorrow")
+    assert pn.before_label(60) == "In 1 hour" and pn.before_label(2880) == "In 2 days"

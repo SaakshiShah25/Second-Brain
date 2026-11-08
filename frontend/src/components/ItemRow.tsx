@@ -3,6 +3,7 @@ import type { Task } from '../api/types'
 import { dueLabel, friendlyDate, shortDate, timeLabel } from '../lib/dates'
 import { isOverdue, repeatLabel } from '../lib/items'
 import { PRIORITIES, priorityOf } from '../lib/taskOptions'
+import { beforeLabel } from './TaskOptions'
 
 // One item: a Things-style round checkbox, its wording, and one quiet line of facts (whose it
 // is, when, how often, which list). `showList` adds the list chip - on Today, where items from
@@ -56,6 +57,12 @@ export default function ItemRow({
         <Bell size={12} strokeWidth={2.2} />
         {shortDate(task.remind_on)}
         {task.remind_time && `, ${timeLabel(task.remind_time.slice(0, 5))}`}
+      </span>
+    ) : null,
+    task.remind_before && !done ? (
+      <span key="e" className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap text-accent">
+        <Bell size={12} strokeWidth={2.2} />
+        {beforeLabel(task.remind_before)} before
       </span>
     ) : null,
     showList && list ? (

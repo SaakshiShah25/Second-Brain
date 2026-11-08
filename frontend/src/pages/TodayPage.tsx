@@ -95,6 +95,10 @@ export default function TodayPage() {
   // overdue or due today are in those sections, so nothing shows twice.
   const shown = new Set([...overdue, ...dueToday].map((t) => t.id))
   const important = open.filter((t) => !t.list_id && priorityOf(t) === 'high' && !shown.has(t.id)).sort(byPriorityThenDue)
+  // On the Today view each item appears once: a high-priority one sits under High priority, not again below.
+  const importantIds = new Set(important.map((t) => t.id))
+  const todoBelow = anytime.filter((t) => !importantIds.has(t.id))
+  const comingUp = soon.filter((t) => !importantIds.has(t.id))
   const done = all.filter((t) => t.status === 'done' && !t.list_id).sort((a, b) => b.id - a.id).slice(0, 30)
   const rowProps = {
     onToggle: (t: Task) => updateStatus.mutate({ taskId: t.id, status: t.status === 'done' ? 'open' : 'done', repeats: !!t.repeat }),
@@ -141,12 +145,14 @@ export default function TodayPage() {
 
       {data && view === 'today' && (
         <>
-          {overdue.length + dueToday.length + important.length === 0 && (
-            <Empty title="Nothing due today." hint="Say “remind me to…” or “every night…” on Home and it shows up here on its day." />
+          {overdue.length + dueToday.length + important.length + todoBelow.length + comingUp.length === 0 && (
+            <Empty title="Nothing on your plate." hint="Say “remind me to…” or “every night…” on Home and it shows up here on its day." />
           )}
           <Section title="Overdue" tasks={overdue} tone="danger" {...rowProps} />
           <Section title="Today" tasks={dueToday} {...rowProps} />
           <Section title="High priority" tasks={important} {...rowProps} />
+          <Section title="To-do" tasks={todoBelow} {...rowProps} />
+          <Section title="Coming up" tasks={comingUp} {...rowProps} />
         </>
       )}
 

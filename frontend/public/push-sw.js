@@ -15,6 +15,9 @@ self.addEventListener('push', (event) => {
       badge: '/icons/icon-192.png',
       tag: data.tag || 'tasks',
       renotify: true, // a newer reminder with the same tag replaces the old one and alerts again
+      silent: false, // make a sound whenever the phone's own notification settings allow it
+      vibrate: [200, 100, 200, 100, 200], // and buzz (Android; iPhones ignore it and follow their own settings)
+      timestamp: Date.now(),
       data: { url: data.url || '/today' },
     }),
   )
