@@ -156,6 +156,7 @@ export default function NotesPage() {
       ) : focusId !== null ? (
         <InitiativeView
           key={focusId}
+          onCollapse={() => setFilter(null)}
           id={focusId}
           initiative={focusInitiative}
           notes={(groups.get(focusId) ?? empty).notes}

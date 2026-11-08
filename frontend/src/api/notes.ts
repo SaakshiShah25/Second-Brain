@@ -9,6 +9,14 @@ export function useNotes() {
   })
 }
 
+export function useCreateNote() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { raw_text: string; initiative_id: number | null }) => api.post<{ id: number }>('/api/notes', body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notes'] }),
+  })
+}
+
 export function useUpdateInteraction() {
   const queryClient = useQueryClient()
   return useMutation({

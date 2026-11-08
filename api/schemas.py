@@ -64,6 +64,11 @@ class InteractionUpdate(BaseModel):
     initiative_id: Optional[int] = None
 
 
+class NoteCreate(BaseModel):
+    raw_text: str
+    initiative_id: Optional[int] = None
+
+
 class TaskStatusUpdate(BaseModel):
     status: Optional[str] = None  # "open" | "done"
     owner: Optional[str] = None  # "me" | "them"

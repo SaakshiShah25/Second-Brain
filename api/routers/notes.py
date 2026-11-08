@@ -5,13 +5,15 @@ note keeps matching what it now says, and re-queues it (and its tasks) for
 the search index.
 """
 
-from fastapi import APIRouter, Depends
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException
 
 import db
 import embeddings
 import search_index
 from api.auth import get_current_user_id
-from api.schemas import InteractionUpdate
+from api.schemas import InteractionUpdate, NoteCreate
 
 router = APIRouter()
 
@@ -46,6 +48,22 @@ def with_sources(rows: list) -> list:
 @router.get("")
 def list_notes(user_id: str = Depends(get_current_user_id)):
     return with_sources(db.get_all_interactions_with_context(user_id))
+
+
+@router.post("")
+def create_note(body: NoteCreate, user_id: str = Depends(get_current_user_id)):
+    """A note written by hand in a space (no chat, no AI extraction): saved as typed, searchable like any other."""
+    text = body.raw_text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Write something first.")
+    if body.initiative_id is not None and not db.get_initiative(user_id, body.initiative_id):
+        raise HTTPException(status_code=404, detail="That space no longer exists.")
+    note_id = db.create_interaction(
+        user_id, raw_text=text, date=date.today().isoformat(), summary=text[:120],
+        embedding=embeddings.compute_embedding(text), initiative_id=body.initiative_id,
+    )
+    search_index.enqueue(user_id, "note", [note_id])
+    return {"id": note_id}
 
 
 @router.patch("/{interaction_id}")
