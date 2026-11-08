@@ -8,8 +8,8 @@ import { syncReminders } from '../lib/push'
 // Each tab has its own hue (index.css --sb-fun-*), shown when it's the
 // active tab - full class strings so Tailwind can see them.
 const tabs: { to: string; label: string; icon: LucideIcon; end: boolean; pill: string; text: string }[] = [
-  { to: '/', label: 'Home', icon: Home, end: true, pill: 'bg-fun-orange/15 text-fun-orange', text: 'text-fun-orange' },
   { to: '/today', label: 'Today', icon: CalendarCheck, end: false, pill: 'bg-fun-pink/15 text-fun-pink', text: 'text-fun-pink' },
+  { to: '/', label: 'Home', icon: Home, end: true, pill: 'bg-fun-orange/15 text-fun-orange', text: 'text-fun-orange' },
   { to: '/notes', label: 'Spaces', icon: LayoutGrid, end: false, pill: 'bg-fun-sky/15 text-fun-sky', text: 'text-fun-sky' },
 ]
 

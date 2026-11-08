@@ -12,7 +12,7 @@ export function useLists() {
 export function useCreateList() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: { name: string; emoji?: string }) => api.post<ItemList>('/api/lists', body),
+    mutationFn: (body: { name: string; emoji?: string; initiative_id?: number | null }) => api.post<ItemList>('/api/lists', body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lists'] }),
   })
 }

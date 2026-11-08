@@ -91,13 +91,17 @@ export default function TodayPage() {
   const later = dated.filter((t) => t.due_date! > horizon)
   // The old Tasks list: to-dos with no date (list entries stay in their space).
   const anytime = open.filter((t) => !t.due_date && !t.list_id).sort(byPriorityThenDue)
+  // High-priority to-dos wherever they are in time (undated, or later than this week) - the ones already
+  // overdue or due today are in those sections, so nothing shows twice.
+  const shown = new Set([...overdue, ...dueToday].map((t) => t.id))
+  const important = open.filter((t) => !t.list_id && priorityOf(t) === 'high' && !shown.has(t.id)).sort(byPriorityThenDue)
   const done = all.filter((t) => t.status === 'done' && !t.list_id).sort((a, b) => b.id - a.id).slice(0, 30)
   const rowProps = {
     onToggle: (t: Task) => updateStatus.mutate({ taskId: t.id, status: t.status === 'done' ? 'open' : 'done', repeats: !!t.repeat }),
     onOpen: sheet.open,
   }
   const subtitle = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
-  const counts: Record<View, number> = { today: overdue.length + dueToday.length, upcoming: soon.length + later.length, anytime: anytime.length }
+  const counts: Record<View, number> = { today: overdue.length + dueToday.length + important.length, upcoming: soon.length + later.length, anytime: anytime.length }
   const VIEWS: { id: View; label: string }[] = [
     { id: 'today', label: 'Today' },
     { id: 'upcoming', label: 'Upcoming' },
@@ -137,11 +141,12 @@ export default function TodayPage() {
 
       {data && view === 'today' && (
         <>
-          {overdue.length + dueToday.length === 0 && (
+          {overdue.length + dueToday.length + important.length === 0 && (
             <Empty title="Nothing due today." hint="Say “remind me to…” or “every night…” on Home and it shows up here on its day." />
           )}
           <Section title="Overdue" tasks={overdue} tone="danger" {...rowProps} />
           <Section title="Today" tasks={dueToday} {...rowProps} />
+          <Section title="High priority" tasks={important} {...rowProps} />
         </>
       )}
 

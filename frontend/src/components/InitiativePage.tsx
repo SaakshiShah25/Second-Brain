@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, FileText } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, FileText } from 'lucide-react'
 import type { Interaction, ItemList as ListLabel, Task } from '../api/types'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
+import AddToSpace from './AddToSpace'
 import ExportInitiativeButton from './ExportInitiativeButton'
 import InteractionCard, { ItemList } from './InteractionCard'
 import InitiativeThings, { thingCounts } from './InitiativeThings'
@@ -50,12 +51,11 @@ export function InitiativeBlock({ initiative, notes, items = [], onOpen }: Props
     .slice(0, PREVIEW_POINTS)
 
   return (
-    <section className="relative rounded-2xl border border-border bg-bg-card">
+    <section className="rounded-2xl border border-border bg-bg-card">
       <button type="button" onClick={onOpen} className="pressable block w-full px-4 pt-3.5 pb-3.5 text-left">
         <span className="flex items-center gap-2">
           <Heading initiative={initiative} />
-          {/* room for the export button, which sits above this tap target */}
-          <ChevronRight size={18} strokeWidth={2} className="ml-auto mr-9 flex-shrink-0 text-text-faint" />
+          <ChevronRight size={18} strokeWidth={2} className="ml-auto flex-shrink-0 text-text-faint" />
         </span>
         <span className="mt-1.5 block pl-[2.625rem] text-[0.8125rem] text-text-faint">
           {[notes.length ? noteCounts(notes) : '', thingCounts(items)].filter(Boolean).join(' · ') || 'Nothing yet'}
@@ -66,7 +66,6 @@ export function InitiativeBlock({ initiative, notes, items = [], onOpen }: Props
           </span>
         )}
       </button>
-      <ExportInitiativeButton name={initiative?.name ?? 'Others'} notes={notes} className="absolute top-2.5 right-8" />
     </section>
   )
 }
@@ -74,7 +73,7 @@ export function InitiativeBlock({ initiative, notes, items = [], onOpen }: Props
 // The whole initiative as one page: the key points, decisions and concerns that were extracted from its notes when
 // they were logged, grouped under each note's topic label - then the notes themselves, as written ("Source notes").
 // Nothing here calls an AI model.
-export function InitiativeView({ initiative, notes, items = [], labels = [] }: Props) {
+export function InitiativeView({ initiative, notes, items = [], labels = [], onCollapse }: Props & { onCollapse?: () => void }) {
   const [showSource, setShowSource] = useState(false)
   // Tapping an item opens the note it came from.
   const [openNoteId, setOpenNoteId] = useState<number | null>(null)
@@ -87,7 +86,20 @@ export function InitiativeView({ initiative, notes, items = [], labels = [] }: P
       <div className="mb-4 rounded-2xl border border-border bg-bg-card p-4">
         <div className="flex items-center gap-2">
           <Heading initiative={initiative} size="lg" />
-          <ExportInitiativeButton name={initiative?.name ?? 'Others'} notes={notes} className="ml-auto" />
+          <span className="ml-auto flex items-center gap-2">
+            <AddToSpace spaceId={initiative?.id ?? null} spaceName={initiative?.name ?? 'Others'} />
+            <ExportInitiativeButton name={initiative?.name ?? 'Others'} notes={notes} />
+            {onCollapse && (
+              <button
+                type="button"
+                onClick={onCollapse}
+                aria-label="Collapse"
+                className="pressable flex h-9 w-9 items-center justify-center rounded-full text-text-muted"
+              >
+                <ChevronUp size={20} strokeWidth={2} />
+              </button>
+            )}
+          </span>
         </div>
 
         <p className="mt-2 pl-[3.125rem] text-[0.8125rem] text-text-faint">

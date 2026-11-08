@@ -66,6 +66,12 @@ export default function ItemRow({
   return (
     <div className="flex items-start gap-3 px-4 py-3">
       {/* Generous invisible hit area around the visible 22px circle. */}
+      {/* A list entry is just on the list (a book, a film): nothing to tick off unless it was ticked before. */}
+      {task.list_id && !done ? (
+        <span aria-hidden className="flex h-[1.375rem] w-[1.375rem] flex-shrink-0 items-center justify-center">
+          <span className="h-1.5 w-1.5 rounded-full bg-text-faint" />
+        </span>
+      ) : (
       <button
         type="button"
         onClick={() => onToggle(task)}
@@ -82,6 +88,7 @@ export default function ItemRow({
           {done && <Check size={13} strokeWidth={3} />}
         </span>
       </button>
+      )}
       <button type="button" onClick={() => onOpen(task)} className="pressable min-w-0 flex-1 text-left">
         <span className={`line-clamp-2 text-[0.9375rem] leading-snug ${done ? 'text-text-faint line-through' : ''}`}>
           {task.description}
