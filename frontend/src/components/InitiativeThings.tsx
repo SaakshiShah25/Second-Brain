@@ -98,11 +98,26 @@ export default function InitiativeThings({ items, labels = [], spaceId = null }:
     onToggle: (t: Task) => updateStatus.mutate({ taskId: t.id, status: t.status === 'done' ? 'open' : 'done', repeats: !!t.repeat }),
     onOpen: (t: Task) => setOpenId(t.id),
   }
-  if (open.length === 0 && lists.size === 0) return null
   return (
     <DragToSpace tasks={items}>
     <div className="mb-4">
-      {todos.length > 0 && <Block title="To-dos" items={todos} {...rowProps} />}
+      <h2 className="mb-2 px-1 text-base font-semibold tracking-tight">To-dos</h2>
+      <section className="mb-5">
+        <QuickAdd listId={null} initiativeId={spaceId} placeholder="Add a to-do" />
+        {todos.length > 0 ? (
+          <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
+            {todos.map((t) => (
+              <Draggable key={t.id} task={t}>
+                <ItemRow task={t} compactDate onToggle={rowProps.onToggle} onOpen={rowProps.onOpen} />
+              </Draggable>
+            ))}
+          </div>
+        ) : (
+          <p className="px-1 text-[0.875rem] text-text-faint">No to-dos here yet.</p>
+        )}
+      </section>
+      <h2 className="mb-2 px-1 text-base font-semibold tracking-tight">Lists</h2>
+      {lists.size === 0 && <p className="mb-5 px-1 text-[0.875rem] text-text-faint">No lists yet - tap Add, then List, to start one (a reading list, say).</p>}
       {[...lists.entries()].map(([id, l]) => (
         <Block key={id} title={l.title} items={l.items} done={l.done} add={{ listId: id, spaceId, name: l.name }} {...rowProps} />
       ))}

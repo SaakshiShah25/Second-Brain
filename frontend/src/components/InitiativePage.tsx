@@ -106,8 +106,9 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
           {[notes.length ? noteCounts(notes) : '', thingCounts(items)].filter(Boolean).join(' · ') || 'Nothing yet'}
         </p>
 
+        <h2 className="mt-5 text-base font-semibold tracking-tight">Notes</h2>
         {sections.map((s) => (
-          <div key={s.key} className="mt-5">
+          <div key={s.key} className="mt-3">
             {s.title && (
               <h3
                 className="mb-2 text-[0.8125rem] font-semibold uppercase tracking-wide"
