@@ -16,6 +16,7 @@ Who is an admin: the ADMIN_EMAILS list below (hardcoded, not an env var).
                                 older than 30 days
 """
 
+import logging
 import os
 import time
 from collections import Counter, defaultdict
@@ -52,6 +53,8 @@ LIMIT_INFO = {
 ACTIONS = {"interactions_logged": "capture", "ai_questions_asked": "question"}
 
 
+log = logging.getLogger(__name__)
+
 ADMIN_EMAILS = ("sanketyou8@gmail.com", "shahsaakshi25@gmail.com")
 
 
@@ -61,9 +64,15 @@ def _admins() -> list:
 
 def _is_admin(user_id: str) -> bool:
     try:
-        return (db.get_user_email(user_id) or "").lower() in _admins()
+        email = (db.get_user_email(user_id) or "").lower()
     except Exception:
+        # Not "not an admin": the Auth lookup itself failed (check SUPABASE_SERVICE_ROLE_KEY on the server).
+        log.exception("admin check: couldn't look up the email for user %s", user_id)
         return False
+    if email not in _admins():
+        log.warning("admin check: %r is not an admin", email)
+        return False
+    return True
 
 
 def require_admin(user_id: str = Depends(get_current_user_id)) -> str:
