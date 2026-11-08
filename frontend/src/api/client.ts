@@ -115,14 +115,16 @@ export async function postStream<T>(
 
   if (!res.ok || !res.body) {
     let detail = res.statusText
+    let errorId: string | undefined
     try {
       const errBody = await res.json()
       detail = typeof errBody.detail === 'string' ? errBody.detail : detail
+      errorId = errBody.error_id
     } catch {
       // response body wasn't JSON - fall back to statusText
     }
     if (res.status === 403 && detail === 'invite_only') window.dispatchEvent(new Event(INVITE_ONLY_EVENT))
-    throw new ApiError(res.status, detail)
+    throw new ApiError(res.status, detail, errorId)
   }
 
   const reader = res.body.getReader()

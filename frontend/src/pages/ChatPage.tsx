@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useChat } from '../api/chat'
 import { api, ApiError } from '../api/client'
 import { useInitiatives } from '../api/initiatives'
+import { showError } from '../lib/errorDialog'
 import { useTranscribe } from '../api/voice'
 import type { CapturePart, CaptureSavedResult, ChatMessage, ChatResult } from '../api/types'
 import ConfiaLogo from '../components/ConfiaLogo'
@@ -225,6 +226,7 @@ export default function ChatPage() {
         // The backend's message already says where it failed (and gives a
         // reference code for real errors); hand the text back for a retry.
         appendMessage('assistant', err instanceof ApiError ? err.message : `Something went wrong: ${String(err)}`)
+        showError(err)
         setInputText((cur) => cur || text)
       }
     } finally {

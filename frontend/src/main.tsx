@@ -1,11 +1,12 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './auth/AuthContext'
 import App from './App'
 import { installErrorReporting } from './lib/errorReporting'
-import { toast } from './components/Toast'
+import ErrorDialog from './components/ErrorDialog'
+import { showError } from './lib/errorDialog'
 import './styles/index.css'
 
 // Render's free tier spins the backend down after ~15 min idle, and the
@@ -33,8 +34,16 @@ const queryClient = new QueryClient({
   defaultOptions: { mutations: { networkMode: 'always' } },
   mutationCache: new MutationCache({
     onError: (error, _vars, _ctx, mutation) => {
-      if (mutation.options.onError || mutation.meta?.handlesOwnErrors) return
-      toast(`Couldn't save that: ${error instanceof Error ? error.message : String(error)}`, 7000)
+      if (mutation.meta?.handlesOwnErrors) return
+      showError(error)
+    },
+  }),
+  // A screen that can't load: the popup says why (once - a failing screen retries). Nothing is shown for a
+  // refresh that fails while the screen already has its data, or when the cause is just being offline.
+  queryCache: new QueryCache({
+    onError: (error, query) => {
+      if (query.state.data !== undefined) return
+      showError(error, 30000)
     },
   }),
 })
@@ -45,6 +54,7 @@ createRoot(document.getElementById('root')!).render(
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <App />
+          <ErrorDialog />
         </BrowserRouter>
       </QueryClientProvider>
     </AuthProvider>

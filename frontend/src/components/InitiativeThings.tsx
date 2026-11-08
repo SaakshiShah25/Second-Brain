@@ -9,7 +9,6 @@ import DragToSpace, { Draggable } from './DragToSpace'
 import ItemRow from './ItemRow'
 import ItemSheet from './ItemSheet'
 import QuickAdd from './QuickAdd'
-import { toast } from './Toast'
 
 /** "2 to-dos · 3 in lists" - the open non-note things in an initiative, for its summary line. */
 export function thingCounts(items: Task[]): string {
@@ -63,7 +62,7 @@ function Block({
             onBlur={(e) => {
               const name = e.target.value.trim()
               if (!name || name === list.name) return (e.target.value = list.name)
-              updateList.mutate({ listId: list.id, name }, { onError: (err) => (toast(err instanceof Error && err.message ? err.message : "Couldn't rename that."), (e.target.value = list.name)) })
+              updateList.mutate({ listId: list.id, name }, { onError: () => (e.target.value = list.name) })
             }}
             className="min-w-0 flex-1 rounded-lg border border-border-strong bg-bg-card px-2 py-1 text-base font-semibold focus:border-accent focus:outline-none"
           />
@@ -139,7 +138,7 @@ export default function InitiativeThings({
   const row: Handlers = {
     onToggle: (t) => updateStatus.mutate({ taskId: t.id, status: t.status === 'done' ? 'open' : 'done', repeats: !!t.repeat }),
     onOpen: (t) => setOpenId(t.id),
-    onDelete: (t) => deleteItem.mutate(t.id, { onError: () => toast("Couldn't remove that - please try again.") }),
+    onDelete: (t) => deleteItem.mutate(t.id),
   }
   return (
     <DragToSpace tasks={items}>
@@ -178,7 +177,7 @@ export default function InitiativeThings({
             confirmLabel="Delete"
             busy={deleteList.isPending}
             onCancel={() => setRemoving(null)}
-            onConfirm={() => deleteList.mutate(removing.id, { onSuccess: () => setRemoving(null), onError: () => toast("Couldn't delete that - please try again.") })}
+            onConfirm={() => deleteList.mutate(removing.id, { onSuccess: () => setRemoving(null) })}
           />
         )}
       </div>

@@ -92,7 +92,7 @@ def _clip(text, n=300) -> str:
 
 def record(kind: str, name: str, *, status=None, duration_ms=None, model=None, tokens=None,
            error_id=None, detail=None, user_id=None) -> None:
-    """kind: request | llm | cohere | usage | limit | error | client_error."""
+    """kind: request | llm | cohere | usage | limit | error | refused | client_error."""
     event = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "user_id": user_id if user_id is not None else current_user(),

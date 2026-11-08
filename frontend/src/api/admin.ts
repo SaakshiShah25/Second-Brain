@@ -33,6 +33,7 @@ export interface AdminOverview {
   storage: { available: boolean } & UserStorage
   accounts: number
   limits: { name: string; count: number; last: string | null; info: string; top_users: string[] }[]
+  problems: { kind: 'error' | 'limit' | 'refused'; what: string; status: number | null; count: number; users: number; last: string | null; example: string | null; info: string }[]
   errors: { at: string; where: string; error_id: string; status: number | null; type: string | null; message: string | null; user: string | null }[]
   daily: { day: string; requests: number; captures: number; questions: number; tokens: number; errors: number; limits: number }[]
   totals: { requests: number; failed_requests: number; p95_ms: number | null; active_users: number }

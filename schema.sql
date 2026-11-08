@@ -988,7 +988,7 @@ create table if not exists app_event (
     id bigint generated always as identity primary key,
     created_at timestamptz not null default now(),
     user_id uuid references auth.users(id) on delete cascade,
-    kind text not null,          -- request | llm | cohere | usage | limit | error | client_error
+    kind text not null,          -- request | llm | cohere | usage | limit | error | refused | client_error
     name text not null,          -- route, feature, limit or place of the error
     status integer,
     duration_ms integer,
