@@ -8,11 +8,13 @@ export default function QuickAdd({
   listId,
   placeholder,
   initiativeId,
+  autoFocus = false,
 }: {
   listId: number | null
   placeholder: string
   // The space the new item belongs to, when the place it is added in already says (a label's block in a space).
   initiativeId?: number | null
+  autoFocus?: boolean
 }) {
   const [text, setText] = useState('')
   const createItem = useCreateItem()
@@ -39,6 +41,7 @@ export default function QuickAdd({
         <Plus size={19} strokeWidth={2} className="flex-shrink-0 text-text-faint" />
         <input
           value={text}
+          autoFocus={autoFocus}
           onChange={(e) => setText(e.target.value)}
           placeholder={placeholder}
           aria-label={placeholder}

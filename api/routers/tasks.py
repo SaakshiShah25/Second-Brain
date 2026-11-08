@@ -76,13 +76,17 @@ def create_task(body: TaskCreate, user_id: str = Depends(get_current_user_id)):
     _check_list(user_id, body.list_id)
     if body.initiative_id is not None and not db.get_initiative(user_id, body.initiative_id):
         raise HTTPException(400, "That space doesn't exist.")
+    space = body.initiative_id
+    if body.list_id is not None:
+        # An entry lives where its list lives.
+        space = (db.get_list(user_id, body.list_id) or {}).get("initiative_id") or space
     if body.due_date and not date_utils.to_valid_date(body.due_date):
         raise HTTPException(400, "due_date must be YYYY-MM-DD")
     repeat = _valid_repeat(body.repeat)
     due_time = date_utils.to_valid_time(body.due_time) if body.due_time else None
     due_date = body.due_date or (date.today().isoformat() if (due_time or repeat) else None)
     task_id = db.create_task(user_id, None, text, due_date=due_date, due_time=due_time,
-                             list_id=body.list_id, repeat=repeat, initiative_id=body.initiative_id)
+                             list_id=body.list_id, repeat=repeat, initiative_id=space)
     search_index.enqueue(user_id, "task", [task_id])
     return {"id": task_id}
 
@@ -134,6 +138,8 @@ def update_task(task_id: int, body: TaskStatusUpdate, user_id: str = Depends(get
         changes["priority"] = edits["priority"]
         needs_migration = True
     if "remind_on" in edits:
+        if edits["remind_on"] and (db.get_task(user_id, task_id) or {}).get("list_id"):
+            raise HTTPException(400, "A list entry can't have a reminder - only to-dos can.")
         if edits["remind_on"] and not date_utils.to_valid_date(edits["remind_on"]):
             raise HTTPException(400, "remind_on must be YYYY-MM-DD")
         # a day that is already over everywhere can't be reminded (one day of slack covers every time zone)
@@ -158,9 +164,21 @@ def update_task(task_id: int, body: TaskStatusUpdate, user_id: str = Depends(get
             raise HTTPException(400, "That space doesn't exist.")
         changes["initiative_id"] = edits["initiative_id"]
         needs_migration = True
+        current = db.get_task(user_id, task_id) or {}
+        if current.get("list_id") and "list_id" not in edits and db.list_space_supported():
+            # A list entry moved to another space goes onto that space's list of the same name (made if need be).
+            source = db.get_list(user_id, current["list_id"])
+            if source and (source.get("initiative_id") or None) != (edits["initiative_id"] or None):
+                target = db.find_list(user_id, source["name"], edits["initiative_id"]) or db.create_list(
+                    user_id, source["name"], source.get("emoji"), initiative_id=edits["initiative_id"])
+                changes["list_id"] = target["id"]
     if "list_id" in edits:
         _check_list(user_id, edits["list_id"])
         changes["list_id"] = edits["list_id"]
+        home = (db.get_list(user_id, edits["list_id"]) or {}).get("initiative_id") if edits["list_id"] else None
+        if home and "initiative_id" not in edits:
+            changes["initiative_id"] = home  # an entry lives where its list lives
+            needs_migration = True
     if "repeat" in edits:
         changes["repeat"] = _valid_repeat(edits["repeat"])
         if changes["repeat"] and not (changes.get("due_date") or db.get_task(user_id, task_id).get("due_date")):

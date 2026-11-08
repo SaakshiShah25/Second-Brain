@@ -20,7 +20,7 @@ export function useCreateList() {
 export function useUpdateList() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ listId, ...fields }: { listId: number; name?: string; emoji?: string }) =>
+    mutationFn: ({ listId, ...fields }: { listId: number; name?: string; emoji?: string; initiative_id?: number | null }) =>
       api.patch<ItemList>(`/api/lists/${listId}`, fields),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lists'] })

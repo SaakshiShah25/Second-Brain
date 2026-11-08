@@ -60,11 +60,25 @@ def test_obvious_list_adds_skip_the_model_and_anything_unclear_does_not():
     assert intent.fast_classify("Groceries: milk, eggs") == "capture"
 
 
+def find_list_stub(get_lists, supported=lambda: True):
+    """db.find_list for tests: same words, same space (None = no space)."""
+    import text_utils
+
+    def find_list(uid, name, initiative_id=None, lists=None):
+        key = text_utils.list_key(name)
+        for l in (get_lists() if lists is None else lists):
+            if text_utils.list_key(l["name"]) == key and (not supported() or (l.get("initiative_id") or None) == (initiative_id or None)):
+                return l
+        return None
+
+    return find_list
+
+
 def _capture_db(saved):
     lists = {"reading list": {"id": 5, "name": "Reading list", "emoji": "📚"}}
 
-    def create_list(user_id, name, emoji=None):
-        row = {"id": 10 + len(lists), "name": name, "emoji": emoji}
+    def create_list(user_id, name, emoji=None, initiative_id=None):
+        row = {"id": 10 + len(lists), "name": name, "emoji": emoji, "initiative_id": initiative_id}
         lists[name.lower()] = row
         saved["lists_created"].append((name, emoji))
         return row
@@ -78,6 +92,7 @@ def _capture_db(saved):
         create_task=create_task, create_list=create_list,
         get_list_by_name=lambda u, name: lists.get(name.lower()),
         get_lists=lambda u: list(lists.values()),
+        find_list=find_list_stub(lambda: list(lists.values())),
         get_list_initiative=lambda u, list_id: saved.get("home", {}).get(list_id),
         get_initiative=lambda u, i: None,
     )
