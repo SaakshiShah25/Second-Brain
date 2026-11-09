@@ -40,6 +40,22 @@ export function shortDate(iso: string | null | undefined): string {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) })
 }
 
+/** A due date for the next week or so with its exact day alongside, so "Thursday" can't be misread:
+ * "Tomorrow, 10 Nov", "Thu, 12 Nov", "Yesterday, 8 Nov" (and just "Today"). Further out it is the plain date. */
+export function datedLabel(iso: string | null | undefined): string {
+  if (!iso) return 'No date'
+  const d = parseLocal(iso)
+  if (!d) return iso
+  const diff = daysFromToday(d)
+  if (diff === 0) return 'Today'
+  if (Math.abs(diff) >= 7) return friendlyDate(iso)
+  const sameYear = d.getFullYear() === new Date().getFullYear()
+  const exact = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) })
+  if (diff === -1) return `Yesterday, ${exact}`
+  if (diff === 1) return `Tomorrow, ${exact}`
+  return `${d.toLocaleDateString('en-GB', { weekday: 'short' })}, ${exact}`
+}
+
 /** The full calendar date for a due date: "Fri 30-Oct-2026". A to-do keeps its
  * own wording ("by Friday"); this is the exact day underneath it. */
 export function fullDate(iso: string | null | undefined): string {

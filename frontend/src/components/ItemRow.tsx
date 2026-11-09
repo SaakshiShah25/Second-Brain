@@ -1,6 +1,6 @@
 import { Bell, Check, Repeat as RepeatIcon, Trash2, TriangleAlert } from 'lucide-react'
 import type { Task } from '../api/types'
-import { dueLabel, friendlyDate, shortDate, timeLabel } from '../lib/dates'
+import { datedLabel, dueLabel, shortDate, timeLabel } from '../lib/dates'
 import { isOverdue, repeatLabel } from '../lib/items'
 import { PRIORITIES, priorityOf } from '../lib/taskOptions'
 import { beforeLabel } from './TaskOptions'
@@ -35,7 +35,7 @@ export default function ItemRow({
   const list = task.item_list
   const when = task.due_date
     ? compactDate
-      ? [friendlyDate(task.due_date), timeLabel(task.due_time)].filter(Boolean).join(', ')
+      ? [datedLabel(task.due_date), timeLabel(task.due_time)].filter(Boolean).join(', ')
       : dueLabel(task.due_date, task.due_time)
     : ''
   const facts = [

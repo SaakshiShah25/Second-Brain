@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight, Repeat as RepeatIcon, Undo2 } from 'lucide-react'
 import type { CreatedItem } from '../../api/types'
-import { friendlyDate, timeLabel } from '../../lib/dates'
+import { datedLabel, timeLabel } from '../../lib/dates'
 import { itemPath, repeatLabel } from '../../lib/items'
 
 // What a capture just saved as items, one tappable line per item - "🎬 Oppenheimer → Movies",
@@ -14,7 +14,7 @@ export default function Receipt({ items }: { items: CreatedItem[] }) {
   return (
     <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-bg-card">
       {items.map((item) => {
-        const when = [item.due_date ? friendlyDate(item.due_date) : '', timeLabel(item.due_time)].filter(Boolean).join(', ')
+        const when = [item.due_date ? datedLabel(item.due_date) : '', timeLabel(item.due_time)].filter(Boolean).join(', ')
         return (
           <button
             key={item.id}
@@ -22,7 +22,14 @@ export default function Receipt({ items }: { items: CreatedItem[] }) {
             onClick={() => navigate(itemPath(item.id))}
             className="pressable flex w-full items-center gap-3 px-3.5 py-2.5 text-left"
           >
-            <span className="w-5 flex-shrink-0 text-center text-[1rem] leading-none">{item.list_emoji || '☑️'}</span>
+            {/* A to-do is marked with the same round ring as on the Today page; a list entry keeps its list's emoji. */}
+            {item.list_emoji ? (
+              <span className="w-5 flex-shrink-0 text-center text-[1rem] leading-none">{item.list_emoji}</span>
+            ) : (
+              <span className="flex w-5 flex-shrink-0 items-center justify-center" aria-hidden="true">
+                <span className="h-[1.125rem] w-[1.125rem] rounded-full border-2 border-text-faint" />
+              </span>
+            )}
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[0.9375rem]">{item.description}</span>
               <span className="flex items-center gap-1.5 text-[0.8125rem] text-text-muted">
