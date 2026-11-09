@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Plus } from 'lucide-react'
 import { useCreateItem } from '../api/tasks'
-import { useInitiativeFilter } from '../lib/initiativeFilter'
+import { useInitiativeFilter, type FilterScope } from '../lib/initiativeFilter'
 
 // The add-a-line box at the top of a list: type "Dune", press return, it's on the list.
 export default function QuickAdd({
@@ -9,17 +9,20 @@ export default function QuickAdd({
   placeholder,
   initiativeId,
   autoFocus = false,
+  filterScope = 'spaces',
 }: {
   listId: number | null
   placeholder: string
   // The space the new item belongs to, when the place it is added in already says (a label's block in a space).
   initiativeId?: number | null
   autoFocus?: boolean
+  // Which focus applies: the Today screen has its own (lib/initiativeFilter).
+  filterScope?: FilterScope
 }) {
   const [text, setText] = useState('')
   const createItem = useCreateItem()
   // With a space in focus (the chips at the foot of the screen), what you add belongs to it.
-  const [focus] = useInitiativeFilter()
+  const [focus] = useInitiativeFilter(filterScope)
 
   function submit(e: FormEvent) {
     e.preventDefault()

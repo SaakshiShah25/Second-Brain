@@ -1,46 +1,59 @@
 import { useSyncExternalStore } from 'react'
 
-// The initiative the user is focused on, shared by Today and Notes - pick
-// "Fitness" on one and the other is already narrowed to it, so the two
-// screens read as one view of that initiative rather than two separate
-// lists. null = All, -1 = Others (no initiative), else an initiative id.
+// The initiative the user is focused on. null = All, -1 = Others (no initiative), else an initiative id.
 export type InitiativeFilter = null | -1 | number
 
-const KEY = 'confia.initiativeFilter'
-const listeners = new Set<() => void>()
+// Two independent focuses: the spaces / notes screens share one (opening a space there sets it), and Today has its
+// own - so opening a space on the Notes tab no longer quietly narrows what Today shows.
+export type FilterScope = 'spaces' | 'today'
 
-function read(): InitiativeFilter {
-  try {
-    const raw = localStorage.getItem(KEY)
-    if (raw === null) return null
-    const n = Number(raw)
-    return Number.isInteger(n) && (n === -1 || n > 0) ? n : null
-  } catch {
-    return null
+function makeStore(key: string) {
+  const listeners = new Set<() => void>()
+  function read(): InitiativeFilter {
+    try {
+      const raw = localStorage.getItem(key)
+      if (raw === null) return null
+      const n = Number(raw)
+      return Number.isInteger(n) && (n === -1 || n > 0) ? n : null
+    } catch {
+      return null
+    }
+  }
+  let current: InitiativeFilter = read()
+  return {
+    get: () => current,
+    set(value: InitiativeFilter) {
+      current = value
+      try {
+        if (value === null) localStorage.removeItem(key)
+        else localStorage.setItem(key, String(value))
+      } catch {
+        // Private mode etc. - the choice still holds for this session.
+      }
+      listeners.forEach((l) => l())
+    },
+    subscribe(listener: () => void) {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
   }
 }
 
-let current: InitiativeFilter = read()
-
-export function setInitiativeFilter(value: InitiativeFilter) {
-  current = value
-  try {
-    if (value === null) localStorage.removeItem(KEY)
-    else localStorage.setItem(KEY, String(value))
-  } catch {
-    // Private mode etc. - the choice still holds for this session.
-  }
-  listeners.forEach((l) => l())
+const stores: Record<FilterScope, ReturnType<typeof makeStore>> = {
+  spaces: makeStore('confia.initiativeFilter'),
+  today: makeStore('confia.todayFilter'),
 }
 
-function subscribe(listener: () => void) {
-  listeners.add(listener)
-  return () => listeners.delete(listener)
+export function setInitiativeFilter(value: InitiativeFilter, scope: FilterScope = 'spaces') {
+  stores[scope].set(value)
 }
 
-export function useInitiativeFilter(): [InitiativeFilter, (value: InitiativeFilter) => void] {
-  const value = useSyncExternalStore(subscribe, () => current)
-  return [value, setInitiativeFilter]
+export function useInitiativeFilter(scope: FilterScope = 'spaces'): [InitiativeFilter, (value: InitiativeFilter) => void] {
+  const store = stores[scope]
+  const value = useSyncExternalStore(store.subscribe, store.get)
+  return [value, store.set]
 }
 
 /** Whether something tagged with `initiativeId` (null = none) passes the filter. */

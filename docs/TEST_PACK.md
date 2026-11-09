@@ -70,6 +70,13 @@ On the Tasks tab each open task has a **flag** and a **bell**:
 - **Bell:** choose "On the day it is due", "1 day before", "2 days before", "1 week before" (or Tomorrow / In 3 days / In a week for a task with no date), or pick any date. Days that can no longer get a 9 AM reminder are not offered: after 9 AM today, "today" (and "1 day before" a task due tomorrow) is missing and the date picker starts tomorrow. The bell fills in and the row shows the date. At 9 AM on that day (your device's time zone, with reminders turned on in Settings) you get one push for it. Setting a new date resets it; "Remove reminder" clears it.
 - **Move:** press and hold a task (drag with a mouse) and drop it on another category's list, or on a chip in the tray that appears. Or open the task and tap **Move**. After a task moves, if the note it came from is in a different category you are asked **"Move the note too?"** (it lists the note's key points and says how many other tasks would come along): **Move the note** puts its points, decisions, concerns and all its tasks in the new category, **Just this task** moves only the task. A note that was nothing but that one task follows automatically. Moving a *note* (from the chat reply or the Notes page) always moves its tasks with it. The priority colours (rose-pink high, gold normal, teal-green low) are clear but not harsh - check them in both Paper and Graphite themes.
 
+### The Today page
+
+- **Today** shows only: **Overdue**, **Today** (due today, or you set a reminder for today) and **High priority** (anything marked high, whatever its date). Undated to-dos are under **Anytime**; things dated tomorrow or later are under **Upcoming**. The number on each tab matches what is inside it.
+- The space chips at the foot of Today are **Today's own** - opening a space on the Notes / Spaces tab no longer narrows Today.
+- Leave Today and come back: it stays on the tab you were on (Upcoming / Anytime).
+- Log a note, then open Today: the new tasks are there straight away (they are refetched in the background when the note is saved).
+
 ### Your wording is kept
 
 `Apply for 4th December leave using AskHR app` is saved exactly like that (not "Apply for leave on 4th December using AskHR app"): only wrapper phrases ("remind me to...") and the deadline words are dropped, never reworded or reordered.

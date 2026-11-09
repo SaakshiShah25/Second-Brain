@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { SlidersHorizontal } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
-import { useInitiativeFilter } from '../lib/initiativeFilter'
+import { useInitiativeFilter, type FilterScope } from '../lib/initiativeFilter'
 import Chip, { ChipRow } from './Chip'
 import InitiativesManager from './InitiativesManager'
 import Sheet from './Sheet'
@@ -12,9 +12,9 @@ import Sheet from './Sheet'
 // focus. `counts` (keyed by initiative id, -1 for Others) adds a small
 // number to each chip - e.g. open tasks on Today; chips with no count
 // still show, so an initiative never disappears just because it's quiet.
-export default function InitiativeBar({ counts, search, hideChips = false }: { counts?: Map<number, number>; search?: ReactNode; hideChips?: boolean }) {
+export default function InitiativeBar({ counts, search, hideChips = false, scope = 'spaces' }: { counts?: Map<number, number>; search?: ReactNode; hideChips?: boolean; scope?: FilterScope }) {
   const { data: initiatives } = useInitiatives()
-  const [filter, setFilter] = useInitiativeFilter()
+  const [filter, setFilter] = useInitiativeFilter(scope)
   const [managing, setManaging] = useState(false)
 
   // A deleted initiative can't stay selected.

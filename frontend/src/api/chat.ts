@@ -8,8 +8,10 @@ import type { ChatMessage, ChatResult } from './types'
 function useInvalidateOnCapture() {
   const queryClient = useQueryClient()
   return () => {
-    queryClient.invalidateQueries({ queryKey: ['tasks'] })
-    queryClient.invalidateQueries({ queryKey: ['notes'] })
+    // refetchType 'all': Today and Notes aren't on screen while you're in the chat, and by default only
+    // on-screen lists are refreshed - so they would show the old list for a moment when you opened them.
+    queryClient.invalidateQueries({ queryKey: ['tasks'], refetchType: 'all' })
+    queryClient.invalidateQueries({ queryKey: ['notes'], refetchType: 'all' })
   }
 }
 

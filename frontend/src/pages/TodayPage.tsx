@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CheckCircle2, ChevronDown } from 'lucide-react'
 import { useTasks, useUpdateTaskStatus } from '../api/tasks'
 import type { Task } from '../api/types'
@@ -60,7 +60,8 @@ function Empty({ title, hint }: { title: string; hint: string }) {
   )
 }
 
-// What needs me, across every space, in three views (the Things way): Today - overdue and due today;
+// What needs me, across every space, in three views (the Things way): Today - overdue, due or reminded today, and
+// anything marked high priority;
 // Upcoming - what's dated from tomorrow on; Anytime - the to-dos with no date, which is where the old
 // Tasks list went. Everything else (a movie, a book) lives in its space. The chips at the foot narrow
 // any view to one space.
@@ -69,10 +70,25 @@ export default function TodayPage() {
   const connection = useConnection()
   const offline = connection.offline || connection.unreachable
   const updateStatus = useUpdateTaskStatus()
-  const [view, setView] = useState<View>('today')
+  // The tab you were on survives leaving and coming back (it used to snap back to Today).
+  const [view, setView] = useState<View>(() => {
+    try {
+      const saved = sessionStorage.getItem('confia.todayView')
+      return saved === 'upcoming' || saved === 'anytime' ? saved : 'today'
+    } catch {
+      return 'today'
+    }
+  })
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('confia.todayView', view)
+    } catch {
+      // not remembered - fine
+    }
+  }, [view])
   const [showDone, setShowDone] = useState(false)
   const everything = data?.tasks ?? []
-  const [initiativeFilter] = useInitiativeFilter()
+  const [initiativeFilter] = useInitiativeFilter('today')
   const all = everything.filter((t) => matchesInitiative(initiativeFilter, taskInitiativeId(t)))
   // An item opened from a link (a chat reply, an answer's source) opens whatever view it is in.
   const sheet = useOpenItem(everything)
@@ -89,23 +105,24 @@ export default function TodayPage() {
   const dueToday = dated.filter((t) => t.due_date === today)
   const soon = dated.filter((t) => t.due_date! > today && t.due_date! <= horizon)
   const later = dated.filter((t) => t.due_date! > horizon)
-  // The old Tasks list: to-dos with no date (list entries stay in their space).
+  // To-dos with no date, and not on a list (list entries stay in their space) - the Anytime view.
   const anytime = open.filter((t) => !t.due_date && !t.list_id).sort(byPriorityThenDue)
-  // High-priority to-dos wherever they are in time (undated, or later than this week) - the ones already
-  // overdue or due today are in those sections, so nothing shows twice.
-  const shown = new Set([...overdue, ...dueToday].map((t) => t.id))
+  // Today also holds anything you asked to be reminded about today (that isn't already due today or overdue).
+  const remindedToday = open
+    .filter((t) => !t.list_id && t.remind_on === today && !(t.due_date && t.due_date <= today))
+    .sort(byPriorityThenDue)
+  const todayItems = [...dueToday, ...remindedToday]
+  // High-priority to-dos wherever they are in time (undated, or dated later) are pinned to Today; the ones already
+  // overdue or due/reminded today are in those sections, so nothing shows twice.
+  const shown = new Set([...overdue, ...todayItems].map((t) => t.id))
   const important = open.filter((t) => !t.list_id && priorityOf(t) === 'high' && !shown.has(t.id)).sort(byPriorityThenDue)
-  // On the Today view each item appears once: a high-priority one sits under High priority, not again below.
-  const importantIds = new Set(important.map((t) => t.id))
-  const todoBelow = anytime.filter((t) => !importantIds.has(t.id))
-  const comingUp = soon.filter((t) => !importantIds.has(t.id))
   const done = all.filter((t) => t.status === 'done' && !t.list_id).sort((a, b) => b.id - a.id).slice(0, 30)
   const rowProps = {
     onToggle: (t: Task) => updateStatus.mutate({ taskId: t.id, status: t.status === 'done' ? 'open' : 'done', repeats: !!t.repeat }),
     onOpen: sheet.open,
   }
   const subtitle = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
-  const counts: Record<View, number> = { today: overdue.length + dueToday.length + important.length, upcoming: soon.length + later.length, anytime: anytime.length }
+  const counts: Record<View, number> = { today: overdue.length + todayItems.length + important.length, upcoming: soon.length + later.length, anytime: anytime.length }
   const VIEWS: { id: View; label: string }[] = [
     { id: 'today', label: 'Today' },
     { id: 'upcoming', label: 'Upcoming' },
@@ -145,14 +162,12 @@ export default function TodayPage() {
 
       {data && view === 'today' && (
         <>
-          {overdue.length + dueToday.length + important.length + todoBelow.length + comingUp.length === 0 && (
+          {overdue.length + todayItems.length + important.length === 0 && (
             <Empty title="Nothing on your plate." hint="Say “remind me to…” or “every night…” on Home and it shows up here on its day." />
           )}
           <Section title="Overdue" tasks={overdue} tone="danger" {...rowProps} />
-          <Section title="Today" tasks={dueToday} {...rowProps} />
+          <Section title="Today" tasks={todayItems} {...rowProps} />
           <Section title="High priority" tasks={important} {...rowProps} />
-          <Section title="To-do" tasks={todoBelow} {...rowProps} />
-          <Section title="Coming up" tasks={comingUp} {...rowProps} />
         </>
       )}
 
@@ -166,7 +181,7 @@ export default function TodayPage() {
 
       {data && view === 'anytime' && (
         <>
-          <QuickAdd listId={null} placeholder="Add a to-do" />
+          <QuickAdd listId={null} placeholder="Add a to-do" filterScope="today" />
           {anytime.length === 0 && <Empty title="No loose to-dos." hint="Anything you need to do with no date lands here." />}
           <Section title="To-dos" tasks={anytime} {...rowProps} />
           {done.length > 0 && (
@@ -194,7 +209,7 @@ export default function TodayPage() {
 
       {sheet.active && <ItemSheet task={sheet.active} onClose={sheet.close} />}
 
-      <InitiativeBar counts={openCountsByInitiative(everything)} />
+      <InitiativeBar counts={openCountsByInitiative(everything)} scope="today" />
     </div>
     </DragToSpace>
   )
