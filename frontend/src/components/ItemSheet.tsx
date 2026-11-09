@@ -9,10 +9,10 @@ import type { Task } from '../api/types'
 import { dueLabel, fullDate, shortDate, timeLabel } from '../lib/dates'
 import { notePoints } from '../lib/initiativeFilter'
 import { autoReminderText, isOverdue, REPEAT_OPTIONS, repeatLabel } from '../lib/items'
-import { DEFAULT_REMIND_TIME, PRIORITIES, ON_PRIORITY, priorityOf, taskInitiativeId, tint } from '../lib/taskOptions'
+import { DEFAULT_REMIND_TIME, PRIORITIES, priorityOf, taskInitiativeId } from '../lib/taskOptions'
 import Button from './Button'
 import CategorySheet from './CategorySheet'
-import { beforeLabel, PriorityBars, ReminderSheet } from './TaskOptions'
+import { beforeLabel, PriorityMark, priorityOptionStyle, ReminderSheet } from './TaskOptions'
 import ConfirmDialog from './ConfirmDialog'
 import Sheet from './Sheet'
 import { toast } from './Toast'
@@ -104,10 +104,10 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
                 type="button"
                 disabled={updateFields.isPending}
                 onClick={() => !active && updateFields.mutate({ taskId: task.id, fields: { priority: p.value } })}
-                className="pressable flex h-10 flex-1 items-center justify-center gap-1 rounded-full border text-[0.8125rem] font-semibold disabled:opacity-60"
-                style={active ? { backgroundColor: p.color, borderColor: p.color, color: ON_PRIORITY } : { borderColor: tint(p.color, 45), color: p.color }}
+                className="pressable flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full border text-[0.8125rem] font-semibold disabled:opacity-60"
+                style={priorityOptionStyle(p.color, active)}
               >
-                <PriorityBars priority={p.value} inverted={active} />
+                <PriorityMark priority={p.value} size={18} />
                 {p.label}
               </button>
             )

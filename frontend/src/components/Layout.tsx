@@ -81,7 +81,22 @@ function useKeyboardOpen() {
   return open
 }
 
+// Hover labels for icon-only buttons: when a mouse moves over a button that has an aria-label but no title, the label
+// becomes its tooltip. (A phone has no hover, so there the icons themselves have to be clear.)
+function useHoverLabels() {
+  useEffect(() => {
+    function onOver(e: PointerEvent) {
+      if (e.pointerType !== 'mouse') return
+      const el = (e.target as Element | null)?.closest?.('button[aria-label], a[aria-label]')
+      if (el && !el.hasAttribute('title')) el.setAttribute('title', el.getAttribute('aria-label') ?? '')
+    }
+    document.addEventListener('pointerover', onOver)
+    return () => document.removeEventListener('pointerover', onOver)
+  }, [])
+}
+
 export default function Layout() {
+  useHoverLabels()
   const { pathname } = useLocation()
   // If task reminders are on, tell the server this device's current time zone each time the app opens.
   useEffect(() => {

@@ -1,31 +1,25 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { BellOff } from 'lucide-react'
+import { BellOff, ChevronDown, ChevronUp, Equal, type LucideIcon } from 'lucide-react'
 import type { Task } from '../api/types'
 import { isoLocal, shortDate, timeLabel } from '../lib/dates'
-import { DEFAULT_REMIND_TIME, ON_PRIORITY, PRIORITIES, earliestReminderDate, momentPassed, priorityOf, reminderChoices, tint, type Priority } from '../lib/taskOptions'
+import { DEFAULT_REMIND_TIME, PRIORITIES, earliestReminderDate, momentPassed, priorityOf, reminderChoices, tint, type Priority } from '../lib/taskOptions'
 import Button from './Button'
 import Sheet from './Sheet'
 import { Input } from './fields'
 
-// The priority mark: a round-edged pill of exclamation marks - ! low, !! normal, !!! high - in the level's colour
-// (green, amber, red). It matches the app's rounded look (the checkbox ring and the bell) and needs no explaining.
-const MARKS: Record<Priority, string> = { high: '!!!', normal: '!!', low: '!' }
-export function PriorityBars({ priority, inverted = false, filled = false }: { priority: Priority; inverted?: boolean; filled?: boolean }) {
+// The priority mark, in the style people know from Jira: a chevron pointing up for high, an equals sign for normal and
+// a chevron pointing down for low, in the level's (soft) colour. No pill or fill behind it, so it stays quiet in a list.
+const MARK_ICON: Record<Priority, LucideIcon> = { high: ChevronUp, normal: Equal, low: ChevronDown }
+export function PriorityMark({ priority, size = 20 }: { priority: Priority; size?: number }) {
+  const Icon = MARK_ICON[priority]
   const color = PRIORITIES.find((p) => p.value === priority)!.color
-  return (
-    <span
-      aria-hidden="true"
-      className="inline-flex h-6 min-w-[2.125rem] items-center justify-center rounded-full px-2 text-[0.8125rem] leading-none font-extrabold tracking-tight"
-      style={
-        inverted || filled
-          ? { backgroundColor: color, color: ON_PRIORITY }
-          : { backgroundColor: tint(color, 16), color }
-      }
-    >
-      {MARKS[priority]}
-    </span>
-  )
+  return <Icon aria-hidden="true" size={size} strokeWidth={3} style={{ color }} className="flex-shrink-0" />
+}
+
+// How a chosen priority option looks: a light tint of its colour with a matching outline (not a solid fill).
+export function priorityOptionStyle(color: string, active: boolean) {
+  return active ? { backgroundColor: tint(color, 16), borderColor: color, color } : { borderColor: tint(color, 40), color }
 }
 
 // The priority of a task. Tap it to choose: three labelled options in a small panel that floats above everything
@@ -45,7 +39,7 @@ export function PriorityFlag({ priority, onPick }: { priority: Priority; onPick:
         title={`Priority: ${current.label}`}
         className="pressable -m-1 flex h-9 min-w-9 items-center justify-center rounded-full"
       >
-        <PriorityBars priority={priority} />
+        <PriorityMark priority={priority} size={22} />
       </button>
       {anchor &&
         createPortal(
@@ -71,14 +65,10 @@ export function PriorityFlag({ priority, onPick }: { priority: Priority; onPick:
                       setAnchor(null)
                       onPick(p.value)
                     }}
-                    className="pressable flex h-10 items-center gap-1 rounded-full border pr-3 pl-1.5 text-[0.8125rem] font-semibold"
-                    style={
-                      active
-                        ? { backgroundColor: p.color, borderColor: p.color, color: ON_PRIORITY }
-                        : { borderColor: tint(p.color, 45), color: p.color }
-                    }
+                    className="pressable flex h-10 items-center gap-1.5 rounded-full border pr-3.5 pl-3 text-[0.8125rem] font-semibold"
+                    style={priorityOptionStyle(p.color, active)}
                   >
-                    <PriorityBars priority={p.value} inverted={active} />
+                    <PriorityMark priority={p.value} size={18} />
                     {p.label}
                   </button>
                 )
@@ -174,7 +164,12 @@ export function ReminderSheet({
           type="button"
           disabled={gone(task.due_date, dueTime)}
           onClick={() => pick(task.due_date!, dueTime)}
-          className="pressable mb-3 flex h-11 w-full items-center justify-between rounded-2xl border border-border-strong bg-bg-card px-3.5 text-left disabled:opacity-40"
+          aria-pressed={task.remind_on === task.due_date && (task.remind_time ?? '').slice(0, 5) === dueTime}
+          className={`pressable mb-3 flex h-11 w-full items-center justify-between rounded-2xl border px-3.5 text-left disabled:opacity-40 ${
+            task.remind_on === task.due_date && (task.remind_time ?? '').slice(0, 5) === dueTime
+              ? 'border-accent/40 bg-accent-soft ring-1 ring-accent/40'
+              : 'border-border-strong bg-bg-card'
+          }`}
         >
           <span className="text-[0.9375rem] font-medium">At its due time</span>
           <span className="text-[0.8125rem] text-text-muted">
@@ -191,13 +186,18 @@ export function ReminderSheet({
       <div className="flex flex-wrap gap-2">
         {choices.map((c) => {
           const past = !time || gone(c.date, time)
+          // The one that matches the reminder already set is shown selected.
+          const active = task.remind_on === c.date && (task.remind_time ?? DEFAULT_REMIND_TIME).slice(0, 5) === time
           return (
             <button
               key={c.label}
               type="button"
               disabled={past}
+              aria-pressed={active}
               onClick={() => pick(c.date, time)}
-              className="pressable flex h-10 flex-col items-start justify-center rounded-2xl border border-border-strong bg-bg-card px-3.5 text-left leading-tight disabled:opacity-40"
+              className={`pressable flex h-10 flex-col items-start justify-center rounded-2xl border px-3.5 text-left leading-tight disabled:opacity-40 ${
+                active ? 'border-accent/40 bg-accent-soft ring-1 ring-accent/40' : 'border-border-strong bg-bg-card'
+              }`}
             >
               <span className="text-[0.875rem] font-medium">{c.label}</span>
               <span className="text-[0.75rem] text-text-muted">{shortDate(c.date)}</span>
