@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, ChevronDown } from 'lucide-react'
+import { ArrowUpDown, Check, CheckCircle2, ChevronDown } from 'lucide-react'
 import { useDeleteItem, useTasks, useUpdateTaskStatus } from '../api/tasks'
 import type { Task } from '../api/types'
 import Button from '../components/Button'
@@ -11,6 +11,7 @@ import ItemSheet from '../components/ItemSheet'
 import PageHeader from '../components/PageHeader'
 import TodayComposer from '../components/TodayComposer'
 import QuickAdd from '../components/QuickAdd'
+import Sheet from '../components/Sheet'
 import { useConnection } from '../lib/connection'
 import { isoLocal } from '../lib/dates'
 import { matchesInitiative, useInitiativeFilter } from '../lib/initiativeFilter'
@@ -23,6 +24,16 @@ type View = 'today' | 'upcoming' | 'anytime'
 
 // What you marked high first, then the nearest date and time.
 const byPriorityThenDue = (a: Task, b: Task) => PRIORITY_RANK[priorityOf(a)] - PRIORITY_RANK[priorityOf(b)] || byDue(a, b) || a.id - b.id
+const byLowThenDue = (a: Task, b: Task) => PRIORITY_RANK[priorityOf(b)] - PRIORITY_RANK[priorityOf(a)] || byDue(a, b) || a.id - b.id
+
+// How the to-dos are ordered: 'smart' is the usual (high first inside each section, overdue strictly by time);
+// 'high' and 'low' put everything in priority order, high to low or low to high, soonest first among equals.
+type SortMode = 'smart' | 'high' | 'low'
+const SORTS: { id: SortMode; label: string; hint: string }[] = [
+  { id: 'smart', label: 'Usual order', hint: 'High priority first in each section; overdue by time' },
+  { id: 'high', label: 'Priority: high to low', hint: 'Everything, most important first' },
+  { id: 'low', label: 'Priority: low to high', hint: 'Everything, least important first' },
+]
 
 function Section({ title, tasks, tone, ...rowProps }: {
   title: string
@@ -92,6 +103,25 @@ export default function TodayPage() {
     }
   }, [view])
   const [showDone, setShowDone] = useState(false)
+  const [sortMode, setSortMode] = useState<SortMode>(() => {
+    try {
+      const saved = localStorage.getItem('confia.todaySort')
+      return saved === 'high' || saved === 'low' ? saved : 'smart'
+    } catch {
+      return 'smart'
+    }
+  })
+  const [pickingSort, setPickingSort] = useState(false)
+  function chooseSort(mode: SortMode) {
+    setSortMode(mode)
+    setPickingSort(false)
+    try {
+      localStorage.setItem('confia.todaySort', mode)
+    } catch {
+      // not remembered - fine
+    }
+  }
+  const cmp = sortMode === 'low' ? byLowThenDue : byPriorityThenDue
   // Re-checks every 30 seconds so a task moves up into Overdue the minute its time passes, without a reload.
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -111,24 +141,24 @@ export default function TodayPage() {
     return isoLocal(d)
   })()
   const open = all.filter((t) => t.status === 'open' || (t.status === 'done' && justDone.has(t.id)))
-  const dated = open.filter((t) => t.due_date).sort(byPriorityThenDue)
+  const dated = open.filter((t) => t.due_date).sort(cmp)
   // Overdue: the day has passed, or it is today and the time has passed. Earliest first, so the oldest is on top.
-  const overdue = dated.filter((t) => isOverdue({ ...t, status: 'open' }, now)).sort(byDue) // (a one just ticked stays where it was)
+  const overdue = dated.filter((t) => isOverdue({ ...t, status: 'open' }, now)).sort(sortMode === 'smart' ? byDue : cmp) // (a one just ticked stays where it was)
   const overdueIds = new Set(overdue.map((t) => t.id))
   const dueToday = dated.filter((t) => t.due_date === today && !overdueIds.has(t.id))
   const soon = dated.filter((t) => t.due_date! > today && t.due_date! <= horizon)
   const later = dated.filter((t) => t.due_date! > horizon)
   // To-dos with no date, and not on a list (list entries stay in their space) - the Anytime view.
-  const anytime = open.filter((t) => !t.due_date && !t.list_id).sort(byPriorityThenDue)
+  const anytime = open.filter((t) => !t.due_date && !t.list_id).sort(cmp)
   // Today also holds anything you asked to be reminded about today (that isn't already due today or overdue).
   const remindedToday = open
     .filter((t) => !t.list_id && t.remind_on === today && !(t.due_date && t.due_date <= today))
-    .sort(byPriorityThenDue)
-  const todayItems = [...dueToday, ...remindedToday]
+    .sort(cmp)
+  const todayItems = sortMode === 'smart' ? [...dueToday, ...remindedToday] : [...dueToday, ...remindedToday].sort(cmp)
   // High-priority to-dos wherever they are in time (undated, or dated later) are pinned to Today; the ones already
   // overdue or due/reminded today are in those sections, so nothing shows twice.
   const shown = new Set([...overdue, ...todayItems].map((t) => t.id))
-  const important = open.filter((t) => !t.list_id && priorityOf(t) === 'high' && !shown.has(t.id)).sort(byPriorityThenDue)
+  const important = open.filter((t) => !t.list_id && priorityOf(t) === 'high' && !shown.has(t.id)).sort(cmp)
   const done = all.filter((t) => t.status === 'done' && !t.list_id && !justDone.has(t.id)).sort((a, b) => b.id - a.id).slice(0, 30)
   const rowProps = {
     onToggle: (t: Task) => {
@@ -160,6 +190,41 @@ export default function TodayPage() {
           </Chip>
         ))}
       </ChipRow>
+
+      <div className="-mt-2 mb-3 flex justify-end">
+        <button
+          type="button"
+          onClick={() => setPickingSort(true)}
+          aria-label="Change the order of to-dos"
+          className="pressable flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[0.8125rem] font-medium text-text-muted"
+        >
+          <ArrowUpDown size={14} strokeWidth={2.2} />
+          {SORTS.find((x) => x.id === sortMode)!.label}
+        </button>
+      </div>
+      {pickingSort && (
+        <Sheet onClose={() => setPickingSort(false)} title="Order to-dos by">
+          <div className="flex flex-col gap-2">
+            {SORTS.map((x) => (
+              <button
+                key={x.id}
+                type="button"
+                onClick={() => chooseSort(x.id)}
+                aria-pressed={sortMode === x.id}
+                className={`pressable flex items-center gap-3 rounded-2xl border px-4 py-3 text-left ${
+                  sortMode === x.id ? 'border-accent/40 bg-accent-soft ring-1 ring-accent/40' : 'border-border-strong bg-bg-card'
+                }`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[0.9375rem] font-medium">{x.label}</span>
+                  <span className="block text-[0.8125rem] text-text-muted">{x.hint}</span>
+                </span>
+                {sortMode === x.id && <Check size={18} strokeWidth={2.4} className="flex-shrink-0 text-accent" />}
+              </button>
+            ))}
+          </div>
+        </Sheet>
+      )}
 
       {!data && (
         <div className="py-8 text-center">
