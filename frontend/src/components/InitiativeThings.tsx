@@ -294,35 +294,35 @@ function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record
         ))}
       </div>
       {/* Laptop: soft shadows at both edges, and round arrows in the margins (they wrap around). */}
-      <span aria-hidden="true" className="pointer-events-none absolute top-14 bottom-0 left-14 z-10 hidden w-8 bg-gradient-to-r from-black/[0.07] to-transparent lg:block" />
-      <span aria-hidden="true" className="pointer-events-none absolute top-14 right-14 bottom-0 z-10 hidden w-8 bg-gradient-to-l from-black/[0.07] to-transparent lg:block" />
+      <span aria-hidden="true" className="pointer-events-none absolute top-14 bottom-0 left-14 z-10 hidden w-8 bg-gradient-to-r from-black/[0.04] to-transparent lg:block" />
+      <span aria-hidden="true" className="pointer-events-none absolute top-14 right-14 bottom-0 z-10 hidden w-8 bg-gradient-to-l from-black/[0.04] to-transparent lg:block" />
       <button
         type="button"
         onClick={() => step(-1)}
         aria-label={`Previous: ${nameAt(active - 1)}`}
         title={`Previous: ${nameAt(active - 1)}`}
-        className="pressable absolute top-28 left-0 z-20 hidden h-11 w-11 items-center justify-center rounded-full border border-border-strong bg-bg-card text-text-muted shadow-card hover:text-text lg:flex"
+        className="pressable absolute top-28 left-0 z-20 hidden h-9 w-9 items-center justify-center rounded-full text-text-faint hover:bg-bg-hover hover:text-text lg:flex"
       >
-        <ChevronLeft size={22} strokeWidth={2} />
+        <ChevronLeft size={20} strokeWidth={1.8} />
       </button>
       <button
         type="button"
         onClick={() => step(1)}
         aria-label={`Next: ${nameAt(active + 1)}`}
         title={`Next: ${nameAt(active + 1)}`}
-        className="pressable absolute top-28 right-0 z-20 hidden h-11 w-11 items-center justify-center rounded-full border border-border-strong bg-bg-card text-text-muted shadow-card hover:text-text lg:flex"
+        className="pressable absolute top-28 right-0 z-20 hidden h-9 w-9 items-center justify-center rounded-full text-text-faint hover:bg-bg-hover hover:text-text lg:flex"
       >
-        <ChevronRight size={22} strokeWidth={2} />
+        <ChevronRight size={20} strokeWidth={1.8} />
       </button>
       {/* Faint arrows toward the pages out of sight - a hint, not a button (the tab bar and the swipe do the work). */}
       {(
         <span aria-hidden="true" className="pointer-events-none fixed top-1/2 left-0.5 z-10 text-text-muted lg:hidden" style={{ animation: 'nudge-left 2.2s ease-in-out infinite' }}>
-          <ChevronLeft size={28} strokeWidth={1.8} />
+          <ChevronLeft size={22} strokeWidth={1.6} />
         </span>
       )}
       {(
         <span aria-hidden="true" className="pointer-events-none fixed top-1/2 right-0.5 z-10 text-text-muted lg:hidden" style={{ animation: 'nudge-right 2.2s ease-in-out infinite' }}>
-          <ChevronRight size={28} strokeWidth={1.8} />
+          <ChevronRight size={22} strokeWidth={1.6} />
         </span>
       )}
     </div>

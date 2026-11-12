@@ -297,12 +297,12 @@ body {
 
 /* The faint arrow that hints a page can be swiped (space page on a phone): a slow nudge toward the swipe direction. */
 @keyframes nudge-right {
-  0%, 100% { transform: translateX(0); opacity: 0.35; }
-  50% { transform: translateX(5px); opacity: 0.6; }
+  0%, 100% { transform: translateX(0); opacity: 0.18; }
+  50% { transform: translateX(3px); opacity: 0.34; }
 }
 @keyframes nudge-left {
-  0%, 100% { transform: translateX(0); opacity: 0.35; }
-  50% { transform: translateX(-5px); opacity: 0.6; }
+  0%, 100% { transform: translateX(0); opacity: 0.18; }
+  50% { transform: translateX(-3px); opacity: 0.34; }
 }
 
 @keyframes typing-bounce {
