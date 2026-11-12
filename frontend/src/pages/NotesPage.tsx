@@ -52,8 +52,8 @@ export default function NotesPage() {
   const itemGroups = useMemo(() => {
     const map = new Map<number, Task[]>()
     for (const t of taskData?.tasks ?? []) {
-      // Open things, plus finished entries of a label (a book you've read stays findable under its space).
-      if (t.status !== 'open' && !t.list_id) continue
+      // Everything, ticked or not: a to-do you just ticked has to stay on screen (struck through) until it is swiped
+      // away, and the space page itself decides what to show. Counts below only count what is still open.
       const id = taskInitiativeId(t) ?? 0
       ;(map.get(id) ?? map.set(id, []).get(id)!).push(t)
     }
@@ -125,7 +125,8 @@ export default function NotesPage() {
     }
     return map
   }, [allLists])
-  const has = (id: number) => !!groups.get(id)?.notes.length || !!itemGroups.get(id)?.length || !!labelGroups.get(id)?.length
+  const has = (id: number) =>
+    !!groups.get(id)?.notes.length || !!itemGroups.get(id)?.some((t) => t.status === 'open' || t.list_id) || !!labelGroups.get(id)?.length
   const blocks = [
     ...(initiatives ?? []).filter((i) => has(i.id)).map((i) => ({ id: i.id, initiative: i })),
     ...(has(0) ? [{ id: 0, initiative: null }] : []),
