@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react'
-import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ListChecks, ListTodo, Pencil, Plus, Trash2, X, type LucideIcon } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Check, ChevronLeft, ChevronRight, ListChecks, ListTodo, Pencil, Plus, Trash2, X, type LucideIcon } from 'lucide-react'
 import { useUpdateList, useDeleteList } from '../api/lists'
 import { useDeleteItem, useUpdateTaskStatus } from '../api/tasks'
 import type { ItemList, Task } from '../api/types'
@@ -60,13 +60,11 @@ export function SectionHeader({
       </h2>
       {mover && (
         <span className="flex items-center rounded-full bg-bg-elevated">
-          <button type="button" onClick={mover.onUp} disabled={!mover.canUp} aria-label={`Move ${title} up`} className="pressable flex h-9 w-9 items-center justify-center rounded-full text-text-muted disabled:opacity-30">
-            <ChevronUp size={19} strokeWidth={2.4} className="lg:hidden" />
-            <ChevronLeft size={19} strokeWidth={2.4} className="hidden lg:block" />
+          <button type="button" onClick={mover.onUp} disabled={!mover.canUp} aria-label={`Move ${title} earlier`} className="pressable flex h-9 w-9 items-center justify-center rounded-full text-text-muted disabled:opacity-30">
+            <ChevronLeft size={19} strokeWidth={2.4} />
           </button>
-          <button type="button" onClick={mover.onDown} disabled={!mover.canDown} aria-label={`Move ${title} down`} className="pressable flex h-9 w-9 items-center justify-center rounded-full text-text-muted disabled:opacity-30">
-            <ChevronDown size={19} strokeWidth={2.4} className="lg:hidden" />
-            <ChevronRight size={19} strokeWidth={2.4} className="hidden lg:block" />
+          <button type="button" onClick={mover.onDown} disabled={!mover.canDown} aria-label={`Move ${title} later`} className="pressable flex h-9 w-9 items-center justify-center rounded-full text-text-muted disabled:opacity-30">
+            <ChevronRight size={19} strokeWidth={2.4} />
           </button>
         </span>
       )}
@@ -160,7 +158,7 @@ function ListBlock({
         <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
           {items.map((t) => (
             <Draggable key={t.id} task={t}>
-              <ItemRow task={t} compactDate onToggle={row.onToggle} onOpen={row.onOpen} onDelete={editing ? row.onDelete : undefined} onSwipeRemove={row.onSwipeRemove} />
+              <ItemRow task={t} compactDate onToggle={row.onToggle} onOpen={row.onOpen} onDelete={editing ? row.onDelete : undefined} onSwipeRemove={row.onSwipeRemove} swipe={false} />
             </Draggable>
           ))}
         </div>
@@ -168,6 +166,97 @@ function ListBlock({
         <p className="px-1 text-[0.875rem] text-text-faint">Nothing on this list yet - tap + to add.</p>
       )}
     </section>
+  )
+}
+
+const SECTION_LABEL: Record<SpaceSection, string> = { notes: 'Notes', todos: 'To-dos', lists: 'Lists' }
+
+// The three parts of a space. On a phone they are pages side by side that you swipe between (CSS scroll-snap, so it
+// feels native), with a tab bar that shows where you are and a faint arrow toward the page that is still out of sight.
+// The strip is only as tall as the page you are on, so a short page never leaves a long blank scroll under it.
+// From 1024px up it is a plain three-column grid and the tab bar and arrows disappear.
+function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record<SpaceSection, number>; panes: Record<SpaceSection, ReactNode> }) {
+  const strip = useRef<HTMLDivElement>(null)
+  const paneRefs = useRef<(HTMLDivElement | null)[]>([])
+  const [active, setActive] = useState(0)
+  const [height, setHeight] = useState<number | undefined>(undefined)
+
+  const onScroll = useCallback(() => {
+    const el = strip.current
+    if (el && el.clientWidth > 0) setActive(Math.max(0, Math.min(order.length - 1, Math.round(el.scrollLeft / el.clientWidth))))
+  }, [order.length])
+
+  // Follow the height of the page that is showing (it changes as to-dos are added or ticked).
+  useLayoutEffect(() => {
+    const pane = paneRefs.current[active]
+    if (!pane || typeof ResizeObserver === 'undefined') return
+    const measure = () => setHeight(pane.offsetHeight)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(pane)
+    return () => ro.disconnect()
+  }, [active, order])
+
+  // When a part is moved to another place in the order, show it where it went.
+  useEffect(() => {
+    onScroll()
+  }, [order, onScroll])
+
+  function goTo(i: number) {
+    const el = strip.current
+    el?.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' })
+  }
+
+  return (
+    <div className="relative">
+      {/* Tab bar: phone only. */}
+      <div role="tablist" className="mb-3 flex rounded-full bg-bg-elevated p-1 lg:hidden">
+        {order.map((section, i) => (
+          <button
+            key={section}
+            type="button"
+            role="tab"
+            aria-selected={active === i}
+            onClick={() => goTo(i)}
+            className={`pressable flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full text-[0.875rem] font-medium ${
+              active === i ? 'bg-bg-card text-text shadow-card' : 'text-text-muted'
+            }`}
+          >
+            {SECTION_LABEL[section]}
+            <span className="text-[0.75rem] opacity-70">{counts[section]}</span>
+          </button>
+        ))}
+      </div>
+      <div
+        ref={strip}
+        onScroll={onScroll}
+        className="no-scrollbar -mx-4 flex snap-x snap-mandatory items-start overflow-x-auto overflow-y-hidden overscroll-x-contain transition-[height] duration-200 lg:mx-0 lg:grid lg:snap-none lg:grid-cols-3 lg:gap-x-6 lg:overflow-visible"
+        style={height !== undefined && typeof window !== 'undefined' && window.innerWidth < 1024 ? { height } : undefined}
+      >
+        {order.map((section, i) => (
+          <div
+            key={section}
+            ref={(el) => {
+              paneRefs.current[i] = el
+            }}
+            className="w-full flex-shrink-0 snap-center px-4 lg:w-auto lg:px-0"
+          >
+            {panes[section]}
+          </div>
+        ))}
+      </div>
+      {/* Faint arrows toward the pages out of sight - a hint, not a button (the tab bar and the swipe do the work). */}
+      {active > 0 && (
+        <span aria-hidden="true" className="pointer-events-none fixed top-1/2 left-0.5 z-10 text-text-muted lg:hidden" style={{ animation: 'nudge-left 2.2s ease-in-out infinite' }}>
+          <ChevronLeft size={28} strokeWidth={1.8} />
+        </span>
+      )}
+      {active < order.length - 1 && (
+        <span aria-hidden="true" className="pointer-events-none fixed top-1/2 right-0.5 z-10 text-text-muted lg:hidden" style={{ animation: 'nudge-right 2.2s ease-in-out infinite' }}>
+          <ChevronRight size={28} strokeWidth={1.8} />
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -182,6 +271,7 @@ export default function InitiativeThings({
   order,
   onMove,
   notesSection,
+  notesCount = 0,
 }: {
   items: Task[]
   labels?: ItemList[]
@@ -191,6 +281,7 @@ export default function InitiativeThings({
   order: SpaceSection[]
   onMove?: (section: SpaceSection, by: -1 | 1) => void
   // The Notes part, drawn by the page; it sits among the other two in this order.
+  notesCount?: number
   notesSection: (mover?: { canUp: boolean; canDown: boolean; onUp: () => void; onDown: () => void }) => ReactNode
 }) {
   const moverFor = (section: SpaceSection) =>
@@ -244,7 +335,7 @@ export default function InitiativeThings({
       <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
         {todos.map((t) => (
           <Draggable key={t.id} task={t}>
-            <ItemRow task={t} compactDate onToggle={row.onToggle} onOpen={row.onOpen} onDelete={editTodos ? row.onDelete : undefined} onSwipeRemove={row.onSwipeRemove} />
+            <ItemRow task={t} compactDate onToggle={row.onToggle} onOpen={row.onOpen} onDelete={editTodos ? row.onDelete : undefined} onSwipeRemove={row.onSwipeRemove} swipe={false} />
           </Draggable>
         ))}
       </div>
@@ -285,10 +376,17 @@ export default function InitiativeThings({
   return (
     <DragToSpace tasks={items}>
       <div className="mb-4">
-        {/* One column on a phone; Notes, To-dos and Lists side by side on a laptop, in the chosen order. */}
-        <div className="lg:grid lg:grid-cols-3 lg:items-start lg:gap-x-6">
-        {order.map((section) => (section === 'notes' ? notesSection(moverFor('notes')) : section === 'todos' ? todosNode : listsNode))}
-        </div>
+        {/* A phone: Notes, To-dos and Lists are three pages you swipe between (a tab bar and faint arrows show it).
+            A laptop: the same three side by side. Either way in the order chosen while editing the space. */}
+        <Pages
+          order={order}
+          counts={{ notes: notesCount, todos: todos.length, lists: lists.size }}
+          panes={{
+            notes: notesSection(moverFor('notes')),
+            todos: todosNode,
+            lists: listsNode,
+          }}
+        />
         {editTodos && <p className="mt-2 px-1 text-[0.8125rem] text-text-muted">Editing to-dos: tap one to change it, tap the bin to remove it. Tap ✓ when done.</p>}
         {editLists && <p className="mt-2 px-1 text-[0.8125rem] text-text-muted">Editing lists: rename a list, remove a list or its entries. Tap ✓ when done.</p>}
         {active && <ItemSheet task={active} onClose={() => setOpenId(null)} />}

@@ -207,7 +207,7 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
           </span>
         </div>
         <p className="mt-2 pl-[3.125rem] text-[0.8125rem] text-text-faint">
-          {editingSpace ? (initiative ? 'Rename the space, or move Notes, To-dos and Lists up and down. Tap ✓ when done.' : 'Move Notes, To-dos and Lists up and down. Tap ✓ when done.') : [notes.length ? noteCounts(notes) : '', thingCounts(items)].filter(Boolean).join(' · ') || 'Nothing yet'}
+          {editingSpace ? (initiative ? 'Rename the space, or move Notes, To-dos and Lists left and right. Tap ✓ when done.' : 'Move Notes, To-dos and Lists up and down. Tap ✓ when done.') : [notes.length ? noteCounts(notes) : '', thingCounts(items)].filter(Boolean).join(' · ') || 'Nothing yet'}
         </p>
       </div>
 
@@ -221,6 +221,7 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
         order={order}
         onMove={editingSpace ? move : undefined}
         notesSection={notesSection}
+        notesCount={notes.length}
       />
 
       {openNote && (

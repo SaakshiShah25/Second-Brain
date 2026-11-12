@@ -22,6 +22,7 @@ export default function ItemRow({
   compactDate = false,
   onDelete,
   onSwipeRemove,
+  swipe = true,
 }: {
   task: Task
   onToggle: (task: Task) => void
@@ -34,6 +35,9 @@ export default function ItemRow({
   onDelete?: (task: Task) => void
   // Swipe the row to the right to remove it. Done items stay in the list, struck through, until you do.
   onSwipeRemove?: (task: Task) => void
+  // False where a sideways swipe means something else (the space page's swipeable Notes / To-dos / Lists): the row then
+  // can't be swiped away on a phone, and is removed from edit mode instead. The laptop's hover bin still works.
+  swipe?: boolean
 }) {
   const updateFields = useUpdateTaskFields()
   const editTask = useEditTask()
@@ -151,7 +155,7 @@ export default function ItemRow({
   )
   return (
     <>
-      {onSwipeRemove ? <SwipeToRemove onRemove={() => setConfirmRemove(true)}>{row}</SwipeToRemove> : row}
+      {onSwipeRemove && swipe ? <SwipeToRemove onRemove={() => setConfirmRemove(true)}>{row}</SwipeToRemove> : row}
       {confirmRemove && (
         <div onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
           <ConfirmDialog
