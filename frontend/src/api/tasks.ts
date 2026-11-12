@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
-import type { Repeat, Task, TaskFilter, TaskOwner, TasksResponse } from './types'
+import type { Repeat, Task, TaskFilter, TasksResponse } from './types'
 
 export function useTasks(filter: TaskFilter, enabled = true) {
   return useQuery({
