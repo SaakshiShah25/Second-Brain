@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { CalendarCheck, Home, LayoutGrid, Settings as SettingsIcon, type LucideIcon } from 'lucide-react'
+import { CalendarCheck, Home, Keyboard, LayoutGrid, Settings as SettingsIcon, type LucideIcon } from 'lucide-react'
 import ConfiaLogo from './ConfiaLogo'
 import Toaster from './Toast'
 import ConnectionBanner from './ConnectionBanner'
@@ -234,7 +234,7 @@ export default function Layout() {
         </nav>
         <span className="flex-1" />
         <button type="button" onClick={() => setHelp(true)} className="pressable mb-2 flex h-9 items-center gap-2 rounded-lg px-3 text-left text-[0.8125rem] text-text-faint hover:bg-bg-hover">
-          <kbd className="rounded border border-border-strong px-1.5 py-0.5 text-[0.75rem] font-medium">?</kbd>
+          <Keyboard size={18} strokeWidth={1.8} className="flex-shrink-0" />
           Keyboard shortcuts
         </button>
         <NavLink
