@@ -26,13 +26,13 @@ type View = 'today' | 'upcoming' | 'anytime'
 const byPriorityThenDue = (a: Task, b: Task) => PRIORITY_RANK[priorityOf(a)] - PRIORITY_RANK[priorityOf(b)] || byDue(a, b) || a.id - b.id
 const byLowThenDue = (a: Task, b: Task) => PRIORITY_RANK[priorityOf(b)] - PRIORITY_RANK[priorityOf(a)] || byDue(a, b) || a.id - b.id
 
-// How the to-dos are ordered: 'smart' is the usual (high first inside each section, overdue strictly by time);
-// 'high' and 'low' put everything in priority order, high to low or low to high, soonest first among equals.
-type SortMode = 'smart' | 'high' | 'low'
+// How the to-dos are ordered, inside every section. Overdue always stays on top, oldest first.
+type SortMode = 'high' | 'low' | 'date'
+const byDateOnly = (a: Task, b: Task) => byDue(a, b) || a.id - b.id
 const SORTS: { id: SortMode; label: string; hint: string }[] = [
-  { id: 'smart', label: 'Usual order', hint: 'High priority first in each section; overdue by time' },
-  { id: 'high', label: 'Priority: high to low', hint: 'Everything, most important first' },
-  { id: 'low', label: 'Priority: low to high', hint: 'Everything, least important first' },
+  { id: 'high', label: 'Priority: high to low', hint: 'Most important first; soonest due first among equals' },
+  { id: 'low', label: 'Priority: low to high', hint: 'Least important first; soonest due first among equals' },
+  { id: 'date', label: 'Due date', hint: 'Soonest due first, ignoring priority' },
 ]
 
 function Section({ title, tasks, tone, ...rowProps }: {
@@ -106,9 +106,9 @@ export default function TodayPage() {
   const [sortMode, setSortMode] = useState<SortMode>(() => {
     try {
       const saved = localStorage.getItem('confia.todaySort')
-      return saved === 'high' || saved === 'low' ? saved : 'smart'
+      return saved === 'low' || saved === 'date' ? saved : 'high'
     } catch {
-      return 'smart'
+      return 'high'
     }
   })
   const [pickingSort, setPickingSort] = useState(false)
@@ -121,7 +121,7 @@ export default function TodayPage() {
       // not remembered - fine
     }
   }
-  const cmp = sortMode === 'low' ? byLowThenDue : byPriorityThenDue
+  const cmp = sortMode === 'low' ? byLowThenDue : sortMode === 'date' ? byDateOnly : byPriorityThenDue
   // Re-checks every 30 seconds so a task moves up into Overdue the minute its time passes, without a reload.
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -143,7 +143,7 @@ export default function TodayPage() {
   const open = all.filter((t) => t.status === 'open' || (t.status === 'done' && justDone.has(t.id)))
   const dated = open.filter((t) => t.due_date).sort(cmp)
   // Overdue: the day has passed, or it is today and the time has passed. Earliest first, so the oldest is on top.
-  const overdue = dated.filter((t) => isOverdue({ ...t, status: 'open' }, now)).sort(sortMode === 'smart' ? byDue : cmp) // (a one just ticked stays where it was)
+  const overdue = dated.filter((t) => isOverdue({ ...t, status: 'open' }, now)).sort(byDue) // (a one just ticked stays where it was)
   const overdueIds = new Set(overdue.map((t) => t.id))
   const dueToday = dated.filter((t) => t.due_date === today && !overdueIds.has(t.id))
   const soon = dated.filter((t) => t.due_date! > today && t.due_date! <= horizon)
@@ -154,7 +154,7 @@ export default function TodayPage() {
   const remindedToday = open
     .filter((t) => !t.list_id && t.remind_on === today && !(t.due_date && t.due_date <= today))
     .sort(cmp)
-  const todayItems = sortMode === 'smart' ? [...dueToday, ...remindedToday] : [...dueToday, ...remindedToday].sort(cmp)
+  const todayItems = [...dueToday, ...remindedToday].sort(cmp)
   // High-priority to-dos wherever they are in time (undated, or dated later) are pinned to Today; the ones already
   // overdue or due/reminded today are in those sections, so nothing shows twice.
   const shown = new Set([...overdue, ...todayItems].map((t) => t.id))
@@ -199,11 +199,11 @@ export default function TodayPage() {
           className="pressable flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[0.8125rem] font-medium text-text-muted"
         >
           <ArrowUpDown size={14} strokeWidth={2.2} />
-          {SORTS.find((x) => x.id === sortMode)!.label}
+          <span className="text-text-faint">Sort:</span> {SORTS.find((x) => x.id === sortMode)!.label}
         </button>
       </div>
       {pickingSort && (
-        <Sheet onClose={() => setPickingSort(false)} title="Order to-dos by">
+        <Sheet onClose={() => setPickingSort(false)} title="Sort to-dos by">
           <div className="flex flex-col gap-2">
             {SORTS.map((x) => (
               <button
@@ -223,6 +223,7 @@ export default function TodayPage() {
               </button>
             ))}
           </div>
+          <p className="mt-3 text-[0.8125rem] text-text-faint">Overdue to-dos always stay on top, oldest first.</p>
         </Sheet>
       )}
 
