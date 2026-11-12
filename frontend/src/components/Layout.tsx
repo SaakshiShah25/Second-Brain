@@ -190,8 +190,9 @@ export default function Layout() {
   const { pathname } = useLocation()
   const [help, setHelp] = useState(false)
   useShortcuts(() => setHelp(true))
-  // Spaces gets a wider column on a laptop (a space shows Notes, To-dos and Lists side by side); the rest stay narrow.
-  const wide = /^\/notes/.test(pathname)
+  // Every main screen (Today, Home, Spaces) gets the same wide column on a laptop, so switching tabs never jumps in
+  // width; Settings and Admin are forms and stay narrow.
+  const wide = !/^\/(settings|admin)/.test(pathname)
   // If task reminders are on, tell the server this device's current time zone each time the app opens.
   useEffect(() => {
     syncReminders()
