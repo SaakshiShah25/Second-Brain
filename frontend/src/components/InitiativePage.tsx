@@ -53,8 +53,8 @@ export function InitiativeBlock({ initiative, notes, items = [], onOpen }: Props
     .slice(0, PREVIEW_POINTS)
 
   return (
-    <section className="rounded-2xl border border-border bg-bg-card">
-      <button type="button" onClick={onOpen} className="pressable block w-full px-4 pt-3.5 pb-3.5 text-left">
+    <section className="rounded-2xl border border-border bg-bg-card lg:h-full">
+      <button type="button" onClick={onOpen} className="pressable block w-full px-4 pt-3.5 pb-3.5 text-left lg:h-full lg:min-h-40">
         <span className="flex items-center gap-2">
           <Heading initiative={initiative} />
           <ChevronRight size={18} strokeWidth={2} className="ml-auto flex-shrink-0 text-text-faint" />

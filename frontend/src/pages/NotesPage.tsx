@@ -258,7 +258,7 @@ export default function NotesPage() {
           labels={labelGroups.get(focusId) ?? []}
         />
       ) : (
-        <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:items-start xl:grid-cols-3">
+        <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:items-stretch xl:grid-cols-3">
           {blocks.map((b) => (
             <InitiativeBlock
               key={b.id}
