@@ -567,7 +567,32 @@ def get_user_preference(user_id: str) -> dict:
     if resp.data:
         return resp.data[0]
     resp = get_client().table("user_preference").insert({"user_id": user_id}).execute()
+    _announce_signup(user_id)
     return resp.data[0]
+
+
+def _announce_signup(user_id: str) -> None:
+    """A settings row is created exactly once per account, the first time the app loads for it - so this is the
+    moment of a new signup. Emails ALERT_EMAIL ("[MyConfía] New signup: ..."), in the background, never failing
+    the request. Does nothing when ALERT_EMAIL isn't set."""
+    def run():
+        try:
+            import observability
+
+            if not observability.alert_email():
+                return
+            email = get_user_email(user_id) or "(no email on the account)"
+            when = datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
+            observability.alert(
+                f"signup:{user_id}",
+                f"New signup: {email}",
+                f"{email} just signed up and opened MyConfía.\n\nWhen: {when}\nUser id: {user_id}\n\n"
+                "If they should not have access, remove them from ALLOWED_EMAILS on Render.",
+            )
+        except Exception as e:  # noqa: BLE001 - an announcement must never break a sign-in
+            print(f"[warn] signup alert failed: {e}")
+
+    threading.Thread(target=run, daemon=True, name="signup-alert").start()
 
 
 def update_user_preference(user_id: str, **fields) -> dict:
