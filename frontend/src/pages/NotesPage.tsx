@@ -280,21 +280,23 @@ export default function NotesPage() {
         hideChips={!!q}
         search={
           notes && (notes.length > 0 || (initiatives?.length ?? 0) > 0 || (taskData?.tasks.length ?? 0) > 0) ? (
-          <div className="relative">
-            <Search size={18} strokeWidth={2} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-text-faint" />
+          // The same field as the composer on Home and Today (height, outline, rounding, shadow), so every page's box at the
+          // foot of the screen looks alike.
+          <div className="flex min-h-11 items-center rounded-[1.4rem] border border-border-strong bg-bg-card shadow-card focus-within:border-accent">
+            <Search size={18} strokeWidth={2} className="pointer-events-none ml-4 flex-shrink-0 text-text-faint" />
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search spaces, lists, to-dos and notes"
-              className="h-11 w-full rounded-xl bg-bg-elevated pr-10 pl-10 text-base text-text placeholder:text-text-faint focus:outline-none focus:ring-2 focus:ring-accent/25 [&::-webkit-search-cancel-button]:hidden"
+              className="block min-w-0 flex-1 bg-transparent px-3 py-2.5 text-base leading-6 text-text placeholder:text-text-faint focus:outline-none [&::-webkit-search-cancel-button]:hidden"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery('')}
                 aria-label="Clear search"
-                className="absolute top-1/2 right-2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-text-faint"
+                className="pressable mr-2 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-text-faint"
               >
                 <X size={16} strokeWidth={2} />
               </button>

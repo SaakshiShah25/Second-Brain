@@ -258,7 +258,7 @@ export default function ChatPage() {
   }[usage.mode]
 
   return (
-    <div className="flex w-full flex-1 flex-col lg:mx-auto lg:max-w-4xl">
+    <div className="flex w-full flex-1 flex-col lg:mx-auto lg:max-w-3xl">
       {/* Sticky: after a long conversation the profile button must still be in reach without scrolling back up. */}
       <header className="sticky top-0 z-20 -mx-4 -mt-2 flex h-[3.25rem] items-center gap-2 bg-bg px-4 pt-2">
         <span className="flex h-8 w-8 items-center justify-center text-text lg:hidden">
