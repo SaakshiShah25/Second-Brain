@@ -3,6 +3,9 @@ import { Check, ListFilter, Search, SlidersHorizontal } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
 import { fold } from '../lib/search'
+import { spaceScores } from '../lib/frecency'
+import { useNotes } from '../api/notes'
+import { useTasks } from '../api/tasks'
 import { useInitiativeFilter, type FilterScope } from '../lib/initiativeFilter'
 import Chip, { ChipRow } from './Chip'
 import InitiativesManager from './InitiativesManager'
@@ -15,6 +18,8 @@ import Sheet from './Sheet'
 // still show, so an initiative never disappears just because it's quiet.
 export default function InitiativeBar({ counts, search, hideChips = false, scope = 'spaces' }: { counts?: Map<number, number>; search?: ReactNode; hideChips?: boolean; scope?: FilterScope }) {
   const { data: initiatives } = useInitiatives()
+  const { data: notes } = useNotes()
+  const { data: taskData } = useTasks('all')
   const [filter, setFilter] = useInitiativeFilter(scope)
   const [managing, setManaging] = useState(false)
   const [picking, setPicking] = useState(false)
@@ -36,9 +41,14 @@ export default function InitiativeBar({ counts, search, hideChips = false, scope
     setPicking(false)
     setPickQuery('')
   }
+  const scores = spaceScores(notes, taskData?.tasks)
   const rows = [
     { key: 'all', value: null as number | null, name: 'All spaces', style: null, count: undefined as number | undefined },
-    ...(initiatives ?? []).map((i) => ({ key: String(i.id), value: i.id as number | null, name: i.name, style: getInitiativeStyle(i), count: counts?.get(i.id) })),
+    // Most used first: how often and how recently notes and to-dos were added to each (lib/frecency.ts). Spaces with
+    // the same score (all unused) keep the order you set.
+    ...[...(initiatives ?? [])]
+      .sort((a, b) => (scores.get(b.id) ?? 0) - (scores.get(a.id) ?? 0))
+      .map((i) => ({ key: String(i.id), value: i.id as number | null, name: i.name, style: getInitiativeStyle(i), count: counts?.get(i.id) })),
     { key: 'others', value: -1 as number | null, name: 'Others', style: null, count: counts?.get(-1) },
   ]
   const shown = rows.filter((r) => !pickQuery.trim() || r.key === 'all' || fold(r.name).includes(fold(pickQuery.trim())))
@@ -56,12 +66,14 @@ export default function InitiativeBar({ counts, search, hideChips = false, scope
       <div className="w-full">
       {search && <div className={`px-4 ${hideChips ? '' : 'mb-2.5'}`}>{search}</div>}
       {!hideChips && (
-      <ChipRow className="!mx-0">
-        {/* Every space in one vertical list: quicker than scrolling the chips when there are many. */}
+      <div className="flex items-center gap-2 px-4">
+        {/* Select stays put while the chips scroll: every space in one vertical list, most used first. */}
         <Chip onClick={() => setPicking(true)} aria-label="Choose a space from a list" className="!min-w-0 !px-3">
           <ListFilter size={15} strokeWidth={2} className="flex-shrink-0" />
           Select
         </Chip>
+        <div className="min-w-0 flex-1">
+      <ChipRow className="!mx-0 !px-0">
         <Chip data-space="all" active={filter === null} onClick={() => setFilter(null)}>
           All
         </Chip>
@@ -83,6 +95,8 @@ export default function InitiativeBar({ counts, search, hideChips = false, scope
           <SlidersHorizontal size={15} strokeWidth={2} />
         </Chip>
       </ChipRow>
+        </div>
+      </div>
       )}
       </div>
       </div>
@@ -96,6 +110,7 @@ export default function InitiativeBar({ counts, search, hideChips = false, scope
           title="Choose a space"
           tall
         >
+          <p className="-mt-1 mb-3 text-[0.8125rem] text-text-faint">Most used first - by how often and how recently you add to each.</p>
           {rows.length > 7 && (
             <div className="mb-3 flex min-h-11 items-center rounded-2xl border border-border-strong bg-bg-card focus-within:border-accent">
               <Search size={17} strokeWidth={2} className="ml-3.5 flex-shrink-0 text-text-faint" />
