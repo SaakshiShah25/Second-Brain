@@ -1,19 +1,23 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Search, X } from 'lucide-react'
+import { ChevronRight, Search, X } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { useNotes } from '../api/notes'
 import { useLists } from '../api/lists'
-import { useTasks } from '../api/tasks'
+import { useTasks, useUpdateTaskStatus } from '../api/tasks'
 import type { Interaction, ItemList, Task } from '../api/types'
 import Button from '../components/Button'
 import EmptyState from '../components/EmptyState'
 import InitiativeBar from '../components/InitiativeBar'
 import { InitiativeBlock, InitiativeView } from '../components/InitiativePage'
+import ItemRow from '../components/ItemRow'
+import ItemSheet from '../components/ItemSheet'
 import InteractionCard from '../components/InteractionCard'
 import PageHeader from '../components/PageHeader'
 import { useConnection } from '../lib/connection'
 import { useInitiativeFilter } from '../lib/initiativeFilter'
+import { getInitiativeStyle } from '../lib/initiativeStyle'
+import { matchesAll, rank, tokens } from '../lib/search'
 import { taskInitiativeId } from '../lib/taskOptions'
 
 // Spaces: everything is organised by initiative (a "space"), not by date - its notes, to-dos and things
@@ -66,10 +70,50 @@ export default function NotesPage() {
     return map
   }, [groups, itemGroups])
 
-  const q = query.trim().toLowerCase()
-  const searchResults = q
-    ? (notes ?? []).filter((n) => [n.summary, n.raw_text, n.initiative?.name].some((f) => f?.toLowerCase().includes(q)))
+  const q = query.trim()
+  const words = tokens(query)
+  const spaceName = (id: number | null | undefined) => (id ? (initiatives ?? []).find((i) => i.id === id)?.name : 'Others')
+  // Everything the search looks through: space names, list names (and the space they sit in), to-dos and list
+  // entries (their wording, detail, list and space), and notes (summary, full text, space).
+  const spaceHits = words.length
+    ? (initiatives ?? []).filter((i) => matchesAll(words, [i.name])).sort((a, b) => rank(words, b.name) - rank(words, a.name))
     : []
+  const listHits = words.length
+    ? (allLists ?? []).filter((l) => matchesAll(words, [l.name, spaceName(l.initiative_id)])).sort((a, b) => rank(words, b.name) - rank(words, a.name))
+    : []
+  const itemHits = words.length
+    ? (taskData?.tasks ?? [])
+        .filter((t) => matchesAll(words, [t.description, t.detail, t.item_list?.name, spaceName(taskInitiativeId(t))]))
+        .sort((a, b) => (a.status === b.status ? 0 : a.status === 'open' ? -1 : 1) || rank(words, b.description) - rank(words, a.description))
+    : []
+  const searchResults = words.length
+    ? (notes ?? []).filter((n) => matchesAll(words, [n.summary, n.raw_text, n.initiative?.name, n.initiative_id ? undefined : 'others']))
+    : []
+  const nothingFound = spaceHits.length + listHits.length + itemHits.length + searchResults.length === 0
+  const updateStatus = useUpdateTaskStatus()
+  const [openItemId, setOpenItemId] = useState<number | null>(null)
+  const openItem = (taskData?.tasks ?? []).find((t) => t.id === openItemId) ?? null
+  const goToSpace = (id: number | null | undefined) => {
+    setFilter(id ? id : -1)
+    setQuery('')
+    document.getElementById('app-scroll')?.scrollTo({ top: 0 })
+  }
+  const heading = (text: string, n: number) => (
+    <h3 className="mb-2 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint">
+      {text}
+      <span className="font-medium normal-case tracking-normal opacity-80"> · {n}</span>
+    </h3>
+  )
+  const hitRow = (key: string, leading: React.ReactNode, title: string, sub: string, onClick: () => void) => (
+    <button key={key} type="button" onClick={onClick} className="pressable flex w-full items-center gap-3 px-4 py-3 text-left">
+      <span className="flex w-6 flex-shrink-0 items-center justify-center text-[1.125rem]">{leading}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[0.9375rem]">{title}</span>
+        {sub && <span className="block truncate text-[0.8125rem] text-text-muted">{sub}</span>}
+      </span>
+      <ChevronRight size={16} strokeWidth={2} className="flex-shrink-0 text-text-faint" />
+    </button>
+  )
 
   // Initiatives with something in them, in the user's own order; Others last.
   // Labels (lists) by the space they were made for; one with no home yet sits under Others.
@@ -144,14 +188,63 @@ export default function NotesPage() {
 
       {q ? (
         <>
-          {searchResults.length === 0 && (
-            <p className="py-10 text-center text-[0.9375rem] text-text-muted">No notes match “{query}”.</p>
+          {nothingFound && <p className="py-10 text-center text-[0.9375rem] text-text-muted">Nothing matches “{query}”.</p>}
+          {spaceHits.length > 0 && (
+            <section className="mb-5">
+              {heading('Spaces', spaceHits.length)}
+              <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
+                {spaceHits.map((i) => {
+                  const style = getInitiativeStyle(i)
+                  const count = (groups.get(i.id)?.notes.length ?? 0) + (itemGroups.get(i.id)?.filter((t) => t.status === 'open').length ?? 0)
+                  return hitRow(
+                    `s${i.id}`,
+                    style ? <style.Icon size={18} strokeWidth={2.2} style={{ color: style.color }} /> : null,
+                    i.name,
+                    count ? `${count} ${count === 1 ? 'thing' : 'things'}` : 'Empty',
+                    () => goToSpace(i.id),
+                  )
+                })}
+              </div>
+            </section>
           )}
-          <div className="flex flex-col gap-2.5">
-            {searchResults.map((n) => (
-              <InteractionCard key={n.id} interaction={n} />
-            ))}
-          </div>
+          {listHits.length > 0 && (
+            <section className="mb-5">
+              {heading('Lists', listHits.length)}
+              <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
+                {listHits.map((l) =>
+                  hitRow(`l${l.id}`, l.emoji ?? '📋', l.name, `in ${spaceName(l.initiative_id)}`, () => goToSpace(l.initiative_id)),
+                )}
+              </div>
+            </section>
+          )}
+          {itemHits.length > 0 && (
+            <section className="mb-5">
+              {heading('To-dos and list entries', itemHits.length)}
+              <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
+                {itemHits.slice(0, 30).map((t) => (
+                  <ItemRow
+                    key={t.id}
+                    task={t}
+                    compactDate
+                    showList
+                    onToggle={(x) => updateStatus.mutate({ taskId: x.id, status: x.status === 'done' ? 'open' : 'done', repeats: !!x.repeat })}
+                    onOpen={(x) => setOpenItemId(x.id)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+          {searchResults.length > 0 && (
+            <section>
+              {heading('Notes', searchResults.length)}
+              <div className="flex flex-col gap-2.5">
+                {searchResults.map((n) => (
+                  <InteractionCard key={n.id} interaction={n} />
+                ))}
+              </div>
+            </section>
+          )}
+          {openItem && <ItemSheet task={openItem} onClose={() => setOpenItemId(null)} />}
         </>
       ) : focusId !== null ? (
         <InitiativeView
@@ -185,14 +278,14 @@ export default function NotesPage() {
         counts={counts}
         hideChips={!!q}
         search={
-          notes && notes.length > 0 ? (
+          notes && (notes.length > 0 || (initiatives?.length ?? 0) > 0 || (taskData?.tasks.length ?? 0) > 0) ? (
           <div className="relative">
             <Search size={18} strokeWidth={2} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-text-faint" />
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search notes"
+              placeholder="Search spaces, lists, to-dos and notes"
               className="h-11 w-full rounded-xl bg-bg-elevated pr-10 pl-10 text-base text-text placeholder:text-text-faint focus:outline-none focus:ring-2 focus:ring-accent/25 [&::-webkit-search-cancel-button]:hidden"
             />
             {query && (
