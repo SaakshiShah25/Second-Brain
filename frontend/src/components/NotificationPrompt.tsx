@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { BellRing } from 'lucide-react'
-import { currentSubscription, enableReminders, pushSupport, serverSupportsPush } from '../lib/push'
+import { Bell, BellRing, Siren } from 'lucide-react'
+import { currentSubscription, enableReminders, pushSupport, saveReminderPrefs, serverSupportsPush } from '../lib/push'
 import Button from './Button'
 import Sheet from './Sheet'
 
@@ -22,6 +22,8 @@ export default function NotificationPrompt() {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // Step 2, once notifications are allowed: how should reminders arrive - just a notification, or an alarm too?
+  const [step, setStep] = useState<'allow' | 'style'>('allow')
 
   useEffect(() => {
     let cancelled = false
@@ -52,7 +54,7 @@ export default function NotificationPrompt() {
     setError('')
     try {
       await enableReminders() // the browser's own permission dialog appears here
-      setOpen(false)
+      setStep('style')
     } catch {
       remember()
       setError('Notifications weren’t allowed. You can turn them on any time in Settings.')
@@ -61,7 +63,39 @@ export default function NotificationPrompt() {
     }
   }
 
+  async function chooseStyle(alarm: boolean) {
+    setBusy(true)
+    try {
+      await saveReminderPrefs({ alarm_style: alarm })
+    } catch {
+      // Not saved (the server may not have the option yet): it stays a normal notification, and Settings can change it.
+    } finally {
+      setBusy(false)
+      setOpen(false)
+    }
+  }
+
   if (!open) return null
+  if (step === 'style') {
+    return (
+      <Sheet onClose={() => setOpen(false)}>
+        <div className="flex flex-col items-center px-2 pb-1 text-center">
+          <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+            <Siren size={24} strokeWidth={2} />
+          </span>
+          <h3 className="text-lg font-semibold tracking-tight">How should reminders arrive?</h3>
+          <p className="mt-1 mb-4 text-[0.9375rem] leading-relaxed text-text-muted">You can change this any time in Settings.</p>
+          <Button variant="primary" size="lg" block disabled={busy} onClick={() => chooseStyle(false)}>
+            <Bell size={18} strokeWidth={2.2} /> Just a notification
+          </Button>
+          <Button size="lg" block className="mt-2" disabled={busy} onClick={() => chooseStyle(true)}>
+            <Siren size={18} strokeWidth={2.2} /> Notification and alarm
+          </Button>
+          <p className="mt-3 text-[0.8125rem] leading-relaxed text-text-faint">The alarm also buzzes and rings, with a full-screen card showing the task, until you close it.</p>
+        </div>
+      </Sheet>
+    )
+  }
   return (
     <Sheet
       onClose={() => {

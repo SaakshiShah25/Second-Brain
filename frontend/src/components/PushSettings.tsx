@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bell, BellRing, Siren } from 'lucide-react'
+import { Bell, BellRing, Check, Siren } from 'lucide-react'
 import {
   currentSubscription,
   deviceTimeZone,
@@ -202,17 +202,24 @@ export default function PushSettings() {
           ))}
         </ListGroup>
         <ListGroup
-          title="Alarm"
-          footer="A reminder you set on a task rings like an alarm: a full-screen card with the task, its priority, details and due date, plus sound and vibration, until you close it. With the app closed, you get a notification that stays until you tap it. (Phones decide the sound; the app can't ring over the lock screen.)"
+          title="How reminders arrive"
+          footer="With the alarm, a reminder you set on a task shows a full-screen card (the task, its priority, details and due date) with sound and vibration until you close it. With the app closed you get a notification that stays until you tap it. Phones decide the sound, and an app can't ring over the lock screen. The morning and evening summaries are always a quiet notification."
         >
-          <ListRow
-            icon={Siren}
-            iconColor="var(--sb-text-muted)"
-            soft
-            label="Alarm-style reminders"
-            detail={prefs.alarm_style ? 'On for this device' : 'Off - a normal notification'}
-            trailing={<Toggle on={prefs.alarm_style} onChange={() => changePrefs({ alarm_style: !prefs.alarm_style })} label="Alarm-style reminders" />}
-          />
+          {([
+            { alarm: false, label: 'Notification only', detail: 'A normal reminder notification' },
+            { alarm: true, label: 'Notification and alarm', detail: 'Also buzzes and rings, with a full-screen card' },
+          ] as const).map((o) => (
+            <ListRow
+              key={String(o.alarm)}
+              icon={o.alarm ? Siren : Bell}
+              iconColor="var(--sb-text-muted)"
+              soft
+              label={o.label}
+              detail={o.detail}
+              onClick={() => prefs.alarm_style !== o.alarm && changePrefs({ alarm_style: o.alarm })}
+              trailing={prefs.alarm_style === o.alarm ? <Check size={20} strokeWidth={2.4} className="text-accent" /> : undefined}
+            />
+          ))}
           {prefs.alarm_style && <ListRow icon={Bell} iconColor="var(--sb-text-muted)" soft label="Test the alarm" chevron onClick={testAlarm} disabled={busy} />}
         </ListGroup>
       </>
