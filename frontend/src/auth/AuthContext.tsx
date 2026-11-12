@@ -25,7 +25,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(newSession)
     })
 
-    return () => listener.subscription.unsubscribe()
+    // An installed app that sat in the background wakes up with an expired access token and, on iPhone, often a few
+    // seconds before the network is back. Asking for the session when it becomes visible again makes Supabase refresh
+    // it right then (and retry), instead of the first real request finding it expired.
+    const wake = () => {
+      if (document.visibilityState === 'visible') void supabase.auth.getSession()
+    }
+    document.addEventListener('visibilitychange', wake)
+    window.addEventListener('online', wake)
+
+    return () => {
+      listener.subscription.unsubscribe()
+      document.removeEventListener('visibilitychange', wake)
+      window.removeEventListener('online', wake)
+    }
   }, [])
 
   async function signOut() {

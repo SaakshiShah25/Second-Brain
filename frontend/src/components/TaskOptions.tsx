@@ -84,6 +84,8 @@ export function PriorityFlag({ priority, onPick }: { priority: Priority; onPick:
 // "Remind me" for one task: a time of day (9 AM unless changed), then quick choices counted from its due date, "at its due
 // time" when it has one, or any date.
 export const BEFORE_CHOICES: { minutes: number; label: string }[] = [
+  { minutes: 5, label: '5 min' },
+  { minutes: 10, label: '10 min' },
   { minutes: 15, label: '15 min' },
   { minutes: 30, label: '30 min' },
   { minutes: 60, label: '1 hour' },

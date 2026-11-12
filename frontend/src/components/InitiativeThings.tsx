@@ -22,6 +22,7 @@ type Handlers = {
   onToggle: (t: Task) => void
   onOpen: (t: Task) => void
   onDelete?: (t: Task) => void
+  onSwipeRemove?: (t: Task) => void
 }
 
 // A section's heading with its + at the end: the + opens the add box for that section (and keeps it open, so a
@@ -94,7 +95,7 @@ function Block({
         <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
           {items.map((t) => (
             <Draggable key={t.id} task={t}>
-              <ItemRow task={t} compactDate onToggle={row.onToggle} onOpen={row.onOpen} onDelete={editing ? row.onDelete : undefined} />
+              <ItemRow task={t} compactDate onToggle={row.onToggle} onOpen={row.onOpen} onDelete={editing ? row.onDelete : undefined} onSwipeRemove={row.onSwipeRemove} />
             </Draggable>
           ))}
         </div>
@@ -122,9 +123,11 @@ export default function InitiativeThings({
   const deleteItem = useDeleteItem()
   const deleteList = useDeleteList()
   const [openId, setOpenId] = useState<number | null>(null)
+  // To-dos you just ticked stay where they were, struck through, until you swipe them away (or leave the page).
+  const [justDone, setJustDone] = useState<Set<number>>(new Set())
   const [removing, setRemoving] = useState<{ id: number; name: string; count: number } | null>(null)
   const active = items.find((t) => t.id === openId) ?? null
-  const todos = items.filter((t) => t.status === 'open' && !t.list_id).sort((a, b) => byDue(a, b) || a.id - b.id)
+  const todos = items.filter((t) => (t.status === 'open' || justDone.has(t.id)) && !t.list_id).sort((a, b) => byDue(a, b) || a.id - b.id)
   const lists = new Map<number, { title: string; name: string; items: Task[] }>()
   // A list made for this space shows from the start, empty or not.
   for (const l of labels) lists.set(l.id, { title: `${l.emoji ? `${l.emoji} ` : ''}${l.name}`, name: l.name, items: [] })
@@ -136,8 +139,13 @@ export default function InitiativeThings({
     lists.set(t.list_id!, entry)
   }
   const row: Handlers = {
-    onToggle: (t) => updateStatus.mutate({ taskId: t.id, status: t.status === 'done' ? 'open' : 'done', repeats: !!t.repeat }),
+    onToggle: (t) => {
+      const finishing = t.status !== 'done'
+      if (!t.repeat) setJustDone((prev) => new Set(finishing ? prev.add(t.id) : [...prev].filter((id) => id !== t.id)))
+      updateStatus.mutate({ taskId: t.id, status: finishing ? 'done' : 'open', repeats: !!t.repeat })
+    },
     onOpen: (t) => setOpenId(t.id),
+    onSwipeRemove: (t) => deleteItem.mutate(t.id),
     onDelete: (t) => deleteItem.mutate(t.id),
   }
   return (

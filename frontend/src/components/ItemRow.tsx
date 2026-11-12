@@ -1,9 +1,13 @@
+import { useState } from 'react'
 import { Bell, Check, Repeat as RepeatIcon, Trash2, TriangleAlert } from 'lucide-react'
+import { useUpdateTaskFields } from '../api/tasks'
 import type { Task } from '../api/types'
 import { datedLabel, dueLabel, shortDate, timeLabel } from '../lib/dates'
 import { isOverdue, repeatLabel } from '../lib/items'
-import { PRIORITIES, priorityOf } from '../lib/taskOptions'
-import { beforeLabel } from './TaskOptions'
+import { DEFAULT_REMIND_TIME, PRIORITIES, priorityOf } from '../lib/taskOptions'
+import SwipeToRemove from './SwipeToRemove'
+import { beforeLabel, ReminderSheet } from './TaskOptions'
+import { toast } from './Toast'
 
 // One item: a Things-style round checkbox, its wording, and one quiet line of facts (whose it
 // is, when, how often, which list). `showList` adds the list chip - on Today, where items from
@@ -16,6 +20,7 @@ export default function ItemRow({
   showList = false,
   compactDate = false,
   onDelete,
+  onSwipeRemove,
 }: {
   task: Task
   onToggle: (task: Task) => void
@@ -26,7 +31,11 @@ export default function ItemRow({
   compactDate?: boolean
   // Editing a space: a remove button at the end of the row.
   onDelete?: (task: Task) => void
+  // Swipe the row to the right to remove it. Done items stay in the list, struck through, until you do.
+  onSwipeRemove?: (task: Task) => void
 }) {
+  const updateFields = useUpdateTaskFields()
+  const [reminding, setReminding] = useState(false)
   const overdue = isOverdue(task)
   // A task you marked high or low colours its tick circle (normal keeps the plain grey).
   const priority = priorityOf(task)
@@ -73,7 +82,7 @@ export default function ItemRow({
     ) : null,
   ].filter(Boolean)
 
-  return (
+  const row = (
     <div className="flex items-start gap-3 px-4 py-3">
       {/* Generous invisible hit area around the visible 22px circle. */}
       <button
@@ -103,6 +112,16 @@ export default function ItemRow({
           </span>
         )}
       </button>
+      {!done && (
+        <button
+          type="button"
+          onClick={() => setReminding(true)}
+          aria-label={task.remind_on || task.remind_before ? 'Change reminder' : 'Remind me'}
+          className={`pressable -m-2 flex-shrink-0 p-2 ${task.remind_on || task.remind_before ? 'text-accent' : 'text-text-faint'}`}
+        >
+          <Bell size={18} strokeWidth={1.9} fill={task.remind_on || task.remind_before ? 'currentColor' : 'none'} />
+        </button>
+      )}
       {onDelete && (
         <button
           type="button"
@@ -114,5 +133,34 @@ export default function ItemRow({
         </button>
       )}
     </div>
+  )
+  return (
+    <>
+      {onSwipeRemove ? <SwipeToRemove onRemove={() => onSwipeRemove(task)}>{row}</SwipeToRemove> : row}
+      {reminding && (
+        // Events from a sheet bubble up through React to the row's drag handle; keep them from starting a drag.
+        <div onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+        <ReminderSheet
+          task={task}
+          onClose={() => setReminding(false)}
+          onPickBefore={
+            task.due_date
+              ? (minutes) =>
+                  updateFields.mutate(
+                    { taskId: task.id, fields: { remind_before: minutes } },
+                    { onSuccess: () => toast(minutes ? `You'll be reminded ${beforeLabel(minutes)} before` : 'Early reminder removed') },
+                  )
+              : undefined
+          }
+          onPick={(date, time) =>
+            updateFields.mutate(
+              { taskId: task.id, fields: { remind_on: date, remind_time: time } },
+              { onSuccess: () => toast(date ? `Reminder set for ${shortDate(date)}, ${timeLabel(time ?? DEFAULT_REMIND_TIME)}` : 'Reminder removed') },
+            )
+          }
+        />
+        </div>
+      )}
+    </>
   )
 }

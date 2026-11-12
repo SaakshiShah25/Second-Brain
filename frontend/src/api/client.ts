@@ -55,7 +55,9 @@ function refreshOnce(): Promise<Refresh> {
     .then(({ data, error }): Refresh => {
       if (data.session) return { token: data.session.access_token, refused: false }
       const status = error && 'status' in error ? (error as { status?: number }).status : undefined
-      return { token: null, refused: typeof status === 'number' && status >= 400 && status < 500 }
+      // Only an answer that says "this refresh token is not good" ends the session: 400 / 401 / 403. A 429 ("too many
+      // requests"), 408 or any other 4xx is Supabase asking us to wait - not a reason to sign anyone out.
+      return { token: null, refused: status === 400 || status === 401 || status === 403 }
     })
     .catch((): Refresh => ({ token: null, refused: false }))
     .finally(() => {

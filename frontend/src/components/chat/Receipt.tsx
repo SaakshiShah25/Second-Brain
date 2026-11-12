@@ -4,12 +4,14 @@ import { ChevronRight, Repeat as RepeatIcon, Undo2 } from 'lucide-react'
 import type { CreatedItem } from '../../api/types'
 import { datedLabel, timeLabel } from '../../lib/dates'
 import { itemPath, repeatLabel } from '../../lib/items'
+import { useOpenSpace } from '../../lib/useOpenSpace'
 
 // What a capture just saved as items, one tappable line per item - "🎬 Oppenheimer → Movies",
 // "☐ Pay Rahul → Tasks · Friday" - so the user can see where everything went and fix anything
-// in one tap (the line opens the item).
-export default function Receipt({ items }: { items: CreatedItem[] }) {
+// in one tap (the line opens the space it went to, or the item when no space is given).
+export default function Receipt({ items, spaceId }: { items: CreatedItem[]; spaceId?: number | null }) {
   const navigate = useNavigate()
+  const openSpace = useOpenSpace()
   if (items.length === 0) return null
   return (
     <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-bg-card">
@@ -19,7 +21,8 @@ export default function Receipt({ items }: { items: CreatedItem[] }) {
           <button
             key={item.id}
             type="button"
-            onClick={() => navigate(itemPath(item.id))}
+            // Inside a space's reply a tap goes to that space's tools; elsewhere it opens the item itself.
+            onClick={() => (spaceId !== undefined ? openSpace(spaceId) : navigate(itemPath(item.id)))}
             className="pressable flex w-full items-center gap-3 px-3.5 py-2.5 text-left"
           >
             {/* A to-do is marked with the same round ring as on the Today page; a list entry keeps its list's emoji. */}

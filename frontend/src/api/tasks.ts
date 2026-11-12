@@ -48,7 +48,17 @@ export function useDeleteItem() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (taskId: number) => api.delete(`/api/tasks/${taskId}`),
-    onSuccess: () => {
+    // Gone from the list the instant it is swiped away; put back if the server says no.
+    onMutate: async (taskId) => {
+      await queryClient.cancelQueries({ queryKey: ['tasks'] })
+      const previous = queryClient.getQueriesData<TasksResponse>({ queryKey: ['tasks'] })
+      queryClient.setQueriesData<TasksResponse>({ queryKey: ['tasks'] }, (old) => (old ? { ...old, tasks: old.tasks.filter((t) => t.id !== taskId) } : old))
+      return { previous }
+    },
+    onError: (_err, _id, context) => {
+      context?.previous.forEach(([queryKey, data]) => queryClient.setQueryData(queryKey, data))
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['lists'] })
     },

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { CheckCircle2, ChevronDown } from 'lucide-react'
-import { useTasks, useUpdateTaskStatus } from '../api/tasks'
+import { useDeleteItem, useTasks, useUpdateTaskStatus } from '../api/tasks'
 import type { Task } from '../api/types'
 import Button from '../components/Button'
 import Chip, { ChipRow } from '../components/Chip'
@@ -30,6 +30,7 @@ function Section({ title, tasks, tone, ...rowProps }: {
   tone?: 'danger'
   onToggle: (t: Task) => void
   onOpen: (t: Task) => void
+  onSwipeRemove: (t: Task) => void
 }) {
   if (tasks.length === 0) return null
   return (
@@ -71,6 +72,9 @@ export default function TodayPage() {
   const connection = useConnection()
   const offline = connection.offline || connection.unreachable
   const updateStatus = useUpdateTaskStatus()
+  const deleteItem = useDeleteItem()
+  // To-dos you just ticked stay where they were, struck through, until you swipe them away (or leave the page).
+  const [justDone, setJustDone] = useState<Set<number>>(new Set())
   // The tab you were on survives leaving and coming back (it used to snap back to Today).
   const [view, setView] = useState<View>(() => {
     try {
@@ -100,7 +104,7 @@ export default function TodayPage() {
     d.setDate(d.getDate() + UPCOMING_DAYS)
     return isoLocal(d)
   })()
-  const open = all.filter((t) => t.status === 'open')
+  const open = all.filter((t) => t.status === 'open' || (t.status === 'done' && justDone.has(t.id)))
   const dated = open.filter((t) => t.due_date).sort(byPriorityThenDue)
   const overdue = dated.filter((t) => t.due_date! < today)
   const dueToday = dated.filter((t) => t.due_date === today)
@@ -117,10 +121,15 @@ export default function TodayPage() {
   // overdue or due/reminded today are in those sections, so nothing shows twice.
   const shown = new Set([...overdue, ...todayItems].map((t) => t.id))
   const important = open.filter((t) => !t.list_id && priorityOf(t) === 'high' && !shown.has(t.id)).sort(byPriorityThenDue)
-  const done = all.filter((t) => t.status === 'done' && !t.list_id).sort((a, b) => b.id - a.id).slice(0, 30)
+  const done = all.filter((t) => t.status === 'done' && !t.list_id && !justDone.has(t.id)).sort((a, b) => b.id - a.id).slice(0, 30)
   const rowProps = {
-    onToggle: (t: Task) => updateStatus.mutate({ taskId: t.id, status: t.status === 'done' ? 'open' : 'done', repeats: !!t.repeat }),
+    onToggle: (t: Task) => {
+      const finishing = t.status !== 'done'
+      if (!t.repeat) setJustDone((prev) => new Set(finishing ? prev.add(t.id) : [...prev].filter((id) => id !== t.id)))
+      updateStatus.mutate({ taskId: t.id, status: finishing ? 'done' : 'open', repeats: !!t.repeat })
+    },
     onOpen: sheet.open,
+    onSwipeRemove: (t: Task) => deleteItem.mutate(t.id),
   }
   const subtitle = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
   const counts: Record<View, number> = { today: overdue.length + todayItems.length + important.length, upcoming: soon.length + later.length, anytime: anytime.length }
