@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { CalendarCheck, Home, LayoutGrid, type LucideIcon } from 'lucide-react'
+import { CalendarCheck, Home, LayoutGrid, Settings as SettingsIcon, type LucideIcon } from 'lucide-react'
+import ConfiaLogo from './ConfiaLogo'
 import Toaster from './Toast'
 import ConnectionBanner from './ConnectionBanner'
 import { syncReminders } from '../lib/push'
@@ -107,20 +108,53 @@ export default function Layout() {
   const showTabs = !TABLESS.some((re) => re.test(pathname)) && !keyboardOpen
 
   return (
-    // The whole app is one phone-width column - this is a mobile PWA,
-    // not a responsive website. On a wider screen (a desktop browser,
-    // a tablet) it simply stays a centered phone column rather than
-    // stretching into a desktop layout.
+    // Two layouts from one codebase. Below 1024px (phones, and a phone-sized browser window) the app is one
+    // phone-width column with a tab bar along the bottom - exactly the installed-app experience. From 1024px up
+    // (a laptop or desktop browser) it is a simple web app: a navigation sidebar on the left and a wider, centred
+    // content column.
     //
     // h-dvh (dynamic viewport height), not 100vh, so the column tracks
     // the real visible area as mobile browser chrome shows/hides. The tab
     // bar is an in-flow flex child below the scroll area, not
     // position:fixed, so content can never end up hidden underneath it.
-    <div className="bg-bg text-text">
-      <div className="pt-safe relative mx-auto flex h-dvh max-w-[480px] flex-col bg-bg min-[481px]:border-x min-[481px]:border-border">
+    <div className="bg-bg text-text lg:flex lg:h-dvh">
+      {/* Sidebar: web only. */}
+      <aside className="hidden w-60 flex-shrink-0 flex-col border-r border-border px-3 py-6 lg:flex">
+        <div className="mb-8 flex items-center gap-2.5 px-3">
+          <ConfiaLogo size={30} className="text-accent" />
+          <span className="font-display text-xl font-semibold tracking-tight">MyConfía</span>
+        </div>
+        <nav className="flex flex-col gap-1" aria-label="Main">
+          {tabs.map((tab) => (
+            <NavLink
+              key={tab.to}
+              to={tab.to}
+              end={tab.end}
+              data-tour-nav={tab.to}
+              className={({ isActive }) =>
+                `pressable flex h-11 items-center gap-3 rounded-xl px-3 text-[0.9375rem] ${isActive ? `${tab.pill} font-semibold` : 'text-text-muted hover:bg-bg-hover'}`
+              }
+            >
+              <tab.icon size={20} strokeWidth={1.9} />
+              {tab.label}
+            </NavLink>
+          ))}
+        </nav>
+        <span className="flex-1" />
+        <NavLink
+          to="/settings"
+          className={({ isActive }) =>
+            `pressable flex h-11 items-center gap-3 rounded-xl px-3 text-[0.9375rem] ${isActive ? 'bg-bg-hover font-semibold' : 'text-text-muted hover:bg-bg-hover'}`
+          }
+        >
+          <SettingsIcon size={20} strokeWidth={1.9} />
+          Settings
+        </NavLink>
+      </aside>
+      <div className="pt-safe relative mx-auto flex h-dvh max-w-[480px] flex-col bg-bg min-[481px]:border-x min-[481px]:border-border lg:max-w-none lg:min-w-0 lg:flex-1 lg:border-x-0">
         <ConnectionBanner />
         <main id="app-scroll" className="flex-1 overflow-y-auto overscroll-contain">
-          <div className="flex min-h-full flex-col px-4 pt-2 pb-6">
+          <div className="mx-auto flex min-h-full w-full flex-col px-4 pt-2 pb-6 lg:max-w-3xl lg:pt-6">
             <Outlet />
           </div>
         </main>
@@ -129,7 +163,7 @@ export default function Layout() {
       <NotificationPrompt />
 
         {showTabs && (
-          <nav className="pb-safe flex-shrink-0 border-t border-border bg-bg/90 backdrop-blur-xl">
+          <nav className="pb-safe flex-shrink-0 border-t border-border bg-bg/90 backdrop-blur-xl lg:hidden">
             <div className="flex h-16 items-stretch px-2">
               {tabs.map((tab) => (
                 <NavLink

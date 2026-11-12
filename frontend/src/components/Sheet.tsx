@@ -27,7 +27,7 @@ export default function Sheet({ children, onClose, title, tall = false, zIndex =
   }, [])
 
   return createPortal(
-    <div className="fixed inset-0 flex items-end justify-center" style={{ zIndex }}>
+    <div className="fixed inset-0 flex items-end justify-center lg:items-center" style={{ zIndex }}>
       <div
         className="absolute inset-0 bg-[var(--sb-scrim)]"
         style={{ animation: 'scrim-in 0.2s ease-out' }}
@@ -36,16 +36,16 @@ export default function Sheet({ children, onClose, title, tall = false, zIndex =
       <div
         role="dialog"
         aria-modal="true"
-        className={`pb-safe relative flex w-full max-w-[480px] flex-col rounded-t-[1.75rem] bg-bg-card shadow-card ${
+        className={`pb-safe relative flex w-full max-w-[480px] flex-col rounded-t-[1.75rem] bg-bg-card shadow-card lg:max-w-lg lg:rounded-[1.75rem] ${
           tall ? 'max-h-[88dvh]' : 'max-h-[92dvh]'
         }`}
         style={{ animation: 'sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1)' }}
       >
-        <div className="flex justify-center pt-2.5 pb-1">
+        <div className="flex justify-center pt-2.5 pb-1 lg:hidden">
           <span className="h-1.5 w-10 rounded-full bg-border-strong" />
         </div>
         {title && <div className="px-5 pt-2 pb-1 text-lg font-semibold tracking-tight">{title}</div>}
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-5">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-5 lg:pt-5">{children}</div>
       </div>
     </div>,
     document.body,
