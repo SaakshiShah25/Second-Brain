@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { SlidersHorizontal } from 'lucide-react'
+import { Check, ListFilter, Search, SlidersHorizontal } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
+import { fold } from '../lib/search'
 import { useInitiativeFilter, type FilterScope } from '../lib/initiativeFilter'
 import Chip, { ChipRow } from './Chip'
 import InitiativesManager from './InitiativesManager'
@@ -16,11 +17,26 @@ export default function InitiativeBar({ counts, search, hideChips = false, scope
   const { data: initiatives } = useInitiatives()
   const [filter, setFilter] = useInitiativeFilter(scope)
   const [managing, setManaging] = useState(false)
+  const [picking, setPicking] = useState(false)
+  const [pickQuery, setPickQuery] = useState('')
 
   // A deleted initiative can't stay selected.
   useEffect(() => {
     if (typeof filter === 'number' && filter > 0 && initiatives && !initiatives.some((i) => i.id === filter)) setFilter(null)
   }, [initiatives, filter, setFilter])
+
+  const currentLabel = filter === null ? 'All spaces' : filter === -1 ? 'Others' : (initiatives?.find((i) => i.id === filter)?.name ?? 'All spaces')
+  const choose = (value: number | null) => {
+    setFilter(value)
+    setPicking(false)
+    setPickQuery('')
+  }
+  const rows = [
+    { key: 'all', value: null as number | null, name: 'All spaces', style: null, count: undefined as number | undefined },
+    ...(initiatives ?? []).map((i) => ({ key: String(i.id), value: i.id as number | null, name: i.name, style: getInitiativeStyle(i), count: counts?.get(i.id) })),
+    { key: 'others', value: -1 as number | null, name: 'Others', style: null, count: counts?.get(-1) },
+  ]
+  const shown = rows.filter((r) => !pickQuery.trim() || r.key === 'all' || fold(r.name).includes(fold(pickQuery.trim())))
 
   const count = (key: number) => {
     const n = counts?.get(key)
@@ -36,6 +52,11 @@ export default function InitiativeBar({ counts, search, hideChips = false, scope
       {search && <div className={`px-4 ${hideChips ? '' : 'mb-2.5'}`}>{search}</div>}
       {!hideChips && (
       <ChipRow className="!mx-0">
+        {/* Every space in one vertical list: quicker than scrolling the chips when there are many. */}
+        <Chip onClick={() => setPicking(true)} aria-label="Choose a space from a list" className="!min-w-0 max-w-[11rem] !px-3">
+          <ListFilter size={15} strokeWidth={2} className="flex-shrink-0" />
+          <span className="truncate">{currentLabel}</span>
+        </Chip>
         <Chip active={filter === null} onClick={() => setFilter(null)}>
           All
         </Chip>
@@ -60,6 +81,52 @@ export default function InitiativeBar({ counts, search, hideChips = false, scope
       )}
       </div>
       </div>
+
+      {picking && (
+        <Sheet
+          onClose={() => {
+            setPicking(false)
+            setPickQuery('')
+          }}
+          title="Choose a space"
+          tall
+        >
+          {rows.length > 7 && (
+            <div className="mb-3 flex min-h-11 items-center rounded-2xl border border-border-strong bg-bg-card focus-within:border-accent">
+              <Search size={17} strokeWidth={2} className="ml-3.5 flex-shrink-0 text-text-faint" />
+              <input
+                autoFocus
+                value={pickQuery}
+                onChange={(e) => setPickQuery(e.target.value)}
+                placeholder="Find a space"
+                className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-base text-text placeholder:text-text-faint focus:outline-none"
+              />
+            </div>
+          )}
+          <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
+            {shown.map((r) => {
+              const selected = filter === r.value
+              return (
+                <button
+                  key={r.key}
+                  type="button"
+                  onClick={() => choose(r.value)}
+                  aria-pressed={selected}
+                  className={`pressable flex min-h-12 w-full items-center gap-3 px-4 py-2.5 text-left ${selected ? 'bg-accent-soft' : ''}`}
+                >
+                  <span className="flex w-5 flex-shrink-0 items-center justify-center">
+                    {r.style ? <r.style.Icon size={17} strokeWidth={2.1} style={{ color: r.style.color }} /> : null}
+                  </span>
+                  <span className={`min-w-0 flex-1 truncate text-[0.9375rem] ${selected ? 'font-semibold' : ''}`}>{r.name}</span>
+                  {r.count ? <span className="flex-shrink-0 text-[0.8125rem] text-text-muted">{r.count}</span> : null}
+                  {selected && <Check size={17} strokeWidth={2.4} className="flex-shrink-0 text-accent" />}
+                </button>
+              )
+            })}
+            {shown.length === 0 && <p className="px-4 py-6 text-center text-[0.9375rem] text-text-muted">No space matches “{pickQuery}”.</p>}
+          </div>
+        </Sheet>
+      )}
 
       {managing && (
         <Sheet onClose={() => setManaging(false)} title="Initiatives" tall>
