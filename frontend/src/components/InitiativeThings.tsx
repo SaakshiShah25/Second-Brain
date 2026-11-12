@@ -171,10 +171,12 @@ function ListBlock({
 
 const SECTION_LABEL: Record<SpaceSection, string> = { notes: 'Notes', todos: 'To-dos', lists: 'Lists' }
 
-// The three parts of a space. On a phone they are pages side by side that you swipe between (CSS scroll-snap, so it
-// feels native), with a tab bar that shows where you are and a faint arrow toward the page that is still out of sight.
-// The strip is only as tall as the page you are on, so a short page never leaves a long blank scroll under it.
-// From 1024px up it is a plain three-column grid and the tab bar and arrows disappear.
+// The three parts of a space, as pages side by side that you move between - one fills the whole space at a time.
+// On a phone you swipe (CSS scroll-snap, so it feels native) and a faint arrow hints at the page out of sight. On a
+// laptop there are round arrow buttons in the margins, with soft shadows at both edges to say "there is more this way";
+// they go round in a circle (after Lists comes Notes again), and the left / right arrow keys do the same.
+// A tab bar on both shows where you are and jumps straight to a part. The strip is only as tall as the page you are
+// on, so a short page never leaves a long blank scroll under it.
 function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record<SpaceSection, number>; panes: Record<SpaceSection, ReactNode> }) {
   const strip = useRef<HTMLDivElement>(null)
   const paneRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -206,11 +208,35 @@ function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record
     const el = strip.current
     el?.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' })
   }
+  // The laptop's arrows (and arrow keys) wrap around: one past the last is the first.
+  const n = order.length
+  const step = useCallback(
+    (by: 1 | -1) => {
+      const el = strip.current
+      if (!el) return
+      const next = (Math.round(el.scrollLeft / Math.max(1, el.clientWidth)) + by + n) % n
+      el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' })
+    },
+    [n],
+  )
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.metaKey || e.ctrlKey || e.altKey) return
+      const el = e.target
+      if (el instanceof HTMLElement && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return
+      if (!window.matchMedia('(min-width: 1024px)').matches || document.querySelector('[role="dialog"]')) return
+      e.preventDefault()
+      step(e.key === 'ArrowRight' ? 1 : -1)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [step])
+  const nameAt = (i: number) => SECTION_LABEL[order[(i + n) % n]]
 
   return (
-    <div className="relative">
-      {/* Tab bar: phone only. */}
-      <div role="tablist" className="mb-3 flex rounded-full bg-bg-elevated p-1 lg:hidden">
+    <div className="relative lg:px-14">
+      {/* Tab bar: shows where you are, and jumps to a part. */}
+      <div role="tablist" className="mb-3 flex rounded-full bg-bg-elevated p-1 lg:mx-auto lg:max-w-md">
         {order.map((section, i) => (
           <button
             key={section}
@@ -230,8 +256,8 @@ function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record
       <div
         ref={strip}
         onScroll={onScroll}
-        className="no-scrollbar -mx-4 flex snap-x snap-mandatory items-start overflow-x-auto overflow-y-hidden overscroll-x-contain transition-[height] duration-200 lg:mx-0 lg:grid lg:snap-none lg:grid-cols-3 lg:gap-x-6 lg:overflow-visible"
-        style={height !== undefined && typeof window !== 'undefined' && window.innerWidth < 1024 ? { height } : undefined}
+        className="no-scrollbar -mx-4 flex snap-x snap-mandatory items-start overflow-x-auto overflow-y-hidden overscroll-x-contain transition-[height] duration-200 lg:mx-0"
+        style={height !== undefined ? { height } : undefined}
       >
         {order.map((section, i) => (
           <div
@@ -239,12 +265,33 @@ function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record
             ref={(el) => {
               paneRefs.current[i] = el
             }}
-            className="w-full flex-shrink-0 snap-center px-4 lg:w-auto lg:px-0"
+            className="w-full flex-shrink-0 snap-center px-4 lg:px-0"
           >
             {panes[section]}
           </div>
         ))}
       </div>
+      {/* Laptop: soft shadows at both edges, and round arrows in the margins (they wrap around). */}
+      <span aria-hidden="true" className="pointer-events-none absolute top-14 bottom-0 left-14 z-10 hidden w-8 bg-gradient-to-r from-black/[0.07] to-transparent lg:block" />
+      <span aria-hidden="true" className="pointer-events-none absolute top-14 right-14 bottom-0 z-10 hidden w-8 bg-gradient-to-l from-black/[0.07] to-transparent lg:block" />
+      <button
+        type="button"
+        onClick={() => step(-1)}
+        aria-label={`Previous: ${nameAt(active - 1)}`}
+        title={`Previous: ${nameAt(active - 1)}`}
+        className="pressable absolute top-28 left-0 z-20 hidden h-11 w-11 items-center justify-center rounded-full border border-border-strong bg-bg-card text-text-muted shadow-card hover:text-text lg:flex"
+      >
+        <ChevronLeft size={22} strokeWidth={2} />
+      </button>
+      <button
+        type="button"
+        onClick={() => step(1)}
+        aria-label={`Next: ${nameAt(active + 1)}`}
+        title={`Next: ${nameAt(active + 1)}`}
+        className="pressable absolute top-28 right-0 z-20 hidden h-11 w-11 items-center justify-center rounded-full border border-border-strong bg-bg-card text-text-muted shadow-card hover:text-text lg:flex"
+      >
+        <ChevronRight size={22} strokeWidth={2} />
+      </button>
       {/* Faint arrows toward the pages out of sight - a hint, not a button (the tab bar and the swipe do the work). */}
       {active > 0 && (
         <span aria-hidden="true" className="pointer-events-none fixed top-1/2 left-0.5 z-10 text-text-muted lg:hidden" style={{ animation: 'nudge-left 2.2s ease-in-out infinite' }}>
