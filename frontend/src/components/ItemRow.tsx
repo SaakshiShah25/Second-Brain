@@ -86,7 +86,7 @@ export default function ItemRow({
   ].filter(Boolean)
 
   const row = (
-    <div className="flex items-start gap-3 px-4 py-3">
+    <div className="group flex items-start gap-3 px-4 py-3 lg:hover:bg-bg-hover">
       {/* Generous invisible hit area around the visible 22px circle. */}
       <button
         type="button"
@@ -120,9 +120,21 @@ export default function ItemRow({
           type="button"
           onClick={() => setReminding(true)}
           aria-label={task.remind_on || task.remind_before ? 'Change reminder' : 'Remind me'}
-          className={`pressable -m-2 flex-shrink-0 p-2 ${task.remind_on || task.remind_before ? 'text-accent' : 'text-text-faint'}`}
+          // On a laptop the bell stays out of the way until the row is hovered (or it already has a reminder).
+          className={`pressable -m-2 flex-shrink-0 p-2 ${task.remind_on || task.remind_before ? 'text-accent' : 'text-text-faint lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100'}`}
         >
           <Bell size={18} strokeWidth={1.9} fill={task.remind_on || task.remind_before ? 'currentColor' : 'none'} />
+        </button>
+      )}
+      {onSwipeRemove && !onDelete && (
+        // Swiping needs a finger; with a mouse, a bin appears on hover (it asks "Are you sure?" like the swipe does).
+        <button
+          type="button"
+          onClick={() => setConfirmRemove(true)}
+          aria-label={`Delete ${task.description}`}
+          className="pressable -m-2 hidden flex-shrink-0 p-2 text-text-faint opacity-0 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100 lg:block"
+        >
+          <Trash2 size={17} strokeWidth={1.9} />
         </button>
       )}
       {onDelete && (

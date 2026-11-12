@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { Check, ChevronDown, ChevronUp, ListChecks, ListTodo, Pencil, Plus, Trash2, X, type LucideIcon } from 'lucide-react'
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ListChecks, ListTodo, Pencil, Plus, Trash2, X, type LucideIcon } from 'lucide-react'
 import { useUpdateList, useDeleteList } from '../api/lists'
 import { useDeleteItem, useUpdateTaskStatus } from '../api/tasks'
 import type { ItemList, Task } from '../api/types'
@@ -61,10 +61,12 @@ export function SectionHeader({
       {mover && (
         <span className="flex items-center rounded-full bg-bg-elevated">
           <button type="button" onClick={mover.onUp} disabled={!mover.canUp} aria-label={`Move ${title} up`} className="pressable flex h-9 w-9 items-center justify-center rounded-full text-text-muted disabled:opacity-30">
-            <ChevronUp size={19} strokeWidth={2.4} />
+            <ChevronUp size={19} strokeWidth={2.4} className="lg:hidden" />
+            <ChevronLeft size={19} strokeWidth={2.4} className="hidden lg:block" />
           </button>
           <button type="button" onClick={mover.onDown} disabled={!mover.canDown} aria-label={`Move ${title} down`} className="pressable flex h-9 w-9 items-center justify-center rounded-full text-text-muted disabled:opacity-30">
-            <ChevronDown size={19} strokeWidth={2.4} />
+            <ChevronDown size={19} strokeWidth={2.4} className="lg:hidden" />
+            <ChevronRight size={19} strokeWidth={2.4} className="hidden lg:block" />
           </button>
         </span>
       )}
@@ -283,7 +285,10 @@ export default function InitiativeThings({
   return (
     <DragToSpace tasks={items}>
       <div className="mb-4">
+        {/* One column on a phone; Notes, To-dos and Lists side by side on a laptop, in the chosen order. */}
+        <div className="lg:grid lg:grid-cols-3 lg:items-start lg:gap-x-6">
         {order.map((section) => (section === 'notes' ? notesSection(moverFor('notes')) : section === 'todos' ? todosNode : listsNode))}
+        </div>
         {editTodos && <p className="mt-2 px-1 text-[0.8125rem] text-text-muted">Editing to-dos: tap one to change it, tap the bin to remove it. Tap ✓ when done.</p>}
         {editLists && <p className="mt-2 px-1 text-[0.8125rem] text-text-muted">Editing lists: rename a list, remove a list or its entries. Tap ✓ when done.</p>}
         {active && <ItemSheet task={active} onClose={() => setOpenId(null)} />}

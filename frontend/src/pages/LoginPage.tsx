@@ -126,8 +126,8 @@ export default function LoginPage() {
 
   return (
     <div className="bg-bg">
-      <div className="pt-safe pb-safe mx-auto flex min-h-dvh max-w-[480px] flex-col px-6">
-        <div className="flex flex-1 flex-col justify-center pt-10 pb-8">
+      <div className="pt-safe pb-safe mx-auto flex min-h-dvh max-w-[480px] flex-col px-6 lg:max-w-md lg:justify-center">
+        <div className="flex flex-1 flex-col justify-center pt-10 pb-8 lg:flex-none">
           <span className="mb-6 text-text">
             <ConfiaLogo size={52} />
           </span>

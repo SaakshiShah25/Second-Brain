@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { CalendarCheck, Home, LayoutGrid, Settings as SettingsIcon, type LucideIcon } from 'lucide-react'
 import ConfiaLogo from './ConfiaLogo'
 import Toaster from './Toast'
 import ConnectionBanner from './ConnectionBanner'
 import { syncReminders } from '../lib/push'
 import NotificationPrompt from './NotificationPrompt'
+import Sheet from './Sheet'
+import { useInitiatives } from '../api/initiatives'
+import { getInitiativeStyle } from '../lib/initiativeStyle'
+import { useInitiativeFilter } from '../lib/initiativeFilter'
+import { useOpenSpace } from '../lib/useOpenSpace'
 
 // Each tab has its own hue (index.css --sb-fun-*), shown when it's the
 // active tab - full class strings so Tailwind can see them.
@@ -97,9 +102,96 @@ function useHoverLabels() {
   }, [])
 }
 
+// Keyboard shortcuts for a laptop (ignored while typing in a field, and on a phone-sized window):
+//   g then t / h / s   go to Today / Home / Spaces      / or n   jump to the add / search box      ?   this list
+const SHORTCUTS: { keys: string; does: string }[] = [
+  { keys: 'g  then  t', does: 'Go to Today' },
+  { keys: 'g  then  h', does: 'Go to Home' },
+  { keys: 'g  then  s', does: 'Go to Spaces' },
+  { keys: '/   or   n', does: 'Jump to the add / search box' },
+  { keys: 'Esc', does: 'Close a pop-up' },
+  { keys: '?', does: 'Show this list' },
+]
+
+function useShortcuts(onHelp: () => void) {
+  const navigate = useNavigate()
+  useEffect(() => {
+    let waitingForSecondKey = false
+    let timer = 0
+    const isTyping = (el: EventTarget | null) =>
+      el instanceof HTMLElement && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return
+      if (!window.matchMedia('(min-width: 1024px)').matches) return
+      if (document.querySelector('[role="dialog"]')) return // a pop-up is open
+      if (waitingForSecondKey) {
+        waitingForSecondKey = false
+        window.clearTimeout(timer)
+        const to = { t: '/today', h: '/', s: '/notes' }[e.key.toLowerCase()]
+        if (to) {
+          e.preventDefault()
+          navigate(to)
+        }
+        return
+      }
+      if (e.key === 'g') {
+        waitingForSecondKey = true
+        timer = window.setTimeout(() => (waitingForSecondKey = false), 1200)
+      } else if (e.key === '/' || e.key === 'n') {
+        const box = document.querySelector<HTMLElement>('main textarea, main input[type="search"], main input:not([type="checkbox"])')
+        if (box) {
+          e.preventDefault()
+          box.focus()
+        }
+      } else if (e.key === '?') {
+        onHelp()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      window.clearTimeout(timer)
+    }
+  }, [navigate, onHelp])
+}
+
+// The sidebar's list of spaces under "Spaces": one click goes straight into one.
+function SidebarSpaces() {
+  const { data: initiatives } = useInitiatives()
+  const [filter] = useInitiativeFilter()
+  const openSpace = useOpenSpace()
+  const { pathname } = useLocation()
+  if (!initiatives || initiatives.length === 0) return null
+  const rows = [...initiatives.map((i) => ({ id: i.id as number | null, name: i.name, style: getInitiativeStyle(i), key: i.id })), { id: null, name: 'Others', style: null, key: -1 }]
+  return (
+    <div className="mt-1 mb-1 ml-5 flex flex-col gap-0.5 border-l border-border pl-2">
+      {rows.map((r) => {
+        const active = pathname.startsWith('/notes') && filter === (r.id === null ? -1 : r.id)
+        return (
+          <button
+            key={r.key}
+            type="button"
+            onClick={() => openSpace(r.id)}
+            className={`pressable flex h-8 items-center gap-2 rounded-lg px-2.5 text-left text-[0.8125rem] ${
+              active ? 'bg-bg-hover font-semibold text-text' : 'text-text-muted hover:bg-bg-hover'
+            }`}
+          >
+            {r.style ? <r.style.Icon size={14} strokeWidth={2} style={{ color: r.style.color }} className="flex-shrink-0" /> : <span className="h-3.5 w-3.5 flex-shrink-0" />}
+            <span className="truncate">{r.name}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function Layout() {
   useHoverLabels()
   const { pathname } = useLocation()
+  const [help, setHelp] = useState(false)
+  useShortcuts(() => setHelp(true))
+  // Spaces gets a wider column on a laptop (a space shows Notes, To-dos and Lists side by side); the rest stay narrow.
+  const wide = /^\/notes/.test(pathname)
   // If task reminders are on, tell the server this device's current time zone each time the app opens.
   useEffect(() => {
     syncReminders()
@@ -126,21 +218,27 @@ export default function Layout() {
         </div>
         <nav className="flex flex-col gap-1" aria-label="Main">
           {tabs.map((tab) => (
-            <NavLink
-              key={tab.to}
-              to={tab.to}
-              end={tab.end}
-              data-tour-nav={tab.to}
-              className={({ isActive }) =>
-                `pressable flex h-11 items-center gap-3 rounded-xl px-3 text-[0.9375rem] ${isActive ? `${tab.pill} font-semibold` : 'text-text-muted hover:bg-bg-hover'}`
-              }
-            >
-              <tab.icon size={20} strokeWidth={1.9} />
-              {tab.label}
-            </NavLink>
+            <div key={tab.to}>
+              <NavLink
+                to={tab.to}
+                end={tab.end}
+                data-tour-nav={tab.to}
+                className={({ isActive }) =>
+                  `pressable flex h-11 items-center gap-3 rounded-xl px-3 text-[0.9375rem] ${isActive ? `${tab.pill} font-semibold` : 'text-text-muted hover:bg-bg-hover'}`
+                }
+              >
+                <tab.icon size={20} strokeWidth={1.9} />
+                {tab.label}
+              </NavLink>
+              {tab.to === '/notes' && <SidebarSpaces />}
+            </div>
           ))}
         </nav>
         <span className="flex-1" />
+        <button type="button" onClick={() => setHelp(true)} className="pressable mb-2 flex h-9 items-center gap-2 rounded-lg px-3 text-left text-[0.8125rem] text-text-faint hover:bg-bg-hover">
+          <kbd className="rounded border border-border-strong px-1.5 py-0.5 text-[0.75rem] font-medium">?</kbd>
+          Keyboard shortcuts
+        </button>
         <NavLink
           to="/settings"
           className={({ isActive }) =>
@@ -154,13 +252,25 @@ export default function Layout() {
       <div className="pt-safe relative mx-auto flex h-dvh max-w-[480px] flex-col bg-bg min-[481px]:border-x min-[481px]:border-border lg:max-w-none lg:min-w-0 lg:flex-1 lg:border-x-0">
         <ConnectionBanner />
         <main id="app-scroll" className="flex-1 overflow-y-auto overscroll-contain">
-          <div className="mx-auto flex min-h-full w-full flex-col px-4 pt-2 pb-6 lg:max-w-3xl lg:pt-6">
+          <div className={`mx-auto flex min-h-full w-full flex-col px-4 pt-2 pb-6 lg:pt-6 ${wide ? 'lg:max-w-6xl' : 'lg:max-w-3xl'}`}>
             <Outlet />
           </div>
         </main>
 
         <Toaster />
-      <NotificationPrompt />
+        <NotificationPrompt />
+        {help && (
+          <Sheet onClose={() => setHelp(false)} title="Keyboard shortcuts">
+            <ul className="flex flex-col divide-y divide-border">
+              {SHORTCUTS.map((s) => (
+                <li key={s.keys} className="flex items-center justify-between gap-4 py-3 text-[0.9375rem]">
+                  <span>{s.does}</span>
+                  <kbd className="whitespace-pre rounded-lg border border-border-strong bg-bg-elevated px-2 py-1 text-[0.8125rem] font-medium text-text-muted">{s.keys}</kbd>
+                </li>
+              ))}
+            </ul>
+          </Sheet>
+        )}
 
         {showTabs && (
           <nav className="pb-safe flex-shrink-0 border-t border-border bg-bg/90 backdrop-blur-xl lg:hidden">

@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 interface SheetProps {
@@ -12,12 +12,30 @@ interface SheetProps {
   zIndex?: number
 }
 
+// Sheets that are open, newest last: Escape (a keyboard on a laptop) closes only the top one.
+const openSheets: symbol[] = []
+
 // The one modal surface in the app: a bottom sheet, the native mobile
 // pattern (iOS action sheets, Android modal bottom sheets) - it rises
 // from where the thumb already is, instead of a desktop-style dialog
 // centered in the middle of the screen. Constrained to the same phone
 // column as Layout so it lines up on a wider screen too.
 export default function Sheet({ children, onClose, title, tall = false, zIndex = 50 }: SheetProps) {
+  const id = useRef(Symbol('sheet'))
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  useEffect(() => {
+    const mine = id.current
+    openSheets.push(mine)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && openSheets[openSheets.length - 1] === mine) closeRef.current?.()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      openSheets.splice(openSheets.indexOf(mine), 1)
+    }
+  }, [])
   useEffect(() => {
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -36,8 +54,8 @@ export default function Sheet({ children, onClose, title, tall = false, zIndex =
       <div
         role="dialog"
         aria-modal="true"
-        className={`pb-safe relative flex w-full max-w-[480px] flex-col rounded-t-[1.75rem] bg-bg-card shadow-card lg:max-w-lg lg:rounded-[1.75rem] ${
-          tall ? 'max-h-[88dvh]' : 'max-h-[92dvh]'
+        className={`pb-safe relative flex w-full max-w-[480px] flex-col rounded-t-[1.75rem] bg-bg-card shadow-card lg:rounded-[1.75rem] ${
+          tall ? 'max-h-[88dvh] lg:max-w-2xl' : 'max-h-[92dvh] lg:max-w-lg'
         }`}
         style={{ animation: 'sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1)' }}
       >
