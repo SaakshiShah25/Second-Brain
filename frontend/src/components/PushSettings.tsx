@@ -90,7 +90,35 @@ export default function PushSettings() {
   }
   if (serverReady === false) return null // the server has no push keys yet - don't offer it
 
+  const permission = typeof Notification !== 'undefined' ? Notification.permission : 'default'
   return (
+    <>
+    {/* Notifications themselves: allow them for this device (also what "Task reminders" below needs). */}
+    <ListGroup
+      title="Notifications"
+      footer={
+        permission === 'denied'
+          ? 'Blocked. Allow notifications for MyConfía in your browser or phone settings, then come back.'
+          : permission === 'default'
+            ? 'Your phone will ask once. This also switches on the task reminders below.'
+            : undefined
+      }
+    >
+      {permission === 'granted' ? (
+        <ListRow icon={BellRing} iconColor="var(--sb-text-muted)" soft label="Notifications" detail="Allowed" />
+      ) : (
+        <ListRow
+          icon={BellRing}
+          iconColor="var(--sb-text-muted)"
+          soft
+          label="Allow notifications"
+          detail={permission === 'denied' ? 'Blocked in your browser settings' : 'Tap to allow'}
+          chevron={permission !== 'denied'}
+          disabled={busy || permission === 'denied'}
+          onClick={toggle}
+        />
+      )}
+    </ListGroup>
     <ListGroup
       title="Task reminders"
       footer={
@@ -111,5 +139,6 @@ export default function PushSettings() {
       />
       {on && <ListRow icon={Bell} iconColor="var(--sb-text-muted)" soft label="Send me a test now" chevron onClick={test} disabled={busy} />}
     </ListGroup>
+    </>
   )
 }

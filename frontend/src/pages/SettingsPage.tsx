@@ -7,6 +7,7 @@ import { useDeleteAccount, useSettings, useUpdateSettings } from '../api/setting
 import type { FontSize, Theme } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import AppLockSettings from '../components/AppLockSettings'
+import InstallSettings from '../components/InstallSettings'
 import PushSettings from '../components/PushSettings'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { ListGroup, ListRow } from '../components/ListGroup'
@@ -165,6 +166,8 @@ export default function SettingsPage() {
       </ListGroup>
 
       <PushSettings />
+
+      <InstallSettings />
 
       <AppLockSettings />
 

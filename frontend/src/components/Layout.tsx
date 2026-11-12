@@ -4,6 +4,7 @@ import { CalendarCheck, Home, LayoutGrid, type LucideIcon } from 'lucide-react'
 import Toaster from './Toast'
 import ConnectionBanner from './ConnectionBanner'
 import { syncReminders } from '../lib/push'
+import NotificationPrompt from './NotificationPrompt'
 
 // Each tab has its own hue (index.css --sb-fun-*), shown when it's the
 // active tab - full class strings so Tailwind can see them.
@@ -125,6 +126,7 @@ export default function Layout() {
         </main>
 
         <Toaster />
+      <NotificationPrompt />
 
         {showTabs && (
           <nav className="pb-safe flex-shrink-0 border-t border-border bg-bg/90 backdrop-blur-xl">
