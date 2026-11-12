@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { Check, ChevronDown, ChevronRight, ChevronUp, FileText, Pencil } from 'lucide-react'
+import { Check, ChevronRight, ChevronUp, FileText, NotebookText, Pencil } from 'lucide-react'
 import { useUpdateInitiative } from '../api/initiatives'
 import type { Interaction, ItemList as ListLabel, Task } from '../api/types'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
 import AddToSpace from './AddToSpace'
 import ExportInitiativeButton from './ExportInitiativeButton'
 import InteractionCard, { ItemList } from './InteractionCard'
-import InitiativeThings, { thingCounts } from './InitiativeThings'
+import InitiativeThings, { SectionHeader, thingCounts } from './InitiativeThings'
 import { noteCounts, noteItems, noteSections } from '../lib/noteSections'
 import { shortDate } from '../lib/dates'
 
@@ -71,25 +71,31 @@ export function InitiativeBlock({ initiative, notes, items = [], onOpen }: Props
   )
 }
 
-// The whole initiative as one page: the key points, decisions and concerns that were extracted from its notes when
-// they were logged, grouped under each note's topic label - then the notes themselves, as written ("Source notes").
-// Nothing here calls an AI model.
+// The whole space as one page, in four clearly separate parts, each with its own + and its own edit:
+//   the space itself (its name; edit = rename)
+//   Notes   (+ adds a note;  edit = open, change or delete the notes as written)
+//   To-dos  (+ adds a to-do; edit = remove to-dos)
+//   Lists   (+ starts a list, the + on a list adds to it; edit = rename / remove lists and entries)
+// The Notes part shows the key points, decisions and concerns extracted from the notes when they were logged, grouped
+// under each note's topic - nothing here calls an AI model.
 export function InitiativeView({ initiative, notes, items = [], labels = [], onCollapse }: Props & { onCollapse?: () => void }) {
-  const [showSource, setShowSource] = useState(false)
-  // Edit mode: rename the space and its lists, remove to-dos, entries, lists and notes, all in one place.
-  const [editing, setEditing] = useState(false)
+  // Space-level edit: rename. Notes-level edit: the notes as written, each one openable to change or delete.
+  const [editingSpace, setEditingSpace] = useState(false)
+  const [editingNotes, setEditingNotes] = useState(false)
   const updateInitiative = useUpdateInitiative()
-  // Tapping an item opens the note it came from.
+  // Tapping a key point opens the note it came from.
   const [openNoteId, setOpenNoteId] = useState<number | null>(null)
   const openNote = notes.find((n) => n.id === openNoteId) ?? null
   const style = getInitiativeStyle(initiative)
   const sections = noteSections(notes)
+  const spaceName = initiative?.name ?? 'Others'
 
   return (
     <div>
-      <div className="mb-4 rounded-2xl border border-border bg-bg-card p-4">
+      {/* The space itself. */}
+      <div className="mb-6 rounded-2xl border border-border bg-bg-card p-4">
         <div className="flex items-center gap-2">
-          {editing && initiative ? (
+          {editingSpace && initiative ? (
             <input
               defaultValue={initiative.name}
               aria-label="Space name"
@@ -107,17 +113,18 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
             <Heading initiative={initiative} size="lg" />
           )}
           <span className="ml-auto flex items-center gap-2">
-            <AddToSpace spaceId={initiative?.id ?? null} spaceName={initiative?.name ?? 'Others'} />
-            <ExportInitiativeButton name={initiative?.name ?? 'Others'} notes={notes} />
-            <button
-              type="button"
-              onClick={() => setEditing((v) => !v)}
-              aria-label={editing ? 'Done editing' : 'Edit this space'}
-              aria-pressed={editing}
-              className={`pressable flex h-9 w-9 items-center justify-center rounded-full ${editing ? 'bg-accent-soft text-accent' : 'text-text-muted'}`}
-            >
-              {editing ? <Check size={18} strokeWidth={2.4} /> : <Pencil size={17} strokeWidth={2} />}
-            </button>
+            <ExportInitiativeButton name={spaceName} notes={notes} />
+            {initiative && (
+              <button
+                type="button"
+                onClick={() => setEditingSpace((v) => !v)}
+                aria-label={editingSpace ? 'Done editing the space' : 'Edit this space'}
+                aria-pressed={editingSpace}
+                className={`pressable flex h-9 w-9 items-center justify-center rounded-full ${editingSpace ? 'bg-accent-soft text-accent' : 'text-text-muted'}`}
+              >
+                {editingSpace ? <Check size={18} strokeWidth={2.4} /> : <Pencil size={17} strokeWidth={2} />}
+              </button>
+            )}
             {onCollapse && (
               <button
                 type="button"
@@ -130,82 +137,67 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
             )}
           </span>
         </div>
-
         <p className="mt-2 pl-[3.125rem] text-[0.8125rem] text-text-faint">
-          {[notes.length ? noteCounts(notes) : '', thingCounts(items)].filter(Boolean).join(' · ') || 'Nothing yet'}
+          {editingSpace ? 'Rename the space, then tap ✓.' : [notes.length ? noteCounts(notes) : '', thingCounts(items)].filter(Boolean).join(' · ') || 'Nothing yet'}
         </p>
-
-        <h2 className="mt-5 text-base font-semibold tracking-tight">Notes</h2>
-        {sections.map((s) => (
-          <div key={s.key} className="mt-3">
-            {s.title && (
-              <h3
-                className="mb-2 text-[0.8125rem] font-semibold uppercase tracking-wide"
-                style={{ color: style?.color }}
-              >
-                {s.title}
-              </h3>
-            )}
-            {s.groups.map((g) => (
-              <div key={g.kind} className="mb-2.5 last:mb-0">
-                {g.kind !== 'point' && (
-                  <p className="mb-1 text-[0.9375rem] font-bold" style={{ color: style?.color }}>
-                    {g.label}:
-                  </p>
-                )}
-                <ul className="flex flex-col gap-1">
-                  {g.items.map((it, i) => (
-                    <li key={i}>
-                      <button
-                        type="button"
-                        onClick={() => it.noteId && setOpenNoteId(it.noteId)}
-                        className="pressable flex w-full items-baseline gap-2.5 text-left text-[0.9375rem] leading-snug"
-                      >
-                        <span className="mt-[0.5rem] h-1.5 w-1.5 flex-shrink-0 translate-y-[-0.1rem] rounded-full bg-text-faint" />
-                        <span className="min-w-0 flex-1">{it.text}</span>
-                        {it.date && <span className="flex-shrink-0 text-[0.75rem] text-text-faint">{shortDate(it.date)}</span>}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        ))}
-        {sections.length === 0 && (
-          <p className="mt-3 text-[0.9375rem] text-text-muted">
-            {notes.length === 0 ? (items.length ? 'No notes here yet - its to-dos and lists are below.' : 'No notes here yet.') : 'No key points were extracted - see the source notes below.'}
-          </p>
-        )}
       </div>
 
-      {editing && (
-        <p className="mb-3 px-1 text-[0.8125rem] text-text-muted">
-          Editing: rename the space or a list, tap an item to change it, remove what you don't need, then tap ✓ when done.
-        </p>
-      )}
-      <InitiativeThings items={items} labels={labels} spaceId={initiative?.id ?? null} editing={editing} />
-
-      {openNote && (
-        // The note's sheet floats above the page, so the card itself stays out of sight.
-        <div hidden>
-          <InteractionCard key={openNote.id} interaction={openNote} autoOpen onClosed={() => setOpenNoteId(null)} />
-        </div>
-      )}
-
-      {notes.length > 0 && (
-        <section>
-          <button
-            type="button"
-            onClick={() => setShowSource((v) => !v)}
-            aria-expanded={showSource || editing}
-            className="pressable mb-2 flex items-center gap-1.5 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint"
-          >
-            Source notes
-            <span className="font-medium normal-case tracking-normal">· {notes.length}</span>
-            <ChevronDown size={15} strokeWidth={2.2} className={showSource || editing ? 'rotate-180' : ''} />
-          </button>
-          {(showSource || editing) && (
+      {/* Notes. */}
+      <section className="mb-6" aria-label="Notes">
+        <SectionHeader
+          icon={NotebookText}
+          title="Notes"
+          count={notes.length}
+          add={<AddToSpace spaceId={initiative?.id ?? null} spaceName={spaceName} kind="note" />}
+          editing={editingNotes}
+          onEdit={notes.length ? () => setEditingNotes((v) => !v) : undefined}
+          editLabel="Edit notes"
+        />
+        {!editingNotes && (
+          <div className="rounded-2xl border border-border bg-bg-card p-4">
+            {sections.map((s, n) => (
+              <div key={s.key} className={n === 0 ? '' : 'mt-3'}>
+                {s.title && (
+                  <h3 className="mb-2 text-[0.8125rem] font-semibold uppercase tracking-wide" style={{ color: style?.color }}>
+                    {s.title}
+                  </h3>
+                )}
+                {s.groups.map((g) => (
+                  <div key={g.kind} className="mb-2.5 last:mb-0">
+                    {g.kind !== 'point' && (
+                      <p className="mb-1 text-[0.9375rem] font-bold" style={{ color: style?.color }}>
+                        {g.label}:
+                      </p>
+                    )}
+                    <ul className="flex flex-col gap-1">
+                      {g.items.map((it, i) => (
+                        <li key={i}>
+                          <button
+                            type="button"
+                            onClick={() => it.noteId && setOpenNoteId(it.noteId)}
+                            className="pressable flex w-full items-baseline gap-2.5 text-left text-[0.9375rem] leading-snug"
+                          >
+                            <span className="mt-[0.5rem] h-1.5 w-1.5 flex-shrink-0 translate-y-[-0.1rem] rounded-full bg-text-faint" />
+                            <span className="min-w-0 flex-1">{it.text}</span>
+                            {it.date && <span className="flex-shrink-0 text-[0.75rem] text-text-faint">{shortDate(it.date)}</span>}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            ))}
+            {sections.length === 0 && (
+              <p className="text-[0.9375rem] text-text-muted">
+                {notes.length === 0 ? 'No notes here yet - tap + to write one.' : 'No key points were extracted - tap the pencil to see the notes as written.'}
+              </p>
+            )}
+          </div>
+        )}
+        {editingNotes && (
+          <>
+            <p className="mb-2 px-1 text-[0.8125rem] text-text-muted">Editing notes: tap a note to change or delete it. Tap ✓ when done.</p>
             <div className="flex flex-col gap-2.5">
               {[...notes]
                 .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.id - a.id)
@@ -213,8 +205,18 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
                   <InteractionCard key={n.id} interaction={n} variant="source" />
                 ))}
             </div>
-          )}
-        </section>
+          </>
+        )}
+      </section>
+
+      {/* To-dos and Lists - each its own part, with its own + and pencil. */}
+      <InitiativeThings items={items} labels={labels} spaceId={initiative?.id ?? null} spaceName={spaceName} />
+
+      {openNote && (
+        // The note's sheet floats above the page, so the card itself stays out of sight.
+        <div hidden>
+          <InteractionCard key={openNote.id} interaction={openNote} autoOpen onClosed={() => setOpenNoteId(null)} />
+        </div>
       )}
     </div>
   )

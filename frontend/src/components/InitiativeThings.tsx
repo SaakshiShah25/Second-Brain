@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Plus, Trash2, X } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { Check, ListChecks, ListTodo, Pencil, Plus, Trash2, X, type LucideIcon } from 'lucide-react'
 import { useUpdateList, useDeleteList } from '../api/lists'
 import { useDeleteItem, useUpdateTaskStatus } from '../api/tasks'
 import type { ItemList, Task } from '../api/types'
@@ -8,6 +8,7 @@ import ConfirmDialog from './ConfirmDialog'
 import DragToSpace, { Draggable } from './DragToSpace'
 import ItemRow from './ItemRow'
 import ItemSheet from './ItemSheet'
+import AddToSpace from './AddToSpace'
 import QuickAdd from './QuickAdd'
 
 /** "2 to-dos · 3 in lists" - the open non-note things in an initiative, for its summary line. */
@@ -25,38 +26,88 @@ type Handlers = {
   onSwipeRemove?: (t: Task) => void
 }
 
-// A section's heading with its + at the end: the + opens the add box for that section (and keeps it open, so a
-// few entries can go in one after another).
-function Block({
+// The heading of one of the three parts of a space (Notes, To-dos, Lists): its name and count, a + that adds to THAT
+// part only, and a pencil that edits THAT part only.
+export function SectionHeader({
+  icon: Icon,
   title,
   count,
-  items,
+  add,
+  editing,
+  onEdit,
+  editLabel,
+}: {
+  icon: LucideIcon
+  title: string
+  count: number
+  // The + (a button, or AddToSpace's own); omit for none.
+  add?: ReactNode
+  editing: boolean
+  // Omit when there is nothing to edit yet.
+  onEdit?: () => void
+  editLabel: string
+}) {
+  return (
+    <div className="mb-2 flex items-center gap-2 px-1">
+      <Icon size={17} strokeWidth={2.2} className="flex-shrink-0 text-text-muted" />
+      <h2 className="min-w-0 flex-1 truncate text-base font-semibold tracking-tight">
+        {title}
+        <span className="font-medium text-text-faint"> · {count}</span>
+      </h2>
+      {add}
+      {onEdit && (
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label={editing ? `Done editing ${title.toLowerCase()}` : editLabel}
+          aria-pressed={editing}
+          className={`pressable flex h-9 w-9 items-center justify-center rounded-full ${editing ? 'bg-accent-soft text-accent' : 'text-text-muted'}`}
+        >
+          {editing ? <Check size={18} strokeWidth={2.4} /> : <Pencil size={16} strokeWidth={2} />}
+        </button>
+      )}
+    </div>
+  )
+}
+
+export function PlusButton({ onClick, label, open = false }: { onClick: () => void; label: string; open?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-expanded={open}
+      className="pressable flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-contrast"
+    >
+      {open ? <X size={18} strokeWidth={2.4} /> : <Plus size={19} strokeWidth={2.4} />}
+    </button>
+  )
+}
+
+// One list: its name (renamable while the lists are being edited), a small + that adds an entry to it - and keeps the
+// box open so several can go in one after another - and its entries.
+function ListBlock({
   list,
-  heading = false,
-  addPlaceholder,
-  addTo,
+  title,
+  items,
+  spaceId,
   editing,
   onDeleteList,
   ...row
 }: Handlers & {
+  list: { id: number; name: string }
   title: string
-  count: number
   items: Task[]
-  // The list this block is, when it is one (renamable and removable while editing).
-  list?: { id: number; name: string }
-  // The section's own title (To-dos), rather than one of the lists under it.
-  heading?: boolean
-  addPlaceholder: string
-  addTo: { listId: number | null; spaceId: number | null }
+  spaceId: number | null
   editing: boolean
-  onDeleteList?: () => void
+  onDeleteList: () => void
 }) {
   const [adding, setAdding] = useState(false)
   const updateList = useUpdateList()
   return (
-    <section className="mb-5" aria-label={title}>
+    <section className="mb-4" aria-label={title}>
       <div className="mb-2 flex items-center gap-2 px-1">
-        {editing && list ? (
+        {editing ? (
           <input
             defaultValue={list.name}
             aria-label={`Rename ${list.name}`}
@@ -68,14 +119,12 @@ function Block({
             className="min-w-0 flex-1 rounded-lg border border-border-strong bg-bg-card px-2 py-1 text-base font-semibold focus:border-accent focus:outline-none"
           />
         ) : (
-          <h3
-            className={`min-w-0 flex-1 truncate ${heading ? 'text-base font-semibold tracking-tight' : 'text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint'}`}
-          >
+          <h3 className="min-w-0 flex-1 truncate text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint">
             {title}
-            {!heading && <span className="font-medium normal-case tracking-normal opacity-80"> · {count}</span>}
+            <span className="font-medium normal-case tracking-normal opacity-80"> · {items.length}</span>
           </h3>
         )}
-        {editing && onDeleteList && (
+        {editing && (
           <button type="button" onClick={onDeleteList} aria-label={`Delete ${title}`} className="pressable flex h-8 w-8 items-center justify-center rounded-full text-text-faint hover:text-danger">
             <Trash2 size={17} strokeWidth={1.9} />
           </button>
@@ -83,14 +132,14 @@ function Block({
         <button
           type="button"
           onClick={() => setAdding((v) => !v)}
-          aria-label={adding ? 'Close' : addPlaceholder}
+          aria-label={adding ? 'Close' : `Add to ${list.name}`}
           aria-expanded={adding}
           className="pressable flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-bg-elevated text-text-muted"
         >
           {adding ? <X size={16} strokeWidth={2.2} /> : <Plus size={17} strokeWidth={2.2} />}
         </button>
       </div>
-      {adding && <QuickAdd listId={addTo.listId} initiativeId={addTo.spaceId} placeholder={addPlaceholder} autoFocus />}
+      {adding && <QuickAdd listId={list.id} initiativeId={spaceId} placeholder={`Add to ${list.name}`} autoFocus />}
       {items.length > 0 ? (
         <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
           {items.map((t) => (
@@ -100,29 +149,33 @@ function Block({
           ))}
         </div>
       ) : (
-        <p className="px-1 text-[0.875rem] text-text-faint">{list ? 'Nothing on this list yet - tap + to add.' : 'No to-dos here yet.'}</p>
+        <p className="px-1 text-[0.875rem] text-text-faint">Nothing on this list yet - tap + to add.</p>
       )}
     </section>
   )
 }
 
-// Everything in a space that isn't a note: its to-dos, then its lists - each list its own block, with its own +.
+// Everything in a space that isn't a note, as two parts of its own: To-dos (one plain list, its own + and pencil) and
+// Lists (any number of them, a + to start a new one - always there, even with none yet - and a pencil for the lists).
 // A list entry has a tick like a to-do, but ticking it only marks it: it stays where it is (a book you've read).
 export default function InitiativeThings({
   items,
   labels = [],
   spaceId = null,
-  editing = false,
+  spaceName = 'this space',
 }: {
   items: Task[]
   labels?: ItemList[]
   spaceId?: number | null
-  editing?: boolean
+  spaceName?: string
 }) {
   const updateStatus = useUpdateTaskStatus()
   const deleteItem = useDeleteItem()
   const deleteList = useDeleteList()
   const [openId, setOpenId] = useState<number | null>(null)
+  const [addingTodo, setAddingTodo] = useState(false)
+  const [editTodos, setEditTodos] = useState(false)
+  const [editLists, setEditLists] = useState(false)
   // To-dos you just ticked stay where they were, struck through, until you swipe them away (or leave the page).
   const [justDone, setJustDone] = useState<Set<number>>(new Set())
   const [removing, setRemoving] = useState<{ id: number; name: string; count: number } | null>(null)
@@ -145,38 +198,66 @@ export default function InitiativeThings({
       updateStatus.mutate({ taskId: t.id, status: finishing ? 'done' : 'open', repeats: !!t.repeat })
     },
     onOpen: (t) => setOpenId(t.id),
-    onSwipeRemove: (t) => deleteItem.mutate(t.id),
     onDelete: (t) => deleteItem.mutate(t.id),
+    onSwipeRemove: (t) => deleteItem.mutate(t.id),
   }
   return (
     <DragToSpace tasks={items}>
       <div className="mb-4">
-        <Block
-          heading
-          title="To-dos"
-          count={todos.length}
-          items={todos}
-          addPlaceholder="Add a to-do"
-          addTo={{ listId: null, spaceId }}
-          editing={editing}
-          {...row}
-        />
-        <h2 className="mb-2 px-1 text-base font-semibold tracking-tight">Lists</h2>
-        {lists.size === 0 && <p className="mb-5 px-1 text-[0.875rem] text-text-faint">No lists yet - tap + at the top, then List, to start one (a reading list, say).</p>}
-        {[...lists.entries()].map(([id, l]) => (
-          <Block
-            key={id}
-            title={l.title}
-            count={l.items.length}
-            items={l.items}
-            list={{ id, name: l.name }}
-            addPlaceholder={`Add to ${l.name}`}
-            addTo={{ listId: id, spaceId }}
-            editing={editing}
-            onDeleteList={() => setRemoving({ id, name: l.name, count: l.items.length })}
-            {...row}
+        {/* To-dos: separate from the lists; its + adds a to-do, its pencil removes to-dos. */}
+        <section className="mb-6" aria-label="To-dos">
+          <SectionHeader
+            icon={ListTodo}
+            title="To-dos"
+            count={todos.length}
+            add={<PlusButton onClick={() => setAddingTodo((v) => !v)} label={addingTodo ? 'Close' : 'Add a to-do'} open={addingTodo} />}
+            editing={editTodos}
+            onEdit={todos.length ? () => setEditTodos((v) => !v) : undefined}
+            editLabel="Edit to-dos"
           />
-        ))}
+          {addingTodo && <QuickAdd listId={null} initiativeId={spaceId} placeholder="Add a to-do" autoFocus />}
+          {todos.length > 0 ? (
+            <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
+              {todos.map((t) => (
+                <Draggable key={t.id} task={t}>
+                  <ItemRow task={t} compactDate onToggle={row.onToggle} onOpen={row.onOpen} onDelete={editTodos ? row.onDelete : undefined} onSwipeRemove={row.onSwipeRemove} />
+                </Draggable>
+              ))}
+            </div>
+          ) : (
+            <p className="px-1 text-[0.875rem] text-text-faint">No to-dos here yet - tap + to add one.</p>
+          )}
+        </section>
+
+        {/* Lists: any number; the + here starts a new list, the + on a list adds to that list. */}
+        <section aria-label="Lists">
+          <SectionHeader
+            icon={ListChecks}
+            title="Lists"
+            count={lists.size}
+            add={<AddToSpace spaceId={spaceId} spaceName={spaceName} kind="list" />}
+            editing={editLists}
+            onEdit={lists.size ? () => setEditLists((v) => !v) : undefined}
+            editLabel="Edit lists"
+          />
+          {lists.size === 0 && (
+            <p className="px-1 text-[0.875rem] text-text-faint">No lists yet - tap + to start one (a reading list, say), then add to it as you go.</p>
+          )}
+          {[...lists.entries()].map(([id, l]) => (
+            <ListBlock
+              key={id}
+              list={{ id, name: l.name }}
+              title={l.title}
+              items={l.items}
+              spaceId={spaceId}
+              editing={editLists}
+              onDeleteList={() => setRemoving({ id, name: l.name, count: l.items.length })}
+              {...row}
+            />
+          ))}
+        </section>
+        {editTodos && <p className="mt-2 px-1 text-[0.8125rem] text-text-muted">Editing to-dos: tap one to change it, tap the bin to remove it. Tap ✓ when done.</p>}
+        {editLists && <p className="mt-2 px-1 text-[0.8125rem] text-text-muted">Editing lists: rename a list, remove a list or its entries. Tap ✓ when done.</p>}
         {active && <ItemSheet task={active} onClose={() => setOpenId(null)} />}
         {removing && (
           <ConfirmDialog
