@@ -73,7 +73,7 @@ On the Tasks tab each open task has a **flag** and a **bell**:
 ### The Today page
 
 - **Today** shows only: **Overdue**, **Today** (due today, or you set a reminder for today) and **High priority** (anything marked high, whatever its date). Undated to-dos are under **Anytime**; things dated tomorrow or later are under **Upcoming**. The number on each tab matches what is inside it.
-- A task dated within the next week shows its exact day next to the word: **"Tomorrow, 10 Nov"**, **"Thu, 12 Nov"**, **"Yesterday, 8 Nov"** (and plain "Today"); further out it is just the date. In the chat receipt a to-do is marked with the same round ring as on the Today page.
+- A task dated within the next week shows its exact day next to the word: **"Today, 12 Nov"**, **"Tomorrow, 13 Nov"**, **"Thu, 12 Nov"**, **"Yesterday, 11 Nov"**; a week or more away it is just the date. In the chat receipt a to-do is marked with the same round ring as on the Today page.
 - The space chips at the foot of Today are **Today's own** - opening a space on the Notes / Spaces tab no longer narrows Today.
 - Leave Today and come back: it stays on the tab you were on (Upcoming / Anytime).
 - Log a note, then open Today: the new tasks are there straight away (they are refetched in the background when the note is saved).
