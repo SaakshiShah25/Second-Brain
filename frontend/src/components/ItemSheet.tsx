@@ -268,6 +268,12 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
         <ReminderSheet
           task={task}
           onClose={() => setChoosingReminder(false)}
+          onPickDue={(date, time) =>
+            editTask.mutate(
+              { taskId: task.id, due_date: date, due_time: time },
+              { onSuccess: () => toast(date ? `Due ${shortDate(date)}${time ? `, ${timeLabel(time)}` : ''}` : 'Due date removed') },
+            )
+          }
           onPickBefore={
             task.due_date
               ? (minutes) =>

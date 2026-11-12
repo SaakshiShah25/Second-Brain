@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Bell, Check, Repeat as RepeatIcon, Trash2, TriangleAlert } from 'lucide-react'
-import { useUpdateTaskFields } from '../api/tasks'
+import { useEditTask, useUpdateTaskFields } from '../api/tasks'
 import type { Task } from '../api/types'
 import { datedLabel, dueLabel, shortDate, timeLabel } from '../lib/dates'
 import { isOverdue, repeatLabel } from '../lib/items'
@@ -36,6 +36,7 @@ export default function ItemRow({
   onSwipeRemove?: (task: Task) => void
 }) {
   const updateFields = useUpdateTaskFields()
+  const editTask = useEditTask()
   const [reminding, setReminding] = useState(false)
   // Swiping the row away, or its bin in edit mode, asks "Are you sure?" first.
   const [confirmRemove, setConfirmRemove] = useState(false)
@@ -160,6 +161,12 @@ export default function ItemRow({
         <ReminderSheet
           task={task}
           onClose={() => setReminding(false)}
+          onPickDue={(date, time) =>
+            editTask.mutate(
+              { taskId: task.id, due_date: date, due_time: time },
+              { onSuccess: () => toast(date ? `Due ${shortDate(date)}${time ? `, ${timeLabel(time)}` : ''}` : 'Due date removed') },
+            )
+          }
           onPickBefore={
             task.due_date
               ? (minutes) =>

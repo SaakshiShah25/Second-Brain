@@ -102,10 +102,14 @@ export function ReminderSheet({
   task,
   onPick,
   onPickBefore,
+  onPickDue,
   onClose,
 }: {
   task: Task
   onPick: (date: string | null, time: string | null) => void
+  // "When is it due": a date and an optional time (null date = no due date). Shown first, so the two questions -
+  // when is it due, and when should I remind you - are answered in the one place.
+  onPickDue?: (date: string | null, time: string | null) => void
   // "Remind me 30 minutes before it's due" (null = remove). Offered only for a task that has a date.
   onPickBefore?: (minutes: number | null) => void
   onClose: () => void
@@ -113,6 +117,9 @@ export function ReminderSheet({
   const [time, setTime] = useState((task.remind_time ?? DEFAULT_REMIND_TIME).slice(0, 5))
   const choices = reminderChoices(task.due_date)
   const [custom, setCustom] = useState('')
+  const [dueDate, setDueDate] = useState(task.due_date ?? '')
+  const [dueClock, setDueClock] = useState((task.due_time ?? '').slice(0, 5))
+  const dueChanged = dueDate !== (task.due_date ?? '') || dueClock !== (task.due_time ?? '').slice(0, 5)
   const today = isoLocal(new Date())
   const earliest = earliestReminderDate(new Date(), time || DEFAULT_REMIND_TIME)
   const dueTime = task.due_date && task.due_time ? task.due_time.slice(0, 5) : null
@@ -124,8 +131,44 @@ export function ReminderSheet({
   const gone = (date: string, at: string) => momentPassed(date, at)
   return (
     <Sheet onClose={onClose}>
-      <h3 className="text-lg font-semibold tracking-tight">Remind me</h3>
+      <h3 className="text-lg font-semibold tracking-tight">{onPickDue ? 'Due and reminder' : 'Remind me'}</h3>
       <p className="mb-4 mt-0.5 line-clamp-2 text-[0.9375rem] text-text-muted">{task.description}</p>
+      {onPickDue && (
+        <div className="mb-5 rounded-2xl bg-bg-elevated p-3.5">
+          <p className="mb-2 text-[0.9375rem] font-medium">When is it due?</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Input type="date" aria-label="Due date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            <Input type="time" aria-label="Due time (optional)" value={dueClock} disabled={!dueDate} onChange={(e) => setDueClock(e.target.value)} />
+          </div>
+          <div className="mt-2.5 flex gap-2">
+            <Button
+              variant="primary"
+              className="flex-1"
+              disabled={!dueChanged || !dueDate}
+              onClick={() => onPickDue(dueDate, dueClock || null)}
+            >
+              Save due {dueClock ? 'date and time' : 'date'}
+            </Button>
+            {task.due_date && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setDueDate('')
+                  setDueClock('')
+                  onPickDue(null, null)
+                }}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+          <p className="mt-2 text-[0.8125rem] text-text-faint">
+            {task.due_date ? `Due ${shortDate(task.due_date)}${task.due_time ? `, ${timeLabel(task.due_time.slice(0, 5))}` : ''}.` : 'No due date yet.'} Set one to
+            be reminded a few minutes or a day before it.
+          </p>
+        </div>
+      )}
+      <p className="mb-2 text-[0.9375rem] font-semibold">Remind me</p>
       {task.remind_on && (
         <p className="mb-3 rounded-xl bg-bg-elevated px-3.5 py-2.5 text-[0.9375rem]">
           Reminder set for <span className="font-semibold">{shortDate(task.remind_on)}</span>,{' '}
