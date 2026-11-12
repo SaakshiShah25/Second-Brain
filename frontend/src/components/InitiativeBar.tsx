@@ -32,7 +32,7 @@ export default function InitiativeBar({ counts, search, hideChips = false, scope
       {/* mt-auto pushes it to the foot of a short page; sticky keeps it on screen while a long page scrolls. */}
       <div className="sticky bottom-0 z-10 -mx-4 -mb-6 mt-auto border-t border-border bg-bg/95 pt-2.5 pb-2.5 backdrop-blur-xl">
       {/* On a laptop the box and chips stay one readable, centred width under the wider page. */}
-      <div className="mx-auto w-full lg:max-w-3xl">
+      <div className="w-full">
       {search && <div className={`px-4 ${hideChips ? '' : 'mb-2.5'}`}>{search}</div>}
       {!hideChips && (
       <ChipRow className="!mx-0">

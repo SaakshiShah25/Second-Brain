@@ -45,7 +45,7 @@ function Section({ title, tasks, tone, ...rowProps }: {
 }) {
   if (tasks.length === 0) return null
   return (
-    <section className="mb-5 lg:break-inside-avoid" aria-label={title}>
+    <section className="mb-5" aria-label={title}>
       <h3
         className={`mb-2 px-1 text-[0.8125rem] font-semibold uppercase tracking-wide ${tone === 'danger' ? 'text-danger' : 'text-text-faint'}`}
       >
@@ -65,7 +65,7 @@ function Section({ title, tasks, tone, ...rowProps }: {
 
 function Empty({ title, hint }: { title: string; hint: string }) {
   return (
-    <div className="mb-6 rounded-2xl border border-dashed border-border-strong px-6 py-8 text-center lg:[column-span:all]">
+    <div className="mb-6 rounded-2xl border border-dashed border-border-strong px-6 py-8 text-center">
       <CheckCircle2 size={28} strokeWidth={1.6} className="mx-auto mb-2 text-success" />
       <p className="text-[0.9375rem] text-text-muted">{title}</p>
       <p className="mt-1 text-[0.8125rem] text-text-faint">{hint}</p>
@@ -244,7 +244,7 @@ export default function TodayPage() {
       )}
 
       {data && view === 'today' && (
-        <div className="lg:columns-2 lg:gap-6">
+        <div>
           {overdue.length + todayItems.length + important.length === 0 && (
             <Empty title="Nothing on your plate." hint="Say “remind me to…” or “every night…” on Home and it shows up here on its day." />
           )}
@@ -255,7 +255,7 @@ export default function TodayPage() {
       )}
 
       {data && view === 'upcoming' && (
-        <div className="lg:columns-2 lg:gap-6">
+        <div>
           {soon.length + later.length === 0 && <Empty title="Nothing coming up." hint="Things with a date, a birthday or a routine show up here before their day." />}
           <Section title="Next 7 days" tasks={soon} {...rowProps} />
           <Section title="Later" tasks={later} {...rowProps} />
@@ -263,14 +263,14 @@ export default function TodayPage() {
       )}
 
       {data && view === 'anytime' && (
-        <div className="lg:columns-2 lg:gap-6">
-          <div className="lg:[column-span:all]">
+        <div>
+          <div>
             <QuickAdd listId={null} placeholder="Add a to-do" filterScope="today" />
           </div>
           {anytime.length === 0 && <Empty title="No loose to-dos." hint="Anything you need to do with no date lands here." />}
           <Section title="To-dos" tasks={anytime} {...rowProps} />
           {done.length > 0 && (
-            <section className="mb-5 lg:break-inside-avoid">
+            <section className="mb-5">
               <button
                 type="button"
                 onClick={() => setShowDone((v) => !v)}

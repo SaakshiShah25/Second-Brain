@@ -188,7 +188,7 @@ export default function NotesPage() {
       )}
 
       {q ? (
-        <div className="lg:max-w-3xl">
+        <div>
           {nothingFound && <p className="py-10 text-center text-[0.9375rem] text-text-muted">Nothing matches “{query}”.</p>}
           {spaceHits.length > 0 && (
             <section className="mb-5">
@@ -258,7 +258,7 @@ export default function NotesPage() {
           labels={labelGroups.get(focusId) ?? []}
         />
       ) : (
-        <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:items-stretch xl:grid-cols-3">
+        <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:items-stretch">
           {blocks.map((b) => (
             <InitiativeBlock
               key={b.id}

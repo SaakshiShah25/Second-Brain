@@ -190,9 +190,6 @@ export default function Layout() {
   const { pathname } = useLocation()
   const [help, setHelp] = useState(false)
   useShortcuts(() => setHelp(true))
-  // Every main screen (Today, Home, Spaces) gets the same wide column on a laptop, so switching tabs never jumps in
-  // width; Settings and Admin are forms and stay narrow.
-  const wide = !/^\/(settings|admin)/.test(pathname)
   // If task reminders are on, tell the server this device's current time zone each time the app opens.
   useEffect(() => {
     syncReminders()
@@ -253,7 +250,7 @@ export default function Layout() {
       <div className="pt-safe relative mx-auto flex h-dvh max-w-[480px] flex-col bg-bg min-[481px]:border-x min-[481px]:border-border lg:max-w-none lg:min-w-0 lg:flex-1 lg:border-x-0">
         <ConnectionBanner />
         <main id="app-scroll" className="flex-1 overflow-y-auto overscroll-contain">
-          <div className={`mx-auto flex min-h-full w-full flex-col px-4 pt-2 pb-6 lg:pt-6 ${wide ? 'lg:max-w-6xl' : 'lg:max-w-3xl'}`}>
+          <div className="mx-auto flex min-h-full w-full flex-col px-4 pt-2 pb-6 lg:max-w-4xl lg:pt-6">
             <Outlet />
           </div>
         </main>
