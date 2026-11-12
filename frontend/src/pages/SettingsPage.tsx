@@ -16,7 +16,6 @@ import PageHeader from '../components/PageHeader'
 import Segmented from '../components/Segmented'
 import { useTour } from '../components/TourGate'
 import { savedName } from '../lib/displayName'
-import { USAGE_MODE_OPTIONS, useUsageMode } from '../lib/usageMode'
 
 const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Sun }[] = [
   { value: 'light', label: 'Paper', icon: Sun },
@@ -59,7 +58,6 @@ export default function SettingsPage() {
   const [editingName, setEditingName] = useState(false)
   const name = savedName(user)
   const initial = (name[0] ?? user?.email?.[0] ?? '?').toUpperCase()
-  const usage = useUsageMode()
 
   return (
     <div>
@@ -79,34 +77,6 @@ export default function SettingsPage() {
         <ListRow icon={UserRound} iconColor="var(--sb-text-muted)" soft label="Name" detail={name || 'Not set'} chevron onClick={() => setEditingName(true)} />
       </ListGroup>
       {editingName && <NameSheet initial={name} onClose={() => setEditingName(false)} />}
-
-      {usage.available && (
-        <ListGroup
-          title="Using MyConfía for"
-          footer={
-            usage.mode === 'work'
-              ? 'Shortcuts and wording are tuned for clients, colleagues and deadlines.'
-              : usage.mode === 'personal'
-                ? 'Wording is tuned for friends, family and everyday to-dos.'
-                : 'Work and personal wording side by side.'
-          }
-        >
-          <div className="px-4 py-3">
-            <Segmented
-              value={usage.mode}
-              onChange={(v) => updateSettings.mutate({ usage_mode: v })}
-              options={USAGE_MODE_OPTIONS.map(({ value, label, icon: Icon }) => ({
-                value,
-                label: (
-                  <>
-                    <Icon size={15} strokeWidth={1.8} /> {label}
-                  </>
-                ),
-              }))}
-            />
-          </div>
-        </ListGroup>
-      )}
 
       <ListGroup title="Appearance">
         <div className="px-4 py-3">

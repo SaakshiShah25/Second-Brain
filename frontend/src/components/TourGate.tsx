@@ -5,7 +5,6 @@ import { shouldAskName } from '../lib/displayName'
 import { useUsageMode } from '../lib/usageMode'
 import NameSheet from './NameSheet'
 import Tour from './Tour'
-import UsageModeSheet from './UsageModeSheet'
 import WelcomePrompt from './WelcomePrompt'
 
 // Auto-shows the onboarding tour once, for any account that hasn't seen
@@ -79,7 +78,6 @@ export default function TourGate({ children }: { children: ReactNode }) {
   return (
     <TourContext.Provider value={{ startTour: () => setManualOpen(true) }}>
       {children}
-      {needsChoice && <UsageModeSheet />}
       {showWelcome && <WelcomePrompt onStart={() => setWelcomeAccepted(true)} onSkip={handleDone} />}
       {showTour && <Tour onDone={handleDone} />}
       {askName && <NameSheet asking onClose={() => setNameAnswered(true)} />}
