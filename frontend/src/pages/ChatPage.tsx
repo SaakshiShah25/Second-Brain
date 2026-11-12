@@ -53,8 +53,7 @@ function formatPart(part: CapturePart, showCategory: boolean): string {
   if (part.tasks_created.length > 0) {
     lines.push('**Tasks:**')
     for (const t of part.tasks_created) {
-      const owner = t.owner === 'them' ? 'Someone else' : 'Me'
-      lines.push(`- ${t.description}${t.due_date ? ` _(due ${dueLabel(t.due_date, t.due_time)})_` : ''} — ${owner}`)
+      lines.push(`- ${t.description}${t.due_date ? ` _(due ${dueLabel(t.due_date, t.due_time)})_` : ''}`)
     }
   }
   return lines.join('\n\n')

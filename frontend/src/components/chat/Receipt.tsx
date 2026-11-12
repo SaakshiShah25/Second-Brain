@@ -37,7 +37,7 @@ export default function Receipt({ items, spaceId }: { items: CreatedItem[]; spac
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[0.9375rem]">{item.description}</span>
               <span className="flex items-center gap-1.5 text-[0.8125rem] text-text-muted">
-                <span className="truncate">{item.list_name ?? (item.owner === 'them' ? 'Tasks · waiting on them' : 'Tasks')}</span>
+                <span className="truncate">{item.list_name ?? 'Tasks'}</span>
                 {when && <span className="flex-shrink-0">· {when}</span>}
                 {item.repeat && (
                   <span className="flex flex-shrink-0 items-center gap-1">

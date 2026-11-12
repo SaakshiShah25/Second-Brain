@@ -171,7 +171,6 @@ function Section({
                 {t.description}
                 {t.list_name && <span className="text-text-muted"> → {t.list_name}</span>}
                 {t.due_date && <span className="text-text-muted"> · due {dueLabel(t.due_date, t.due_time)}</span>}
-                {t.owner === 'them' && <span className="text-them-task"> · someone else owes this</span>}
               </>
             ))}
           />

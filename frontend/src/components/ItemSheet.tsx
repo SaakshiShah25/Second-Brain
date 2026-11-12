@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeftRight, Bell, Check, ChevronRight, FolderInput, NotebookText, Trash2 } from 'lucide-react'
-import { useDeleteItem, useEditTask, useUpdateTaskFields, useUpdateTaskOwner, useUpdateTaskStatus } from '../api/tasks'
+import { Bell, Check, ChevronRight, FolderInput, NotebookText, Trash2 } from 'lucide-react'
+import { useDeleteItem, useEditTask, useUpdateTaskFields, useUpdateTaskStatus } from '../api/tasks'
 import { useMoveItem } from '../lib/useMoveItem'
 import { useInitiatives } from '../api/initiatives'
 import { useLists } from '../api/lists'
@@ -19,14 +19,12 @@ import { toast } from './Toast'
 import { Input, Label, Select, Textarea } from './fields'
 
 // One item, opened from any list or from Today: what it is, where it came from, and everything
-// you can do to it - tick it off, edit it (wording, date, time, repeat, list, detail), flip who
-// owes it, delete it.
+// you can do to it - tick it off, edit it (wording, date, time, repeat, list, detail), delete it.
 export default function ItemSheet({ task, onClose }: { task: Task; onClose: () => void }) {
   const navigate = useNavigate()
   const { data: lists = [] } = useLists()
   const editTask = useEditTask()
   const updateStatus = useUpdateTaskStatus()
-  const updateOwner = useUpdateTaskOwner()
   const deleteItem = useDeleteItem()
   const updateFields = useUpdateTaskFields()
   const { move, prompt: movePrompt } = useMoveItem()
@@ -246,17 +244,6 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
             <Check size={18} strokeWidth={2.4} />
             {task.status === 'done' ? 'Reopen' : task.repeat ? 'Done for now' : 'Mark done'}
           </Button>
-          {isTodo && (
-            <Button
-              size="lg"
-              block
-              disabled={updateOwner.isPending}
-              onClick={() => updateOwner.mutate({ taskId: task.id, owner: task.owner === 'them' ? 'me' : 'them' })}
-            >
-              <ArrowLeftRight size={17} strokeWidth={2} />
-              {task.owner === 'them' ? 'Actually, I owe this' : 'Actually, someone else owes this'}
-            </Button>
-          )}
           <Button variant="ghost" size="lg" block onClick={() => setConfirmDelete(true)}>
             <Trash2 size={17} strokeWidth={2} />
             Delete

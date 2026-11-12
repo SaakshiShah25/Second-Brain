@@ -52,7 +52,6 @@ export default function ItemRow({
       : dueLabel(task.due_date, task.due_time)
     : ''
   const facts = [
-    task.owner === 'them' && !list ? <span key="w" className="flex-shrink-0 text-them-task">Waiting</span> : null,
     when ? (
       <span key="d" className={`flex flex-shrink-0 items-center gap-1 whitespace-nowrap ${overdue ? 'font-medium text-danger' : ''}`}>
         {overdue && <TriangleAlert size={12} strokeWidth={2.2} />}
@@ -98,9 +97,9 @@ export default function ItemRow({
       >
         <span
           className={`flex h-[1.375rem] w-[1.375rem] items-center justify-center rounded-full border-2 transition-colors ${
-            done ? 'border-success bg-success text-white' : task.owner === 'them' && !list ? 'border-them-task' : priorityColor ? '' : 'border-text-faint'
+            done ? 'border-success bg-success text-white' : priorityColor ? '' : 'border-text-faint'
           }`}
-          style={!done && priorityColor && !(task.owner === 'them' && !list) ? { borderColor: priorityColor } : undefined}
+          style={!done && priorityColor ? { borderColor: priorityColor } : undefined}
         >
           {done && <Check size={13} strokeWidth={3} />}
         </span>

@@ -100,29 +100,6 @@ export function useUpdateTaskStatus() {
   })
 }
 
-export function useUpdateTaskOwner() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ taskId, owner }: { taskId: number; owner: TaskOwner }) =>
-      api.patch(`/api/tasks/${taskId}`, { owner }),
-    onMutate: async ({ taskId, owner }) => {
-      await queryClient.cancelQueries({ queryKey: ['tasks'] })
-      const previous = queryClient.getQueriesData<TasksResponse>({ queryKey: ['tasks'] })
-      queryClient.setQueriesData<TasksResponse>({ queryKey: ['tasks'] }, (old) =>
-        old ? { ...old, tasks: old.tasks.map((t) => (t.id === taskId ? { ...t, owner } : t)) } : old,
-      )
-      return { previous }
-    },
-    onError: (_err, _vars, context) => {
-      context?.previous.forEach(([queryKey, data]) => queryClient.setQueryData(queryKey, data))
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      queryClient.invalidateQueries({ queryKey: ['lists'] })
-    },
-  })
-}
-
 // Priority, reminder date and category of a task: changed on the card, so the list updates the instant you tap.
 export function useUpdateTaskFields() {
   const queryClient = useQueryClient()

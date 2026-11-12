@@ -151,7 +151,7 @@ export async function buildNotePdf(note: Interaction, items: Task[]): Promise<Fi
         doc.setDrawColor(INK)
         doc.lines([[2.5, 3], [5, -6.5]], MARGIN + 1.8, pdf.y + 8.2)
       }
-      const facts = [t.owner === 'them' ? 'waiting on them' : '', t.due_date ? `due ${dueLabel(t.due_date, t.due_time)}` : '']
+      const facts = [t.due_date ? `due ${dueLabel(t.due_date, t.due_time)}` : '']
         .filter(Boolean)
         .join(', ')
       text(clean(t.description) + (facts ? `  (${facts})` : ''), { indent: 16, gap: 2, color: t.status === 'done' ? MUTED : INK })
