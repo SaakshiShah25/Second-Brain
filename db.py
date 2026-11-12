@@ -856,6 +856,36 @@ def get_push_subscriptions(user_id: Optional[str] = None) -> list:
     return q.execute().data
 
 
+PUSH_PREF_COLUMNS = ("morning_on", "morning_time", "evening_on", "evening_time", "alarm_style")
+
+
+def push_prefs_supported() -> bool:
+    """True once push_subscription has the preference columns (scripts/migration_46_reminder_prefs.sql)."""
+    try:
+        get_client().table("push_subscription").select(",".join(PUSH_PREF_COLUMNS)).limit(1).execute()
+    except Exception:
+        return False
+    return True
+
+
+def get_push_prefs(user_id: str, endpoint: str) -> Optional[dict]:
+    """This device's summary times and alarm choice (the defaults when the migration hasn't run), or None when the
+    device isn't subscribed."""
+    rows = (get_client().table("push_subscription").select("*")
+            .eq("user_id", user_id).eq("endpoint", endpoint).execute().data)
+    if not rows:
+        return None
+    row = rows[0]
+    defaults = {"morning_on": True, "morning_time": "09:00", "evening_on": True, "evening_time": "17:00", "alarm_style": False}
+    return {k: row.get(k, defaults[k]) for k in PUSH_PREF_COLUMNS}
+
+
+def set_push_prefs(user_id: str, endpoint: str, fields: dict) -> None:
+    (get_client().table("push_subscription").update(
+        {**fields, "updated_at": datetime.now(timezone.utc).isoformat()})
+     .eq("user_id", user_id).eq("endpoint", endpoint).execute())
+
+
 def mark_push_sent(subscription_id: int, slot: str, local_date: str) -> None:
     """slot is '9am' or '5pm'."""
     get_client().table("push_subscription").update({f"last_{slot}": local_date}).eq("id", subscription_id).execute()

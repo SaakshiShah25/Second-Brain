@@ -6,6 +6,7 @@ import Toaster from './Toast'
 import ConnectionBanner from './ConnectionBanner'
 import { syncReminders } from '../lib/push'
 import NotificationPrompt from './NotificationPrompt'
+import AlarmOverlay from './AlarmOverlay'
 import Sheet from './Sheet'
 import { useInitiatives } from '../api/initiatives'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
@@ -257,6 +258,7 @@ export default function Layout() {
 
         <Toaster />
         <NotificationPrompt />
+        <AlarmOverlay />
         {help && (
           <Sheet onClose={() => setHelp(false)} title="Keyboard shortcuts">
             <ul className="flex flex-col divide-y divide-border">

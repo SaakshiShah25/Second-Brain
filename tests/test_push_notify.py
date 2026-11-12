@@ -241,3 +241,25 @@ def test_a_single_reminder_is_titled_with_the_task_and_shows_the_due_time():
                                      {"id": 2, "description": "B", "due_date": None}], "2026-10-28")
     assert "A (due 2026-10-30 at 18:00)" in two["body"]
     assert pn.build_reminder_message([], "2026-10-28") is None
+
+
+# ---- a device can pick when its summaries arrive, and make reminders ring like an alarm ----
+
+def test_a_device_can_move_or_switch_off_its_summaries():
+    early = {"morning_time": "07:30", "evening_on": False}
+    assert pn.due_slot("Asia/Kolkata", utc(2, 0), early) == ("9am", "2026-10-28")      # 07:30 local: the morning slot, at 07:30
+    assert pn.due_slot("Asia/Kolkata", utc(1, 59), early) is None                       # a minute before it
+    assert pn.due_slot("Asia/Kolkata", utc(3, 30), early) is None                       # 9 AM is no longer a slot for this device
+    assert pn.due_slot("Asia/Kolkata", utc(11, 30), early) is None                      # evening switched off
+    late = {"evening_time": "21:15"}
+    assert pn.due_slot("Asia/Kolkata", utc(15, 45), late) == ("5pm", "2026-10-28")      # 21:15 local
+    assert pn.due_slot("Asia/Kolkata", utc(3, 30), None) == ("9am", "2026-10-28")       # no preferences: 9 AM as always
+    assert pn.slot_times({"morning_time": "garbage"}) == [("9am", 540), ("5pm", 1020)]  # unreadable falls back to the usual
+
+
+def test_alarm_style_devices_get_alarms_for_task_reminders_only():
+    reminder = {"title": "Reminder", "body": "x", "task_ids": [7]}
+    assert pn.for_device({"alarm_style": True}, reminder)["alarm"] is True
+    assert "alarm" not in pn.for_device({"alarm_style": False}, reminder)
+    assert "alarm" not in pn.for_device({"alarm_style": True}, {"title": "Good morning", "body": "x"})   # a summary is never an alarm
+    assert "alarm" not in pn.for_device({}, reminder)

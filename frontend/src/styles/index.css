@@ -305,6 +305,15 @@ body {
   50% { transform: translateX(-3px); opacity: 0.34; }
 }
 
+/* The bell on the alarm card: a quick shake, like a ringing bell. */
+@keyframes alarm-ring {
+  0%, 100% { transform: rotate(0); }
+  20% { transform: rotate(-14deg); }
+  40% { transform: rotate(12deg); }
+  60% { transform: rotate(-8deg); }
+  80% { transform: rotate(6deg); }
+}
+
 @keyframes typing-bounce {
   0%, 60%, 100% {
     transform: translateY(0);

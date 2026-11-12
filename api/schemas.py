@@ -131,6 +131,16 @@ class PushUnsubscribeRequest(BaseModel):
     endpoint: str = Field(..., max_length=1000)
 
 
+class PushPrefsRequest(BaseModel):
+    """One device's reminder choices. Any field left out stays as it was."""
+    endpoint: str = Field(..., max_length=1000)
+    morning_on: Optional[bool] = None
+    morning_time: Optional[str] = Field(None, max_length=8)   # "HH:MM", the device's local time
+    evening_on: Optional[bool] = None
+    evening_time: Optional[str] = Field(None, max_length=8)
+    alarm_style: Optional[bool] = None
+
+
 class UserPreferenceUpdate(BaseModel):
     theme: Optional[str] = None                        # 'dark' | 'light'
     font_size: Optional[str] = None                     # 'small' | 'default' | 'large'

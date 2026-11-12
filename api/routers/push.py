@@ -20,7 +20,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 import db
 import push_notify
 from api.auth import get_current_user_id
-from api.schemas import PushSubscribeRequest, PushUnsubscribeRequest
+import date_utils
+from api.schemas import PushPrefsRequest, PushSubscribeRequest, PushUnsubscribeRequest
 
 router = APIRouter()
 
@@ -52,10 +53,45 @@ def unsubscribe(body: PushUnsubscribeRequest, user_id: str = Depends(get_current
     return {"ok": True}
 
 
-@router.post("/test")
-def send_test(user_id: str = Depends(get_current_user_id)):
+@router.get("/prefs")
+def get_prefs(endpoint: str, user_id: str = Depends(get_current_user_id)):
+    """This device's summary times and alarm choice (defaults until migration 46 has run)."""
     _require_configured()
-    sent = push_notify.send_to_user(user_id)
+    prefs = db.get_push_prefs(user_id, endpoint)
+    if prefs is None:
+        raise HTTPException(404, "This device isn't subscribed - turn reminders on first.")
+    return prefs
+
+
+@router.put("/prefs")
+def put_prefs(body: PushPrefsRequest, user_id: str = Depends(get_current_user_id)):
+    _require_configured()
+    fields = {}
+    for name in ("morning_time", "evening_time"):
+        value = getattr(body, name)
+        if value is not None:
+            valid = date_utils.to_valid_time(value)
+            if not valid:
+                raise HTTPException(400, f"{name} must look like 07:30")
+            fields[name] = valid[:5]
+    for name in ("morning_on", "evening_on", "alarm_style"):
+        value = getattr(body, name)
+        if value is not None:
+            fields[name] = value
+    if not fields:
+        return db.get_push_prefs(user_id, body.endpoint) or {}
+    if not db.push_prefs_supported():
+        raise HTTPException(503, "Choosing reminder times isn't available yet - run scripts/migration_46_reminder_prefs.sql first.")
+    if db.get_push_prefs(user_id, body.endpoint) is None:
+        raise HTTPException(404, "This device isn't subscribed - turn reminders on first.")
+    db.set_push_prefs(user_id, body.endpoint, fields)
+    return db.get_push_prefs(user_id, body.endpoint)
+
+
+@router.post("/test")
+def send_test(alarm: bool = False, user_id: str = Depends(get_current_user_id)):
+    _require_configured()
+    sent = push_notify.send_to_user(user_id, alarm=alarm)
     if sent == 0:
         raise HTTPException(409, "No device is subscribed yet - turn reminders on first.")
     return {"ok": True, "sent": sent}
