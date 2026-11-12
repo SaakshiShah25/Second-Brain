@@ -21,6 +21,7 @@ import asyncio
 import json
 import re
 import time
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from groq import RateLimitError
@@ -49,6 +50,25 @@ _OUT_OF_SCOPE_MESSAGE = (
     "recalling your own notes and tasks. If you meant it as a note or a to-do for yourself, "
     "tap the button below."
 )
+
+
+_QUESTION_HERE_MESSAGE = (
+    "That looks like a question - ask it on the Home tab. This box saves what you type or say as tasks and notes."
+)
+
+
+def _route_without_model(body: ChatRequest) -> Optional[str]:
+    """Where a message goes when no model is needed to decide: "capture" (saved), or "question_here" (the Today box
+    was given an obvious question). None means the usual model-assisted classification applies."""
+    if body.as_note:      # "Save it as a note instead": no need to decide again
+        return "capture"
+    if body.save_only:    # the Today box: never answers; only an obvious question (by rules) is turned away
+        return "question_here" if intent.fast_classify(body.text) == "ask" else "capture"
+    return None
+
+
+def _question_here_reply() -> dict:
+    return {"intent": "blocked", "status": "answered", "reason": "question", "answer": _QUESTION_HERE_MESSAGE}
 
 
 def _blocked_reply(moderation_result: dict) -> dict:
@@ -153,7 +173,10 @@ async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_c
         return await _handle_command(user_id, body, request, cmd)
 
     with step("intent_classify"):
-        detected = "capture" if body.as_note else await run_in_threadpool(intent.classify, body.text)
+        detected = _route_without_model(body) or await run_in_threadpool(intent.classify, body.text)
+
+    if detected == "question_here":
+        return _question_here_reply()
 
     if detected == "out_of_scope":
         print(f"[timing] chat_total: {time.perf_counter() - t_start:.2f}s")
@@ -233,11 +256,14 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
             await queue.put(("result", await _handle_command(user_id, body, request, cmd, on_stage=push_stage)))
             return
 
-        if body.as_note:  # "Save it as a note instead": no need to decide again
-            detected = "capture"
-        else:
+        detected = _route_without_model(body)
+        if detected is None:
             await push_stage("classifying")
             detected = await run_in_threadpool(intent.classify, body.text)
+
+        if detected == "question_here":
+            await queue.put(("result", _question_here_reply()))
+            return
 
         if detected == "out_of_scope":
             await queue.put((

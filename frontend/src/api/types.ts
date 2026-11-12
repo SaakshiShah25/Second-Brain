@@ -188,7 +188,7 @@ export type ChatAskResult = { intent: 'ask' } & AskResult
 export interface ChatBlockedResult {
   intent: 'blocked'
   status: 'answered'
-  reason: 'unsafe' | 'out_of_scope' | 'unavailable'
+  reason: 'unsafe' | 'out_of_scope' | 'unavailable' | 'question'
   answer: string
 }
 // "Create a reading list in Personal" / "make a space called Health": an instruction to the app, carried out. `capture`

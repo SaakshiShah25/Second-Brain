@@ -2,10 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { ListTodo, MapPin, MessageCircleQuestion, Mic, SquarePen, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useChat } from '../api/chat'
-import { api, ApiError } from '../api/client'
+import { ApiError } from '../api/client'
 import { useInitiatives } from '../api/initiatives'
 import { showError } from '../lib/errorDialog'
-import { useTranscribe } from '../api/voice'
 import type { CapturePart, CaptureSavedResult, ChatMessage, ChatResult } from '../api/types'
 import ConfiaLogo from '../components/ConfiaLogo'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -15,7 +14,8 @@ import ChatBubble from '../components/chat/ChatBubble'
 import TypingIndicator from '../components/chat/TypingIndicator'
 import ChatInput, { type ChatInputHandle } from '../components/chat/ChatInput'
 import { useChatSession } from '../chat/ChatSessionContext'
-import { useLiveTranscript } from '../lib/useLiveTranscript'
+import { deleteCapture } from '../lib/undoCapture'
+import { useVoiceInput } from '../lib/useVoiceInput'
 import { dueLabel } from '../lib/dates'
 import { notePoints } from '../lib/initiativeFilter'
 import { isOffline } from '../lib/connection'
@@ -28,11 +28,6 @@ const STARTER_TINT = 'bg-accent-soft text-accent'
 // The chips sit over the scrolling chat: a see-through tint lets the words behind show through,
 // so the tint is mixed into the page colour to make an opaque one.
 const SOLID_CHIP = { background: 'color-mix(in srgb, var(--sb-accent) 14%, var(--sb-bg))' }
-
-// "Something went wrong: Error: Couldn't reach…" reads badly - just the message.
-function errorText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
 
 // What to tell the user about one part of what they logged: where it was filed, its key points, then its
 // decisions, concerns and tasks (each fact is shown once - extraction keeps them from repeating).
@@ -85,9 +80,6 @@ function formatSavedMessage(result: CaptureSavedResult): string {
 export default function ChatPage() {
   const { messages, setMessages } = useChatSession()
   const [inputText, setInputText] = useState('')
-  const [isRecording, setIsRecording] = useState(false)
-  const [isPaused, setIsPaused] = useState(false)
-  const cancelledRef = useRef(false) // set when the user discards a recording instead of finishing it
   const [isBusy, setIsBusy] = useState(false)
   const [stage, setStage] = useState<string | null>(null)
   const [selectedInitiativeId, setSelectedInitiativeId] = useState<number | null>(null)
@@ -99,19 +91,23 @@ export default function ChatPage() {
   const usage = useUsageMode()
   const queryClient = useQueryClient()
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
   const scrollAnchorRef = useRef<HTMLDivElement>(null)
   const chatInputRef = useRef<ChatInputHandle>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   const chatMutation = useChat()
-  const transcribe = useTranscribe()
-  // Live "types out as you speak" preview while recording (see
-  // useLiveTranscript.ts) - a browser-native best-effort layer on top of
-  // the actual recording; Whisper's transcript (below) still replaces
-  // this with a more accurate final version the moment recording stops.
-  const liveTranscript = useLiveTranscript(setInputText)
+  // Recording, pausing, cancelling and Whisper transcription - shared with the Today box (lib/useVoiceInput.ts).
+  // The transcript goes into the input for the user to review; it is never sent on its own.
+  const voice = useVoiceInput({
+    setText: setInputText,
+    onTranscript: (transcript) => {
+      setInputText(transcript)
+      chatInputRef.current?.focus()
+    },
+    onError: (message) => appendMessage('assistant', message, { status: true }),
+    onBusyChange: setIsBusy,
+  })
+  const { isRecording, isPaused } = voice
 
   // Scrolls Layout's own scroll container all the way down, rather than
   // scrollIntoView on the anchor - the composer is sticky over the bottom
@@ -161,14 +157,7 @@ export default function ChatPage() {
   async function undoCapture(index: number) {
     const capture = messages[index]?.capture
     if (!capture || messages[index].undone) return
-    try {
-      await Promise.all(capture.parts.flatMap((p) => p.tasks_created.map((t) => api.delete(`/api/tasks/${t.id}`))))
-      await Promise.all(capture.parts.filter((p) => p.interaction_id != null).map((p) => api.delete(`/api/notes/${p.interaction_id}`)))
-    } finally {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      queryClient.invalidateQueries({ queryKey: ['notes'] })
-      queryClient.invalidateQueries({ queryKey: ['initiatives'] })
-    }
+    await deleteCapture(capture, queryClient)
     setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, undone: true } : m)))
   }
 
@@ -240,91 +229,8 @@ export default function ChatPage() {
     abortControllerRef.current?.abort()
   }
 
-  async function startRecording() {
-    let stream: MediaStream
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    } catch {
-      // Mic permission denied, no microphone available, or the browser/
-      // OS blocked it outright (e.g. Android's system permission dialog
-      // was dismissed) - previously this rejected silently with no
-      // feedback at all, since getUserMedia() was awaited with nothing
-      // to catch it. A clear message here matters doubly on the Android
-      // TWA wrapper, where a denied permission is easy to run into on
-      // first use.
-      appendMessage(
-        'assistant',
-        "Couldn't access your microphone - check that this app has microphone permission, then try again.",
-        { status: true },
-      )
-      return
-    }
-    const recorder = new MediaRecorder(stream)
-    chunksRef.current = []
-    setInputText('')
-    recorder.ondataavailable = (e) => chunksRef.current.push(e.data)
-    recorder.onstop = async () => {
-      liveTranscript.stop()
-      stream.getTracks().forEach((t) => t.stop())
-      if (cancelledRef.current) {  // discarded: nothing is transcribed, nothing is kept
-        cancelledRef.current = false
-        chunksRef.current = []
-        return
-      }
-      const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
-      setIsBusy(true)
-      try {
-        const { transcript } = await transcribe.mutateAsync(blob)
-        // Whisper's transcript replaces whatever the live browser preview
-        // showed - it's the more accurate, authoritative result. Populate
-        // the input rather than auto-sending, so the user can review/edit
-        // a misheard word before it goes anywhere.
-        setInputText(transcript)
-        chatInputRef.current?.focus()
-      } catch (err) {
-        appendMessage('assistant', `Voice transcription failed: ${errorText(err)}`, { status: true })
-      } finally {
-        setIsBusy(false)
-      }
-    }
-    recorder.start()
-    liveTranscript.start()
-    mediaRecorderRef.current = recorder
-    setIsRecording(true)
-  }
-
-  function stopRecording() {
-    mediaRecorderRef.current?.stop()
-    setIsRecording(false)
-    setIsPaused(false)
-  }
-
-  function pauseRecording() {
-    const recorder = mediaRecorderRef.current
-    if (!recorder || recorder.state !== 'recording') return
-    recorder.pause()
-    liveTranscript.stop() // the live words are only a preview; the real transcript comes at the end
-    setIsPaused(true)
-  }
-
-  function resumeRecording() {
-    const recorder = mediaRecorderRef.current
-    if (!recorder || recorder.state !== 'paused') return
-    recorder.resume()
-    liveTranscript.start()
-    setIsPaused(false)
-  }
-
-  function cancelRecording() {
-    cancelledRef.current = true
-    mediaRecorderRef.current?.stop()
-    setIsRecording(false)
-    setIsPaused(false)
-    setInputText('')
-  }
-
   const hasPending = false
-  const showTyping = isBusy && !hasPending && !isRecording && !transcribe.isPending
+  const showTyping = isBusy && !hasPending && !isRecording && !voice.isTranscribing
   const isEmpty = messages.length === 0 && !hasPending
 
   // Starters for the empty state - each one is a real shortcut into the
@@ -336,17 +242,17 @@ export default function ChatPage() {
   }
   const starters = {
     work: [
-      { icon: Mic, title: 'Log a meeting', body: 'Talk through what was said and agreed', onClick: () => startRecording() },
+      { icon: Mic, title: 'Log a meeting', body: 'Talk through what was said and agreed', onClick: () => voice.start() },
       { icon: ListTodo, title: 'Add a task', body: '“Send the deck by 6pm today”', onClick: () => prefill('Send ') },
       { icon: MessageCircleQuestion, title: 'Ask your notes', body: '“What did I note about…”', onClick: () => prefill('What did I note about ') },
     ],
     personal: [
-      { icon: Mic, title: 'Capture a thought', body: 'Say it out loud — I’ll sort it', onClick: () => startRecording() },
+      { icon: Mic, title: 'Capture a thought', body: 'Say it out loud — I’ll sort it', onClick: () => voice.start() },
       { icon: ListTodo, title: 'Add a reminder', body: '“Call the plumber tomorrow at 5pm”', onClick: () => prefill('Call ') },
       { icon: MessageCircleQuestion, title: 'Ask your notes', body: '“What’s coming up this week?”', onClick: () => prefill('What’s coming up this week?') },
     ],
     both: [
-      { icon: Mic, title: 'Talk it through', body: 'Record what happened or what’s on your mind', onClick: () => startRecording() },
+      { icon: Mic, title: 'Talk it through', body: 'Record what happened or what’s on your mind', onClick: () => voice.start() },
       { icon: ListTodo, title: 'Add a task', body: '“Pay the invoice by Friday”', onClick: () => prefill('Pay ') },
       { icon: MessageCircleQuestion, title: 'Ask your notes', body: '“What’s overdue?”', onClick: () => prefill('What’s overdue?') },
     ],
@@ -483,11 +389,11 @@ export default function ChatPage() {
             isBusy={isBusy}
             onStop={stopRequest}
             isRecording={isRecording}
-            onToggleRecord={isRecording ? stopRecording : startRecording}
+            onToggleRecord={isRecording ? voice.stop : voice.start}
             isPaused={isPaused}
-            onPauseRecord={pauseRecording}
-            onResumeRecord={resumeRecording}
-            onCancelRecord={cancelRecording}
+            onPauseRecord={voice.pause}
+            onResumeRecord={voice.resume}
+            onCancelRecord={voice.cancel}
             initiatives={initiativeList}
             selectedInitiativeId={selectedInitiativeId}
             onSelectInitiative={setSelectedInitiativeId}

@@ -9,6 +9,7 @@ import InitiativeBar from '../components/InitiativeBar'
 import ItemRow from '../components/ItemRow'
 import ItemSheet from '../components/ItemSheet'
 import PageHeader from '../components/PageHeader'
+import TodayComposer from '../components/TodayComposer'
 import QuickAdd from '../components/QuickAdd'
 import { useConnection } from '../lib/connection'
 import { isoLocal } from '../lib/dates'
@@ -209,7 +210,7 @@ export default function TodayPage() {
 
       {sheet.active && <ItemSheet task={sheet.active} onClose={sheet.close} />}
 
-      <InitiativeBar counts={openCountsByInitiative(everything)} scope="today" />
+      <InitiativeBar counts={openCountsByInitiative(everything)} scope="today" search={<TodayComposer />} />
     </div>
     </DragToSpace>
   )

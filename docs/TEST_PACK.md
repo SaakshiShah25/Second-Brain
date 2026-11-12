@@ -78,6 +78,14 @@ On the Tasks tab each open task has a **flag** and a **bell**:
 - Leave Today and come back: it stays on the tab you were on (Upcoming / Anytime).
 - Log a note, then open Today: the new tasks are there straight away (they are refetched in the background when the note is saved).
 
+**The box at the foot of Today** (same input as Home, but it only saves):
+- Type `Pay the electricity bill tomorrow` and send: a card above the box shows what was filed (space, the to-do and its date, with Change / Undo), and the to-do appears in the list behind it. The card tidies itself away after ~15 seconds.
+- **Undo** on the card removes the note and its to-do; the list and the tab counts update.
+- Type a question (`What did I note about the leave?`): nothing is saved; a notice says to ask it on the Home tab, and your text stays in the box.
+- Say something with the **mic**: the transcript lands in the box for you to read and edit, and is only saved when you press send. **Pause** and **cancel** work as on Home.
+- **+** lets you choose the space for the next one; `Create a reading list called Books` still works as an instruction.
+- Offline: the text stays in the box with a notice instead of being lost.
+
 ### Your wording is kept
 
 `Apply for 4th December leave using AskHR app` is saved exactly like that (not "Apply for leave on 4th December using AskHR app"): only wrapper phrases ("remind me to...") and the deadline words are dropped, never reworded or reordered.

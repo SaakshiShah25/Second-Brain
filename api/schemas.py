@@ -51,6 +51,10 @@ class ChatRequest(BaseModel):
     # "Save it as a note instead" after the app mistook a to-do for a request to the assistant:
     # skips intent classification and logs the text as a note (moderation still applies).
     as_note: bool = False
+    # The Today screen's box: save whatever was typed or said (tasks and notes), never answer a question. Skips the
+    # model call that decides note-or-question; an obvious question (matched by rules) is told to go to Home instead.
+    # Commands to the app ("create a list...") are still carried out.
+    save_only: bool = False
 
 
 class InteractionUpdate(BaseModel):

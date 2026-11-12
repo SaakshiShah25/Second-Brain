@@ -24,6 +24,8 @@ export interface ChatBody {
   initiativeId?: number | null
   // Skip the "note or question?" decision and save the text as a note.
   asNote?: boolean
+  // The Today box: save what was typed or said, never answer a question (the server tells questions to go to Home).
+  saveOnly?: boolean
 }
 
 // `signal` lets the caller cancel an in-flight send (the Stop button) -
@@ -49,7 +51,7 @@ export function useChat() {
     }) =>
       api.postStream<ChatResult>(
         '/api/chat/stream',
-        { text: body.text, history: body.history, geo_lat: body.geoLat, geo_lng: body.geoLng, initiative_id: body.initiativeId ?? null, as_note: body.asNote ?? false },
+        { text: body.text, history: body.history, geo_lat: body.geoLat, geo_lng: body.geoLng, initiative_id: body.initiativeId ?? null, as_note: body.asNote ?? false, save_only: body.saveOnly ?? false },
         onStage ?? (() => {}),
         signal,
       ),
