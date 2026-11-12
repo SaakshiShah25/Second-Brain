@@ -5,6 +5,7 @@ import type { Task } from '../api/types'
 import { datedLabel, dueLabel, shortDate, timeLabel } from '../lib/dates'
 import { isOverdue, repeatLabel } from '../lib/items'
 import { DEFAULT_REMIND_TIME, PRIORITIES, priorityOf } from '../lib/taskOptions'
+import ConfirmDialog from './ConfirmDialog'
 import SwipeToRemove from './SwipeToRemove'
 import { beforeLabel, ReminderSheet } from './TaskOptions'
 import { toast } from './Toast'
@@ -36,6 +37,8 @@ export default function ItemRow({
 }) {
   const updateFields = useUpdateTaskFields()
   const [reminding, setReminding] = useState(false)
+  // Swiping the row away, or its bin in edit mode, asks "Are you sure?" first.
+  const [confirmRemove, setConfirmRemove] = useState(false)
   const overdue = isOverdue(task)
   // A task you marked high or low colours its tick circle (normal keeps the plain grey).
   const priority = priorityOf(task)
@@ -125,7 +128,7 @@ export default function ItemRow({
       {onDelete && (
         <button
           type="button"
-          onClick={() => onDelete(task)}
+          onClick={() => setConfirmRemove(true)}
           aria-label={`Remove ${task.description}`}
           className="pressable -m-2 flex-shrink-0 p-2 text-text-faint hover:text-danger"
         >
@@ -136,7 +139,21 @@ export default function ItemRow({
   )
   return (
     <>
-      {onSwipeRemove ? <SwipeToRemove onRemove={() => onSwipeRemove(task)}>{row}</SwipeToRemove> : row}
+      {onSwipeRemove ? <SwipeToRemove onRemove={() => setConfirmRemove(true)}>{row}</SwipeToRemove> : row}
+      {confirmRemove && (
+        <div onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+          <ConfirmDialog
+            title="Delete this?"
+            message={`“${task.description}” will be deleted${task.repeat ? ', along with its repeats' : ''}. This cannot be undone.`}
+            confirmLabel="Delete"
+            onCancel={() => setConfirmRemove(false)}
+            onConfirm={() => {
+              setConfirmRemove(false)
+              ;(onSwipeRemove ?? onDelete)?.(task)
+            }}
+          />
+        </div>
+      )}
       {reminding && (
         // Events from a sheet bubble up through React to the row's drag handle; keep them from starting a drag.
         <div onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>

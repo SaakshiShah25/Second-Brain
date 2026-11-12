@@ -5,6 +5,7 @@ import type { CreatedItem } from '../../api/types'
 import { datedLabel, timeLabel } from '../../lib/dates'
 import { itemPath, repeatLabel } from '../../lib/items'
 import { useOpenSpace } from '../../lib/useOpenSpace'
+import ConfirmDialog from '../ConfirmDialog'
 
 // What a capture just saved as items, one tappable line per item - "🎬 Oppenheimer → Movies",
 // "☐ Pay Rahul → Tasks · Friday" - so the user can see where everything went and fix anything
@@ -57,22 +58,35 @@ export default function Receipt({ items, spaceId }: { items: CreatedItem[]; spac
 export function UndoButton({ label, onUndo }: { label: string; onUndo: () => Promise<void> }) {
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [asking, setAsking] = useState(false)
+  async function undo() {
+    setBusy(true)
+    setFailed(false)
+    try {
+      await onUndo()
+    } catch {
+      setFailed(true)
+    } finally {
+      setBusy(false)
+      setAsking(false)
+    }
+  }
   return (
     <div>
+      {asking && (
+        <ConfirmDialog
+          title="Are you sure?"
+          message={`${label.replace(/^Undo - /, 'This will ')}. This cannot be undone.`}
+          confirmLabel="Yes, undo it"
+          busy={busy}
+          onCancel={() => setAsking(false)}
+          onConfirm={undo}
+        />
+      )}
       <button
         type="button"
         disabled={busy}
-        onClick={async () => {
-          setBusy(true)
-          setFailed(false)
-          try {
-            await onUndo()
-          } catch {
-            setFailed(true)
-          } finally {
-            setBusy(false)
-          }
-        }}
+        onClick={() => setAsking(true)}
         className="pressable flex items-center gap-1.5 rounded-full border border-border-strong bg-bg-card px-3.5 py-1.5 text-[0.8125rem] font-medium text-text-muted disabled:opacity-50"
       >
         <Undo2 size={14} strokeWidth={2} />

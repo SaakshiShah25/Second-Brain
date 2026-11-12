@@ -3,6 +3,7 @@ import { CircleSlash } from 'lucide-react'
 import { useCreateInitiative, useInitiatives } from '../api/initiatives'
 import Button from './Button'
 import CategoryBubbles from './CategoryBubbles'
+import ConfirmDialog from './ConfirmDialog'
 import Sheet from './Sheet'
 import { Input } from './fields'
 
@@ -25,6 +26,9 @@ export default function CategorySheet({
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // Picking a different space asks "Move to X?" first.
+  const [confirming, setConfirming] = useState<number | null | undefined>(undefined)
+  const nameOf = (id: number | null) => (id === null ? 'Others' : (initiatives.find((i) => i.id === id)?.name ?? 'that space'))
 
   async function pick(id: number | null) {
     if (busy) return
@@ -60,7 +64,7 @@ export default function CategorySheet({
       <CategoryBubbles
         initiatives={initiatives}
         selectedId={currentId}
-        onSelect={pick}
+        onSelect={(id) => (id === currentId ? pick(id) : setConfirming(id))}
         noneLabel="Others"
         noneIcon={CircleSlash}
         onCreate={() => setNaming(true)}
@@ -81,6 +85,18 @@ export default function CategorySheet({
         </div>
       )}
       {error && <p className="mt-3 text-[0.8125rem] text-danger">{error}</p>}
+      {confirming !== undefined && (
+        <ConfirmDialog
+          tone="primary"
+          title={`Move to ${nameOf(confirming)}?`}
+          message={`This will be filed under ${nameOf(confirming)} instead.`}
+          confirmLabel="Move"
+          busy={busy}
+          busyLabel="Moving…"
+          onCancel={() => setConfirming(undefined)}
+          onConfirm={() => pick(confirming)}
+        />
+      )}
     </Sheet>
   )
 }

@@ -10,7 +10,6 @@ const LOCK = 10 // px of sideways movement before it counts as a swipe
 
 export default function SwipeToRemove({ onRemove, label = 'Remove', children }: { onRemove: () => void; label?: string; children: ReactNode }) {
   const [dx, setDx] = useState(0)
-  const [leaving, setLeaving] = useState(false)
   const [dragging, setDragging] = useState(false)
   const start = useRef<{ x: number; y: number; id: number } | null>(null)
   const swiping = useRef(false)
@@ -23,17 +22,13 @@ export default function SwipeToRemove({ onRemove, label = 'Remove', children }: 
     if (swiping.current) wasSwipe.current = true
     swiping.current = false
     setDragging(false)
-    if (commit && dx > width * THRESHOLD) {
-      setLeaving(true)
-      setDx(width)
-      window.setTimeout(onRemove, 180)
-    } else {
-      setDx(0)
-    }
+    setDx(0)
+    // Past the threshold: the row springs back and the caller asks "Are you sure?" - it only goes once that is confirmed.
+    if (commit && dx > width * THRESHOLD) onRemove()
   }
 
   return (
-    <div ref={box} className="relative overflow-hidden" style={{ transition: leaving ? 'opacity 0.18s' : undefined, opacity: leaving ? 0 : 1 }}>
+    <div ref={box} className="relative overflow-hidden">
       <div className="absolute inset-0 flex items-center bg-danger pl-5 text-white" aria-hidden="true">
         <span className="flex items-center gap-2 text-[0.875rem] font-semibold" style={{ opacity: dx > 24 ? 1 : 0 }}>
           <Trash2 size={18} strokeWidth={2.2} />
