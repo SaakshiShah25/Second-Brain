@@ -9,6 +9,7 @@ import InteractionCard, { ItemList } from './InteractionCard'
 import InitiativeThings, { SectionHeader, thingCounts } from './InitiativeThings'
 import { noteCounts, noteItems, noteSections } from '../lib/noteSections'
 import { shortDate } from '../lib/dates'
+import { useSectionOrder } from '../lib/useSectionOrder'
 
 type Ini = { id: number; name: string; color: string | null } | null
 
@@ -89,6 +90,76 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
   const style = getInitiativeStyle(initiative)
   const sections = noteSections(notes)
   const spaceName = initiative?.name ?? 'Others'
+  const { order, move } = useSectionOrder(initiative?.id ?? null)
+
+  const notesSection = (mover?: { canUp: boolean; canDown: boolean; onUp: () => void; onDown: () => void }) => (
+        <section key="notes" className="mb-6" aria-label="Notes">
+    <SectionHeader
+      icon={NotebookText}
+      title="Notes"
+      count={notes.length}
+      add={<AddToSpace spaceId={initiative?.id ?? null} spaceName={spaceName} kind="note" />}
+      editing={editingNotes}
+      onEdit={notes.length ? () => setEditingNotes((v) => !v) : undefined}
+      editLabel="Edit notes"
+      mover={mover}
+    />
+    {!editingNotes && (
+      <div className="rounded-2xl border border-border bg-bg-card p-4">
+        {sections.map((s, n) => (
+          <div key={s.key} className={n === 0 ? '' : 'mt-3'}>
+            {s.title && (
+              <h3 className="mb-2 text-[0.8125rem] font-semibold uppercase tracking-wide" style={{ color: style?.color }}>
+                {s.title}
+              </h3>
+            )}
+            {s.groups.map((g) => (
+              <div key={g.kind} className="mb-2.5 last:mb-0">
+                {g.kind !== 'point' && (
+                  <p className="mb-1 text-[0.9375rem] font-bold" style={{ color: style?.color }}>
+                    {g.label}:
+                  </p>
+                )}
+                <ul className="flex flex-col gap-1">
+                  {g.items.map((it, i) => (
+                    <li key={i}>
+                      <button
+                        type="button"
+                        onClick={() => it.noteId && setOpenNoteId(it.noteId)}
+                        className="pressable flex w-full items-baseline gap-2.5 text-left text-[0.9375rem] leading-snug"
+                      >
+                        <span className="mt-[0.5rem] h-1.5 w-1.5 flex-shrink-0 translate-y-[-0.1rem] rounded-full bg-text-faint" />
+                        <span className="min-w-0 flex-1">{it.text}</span>
+                        {it.date && <span className="flex-shrink-0 text-[0.75rem] text-text-faint">{shortDate(it.date)}</span>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        ))}
+        {sections.length === 0 && (
+          <p className="text-[0.9375rem] text-text-muted">
+            {notes.length === 0 ? 'No notes here yet - tap + to write one.' : 'No key points were extracted - tap the pencil to see the notes as written.'}
+          </p>
+        )}
+      </div>
+    )}
+    {editingNotes && (
+      <>
+        <p className="mb-2 px-1 text-[0.8125rem] text-text-muted">Editing notes: tap a note to change or delete it. Tap ✓ when done.</p>
+        <div className="flex flex-col gap-2.5">
+          {[...notes]
+            .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.id - a.id)
+            .map((n) => (
+              <InteractionCard key={n.id} interaction={n} variant="source" />
+            ))}
+        </div>
+      </>
+    )}
+  </section>
+  )
 
   return (
     <div>
@@ -114,17 +185,15 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
           )}
           <span className="ml-auto flex items-center gap-2">
             <ExportInitiativeButton name={spaceName} notes={notes} />
-            {initiative && (
-              <button
-                type="button"
-                onClick={() => setEditingSpace((v) => !v)}
-                aria-label={editingSpace ? 'Done editing the space' : 'Edit this space'}
-                aria-pressed={editingSpace}
-                className={`pressable flex h-9 w-9 items-center justify-center rounded-full ${editingSpace ? 'bg-accent-soft text-accent' : 'text-text-muted'}`}
-              >
-                {editingSpace ? <Check size={18} strokeWidth={2.4} /> : <Pencil size={17} strokeWidth={2} />}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setEditingSpace((v) => !v)}
+              aria-label={editingSpace ? 'Done editing the space' : 'Edit this space'}
+              aria-pressed={editingSpace}
+              className={`pressable flex h-9 w-9 items-center justify-center rounded-full ${editingSpace ? 'bg-accent-soft text-accent' : 'text-text-muted'}`}
+            >
+              {editingSpace ? <Check size={18} strokeWidth={2.4} /> : <Pencil size={17} strokeWidth={2} />}
+            </button>
             {onCollapse && (
               <button
                 type="button"
@@ -138,79 +207,21 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
           </span>
         </div>
         <p className="mt-2 pl-[3.125rem] text-[0.8125rem] text-text-faint">
-          {editingSpace ? 'Rename the space, then tap ✓.' : [notes.length ? noteCounts(notes) : '', thingCounts(items)].filter(Boolean).join(' · ') || 'Nothing yet'}
+          {editingSpace ? (initiative ? 'Rename the space, or move Notes, To-dos and Lists up and down. Tap ✓ when done.' : 'Move Notes, To-dos and Lists up and down. Tap ✓ when done.') : [notes.length ? noteCounts(notes) : '', thingCounts(items)].filter(Boolean).join(' · ') || 'Nothing yet'}
         </p>
       </div>
 
-      {/* Notes. */}
-      <section className="mb-6" aria-label="Notes">
-        <SectionHeader
-          icon={NotebookText}
-          title="Notes"
-          count={notes.length}
-          add={<AddToSpace spaceId={initiative?.id ?? null} spaceName={spaceName} kind="note" />}
-          editing={editingNotes}
-          onEdit={notes.length ? () => setEditingNotes((v) => !v) : undefined}
-          editLabel="Edit notes"
-        />
-        {!editingNotes && (
-          <div className="rounded-2xl border border-border bg-bg-card p-4">
-            {sections.map((s, n) => (
-              <div key={s.key} className={n === 0 ? '' : 'mt-3'}>
-                {s.title && (
-                  <h3 className="mb-2 text-[0.8125rem] font-semibold uppercase tracking-wide" style={{ color: style?.color }}>
-                    {s.title}
-                  </h3>
-                )}
-                {s.groups.map((g) => (
-                  <div key={g.kind} className="mb-2.5 last:mb-0">
-                    {g.kind !== 'point' && (
-                      <p className="mb-1 text-[0.9375rem] font-bold" style={{ color: style?.color }}>
-                        {g.label}:
-                      </p>
-                    )}
-                    <ul className="flex flex-col gap-1">
-                      {g.items.map((it, i) => (
-                        <li key={i}>
-                          <button
-                            type="button"
-                            onClick={() => it.noteId && setOpenNoteId(it.noteId)}
-                            className="pressable flex w-full items-baseline gap-2.5 text-left text-[0.9375rem] leading-snug"
-                          >
-                            <span className="mt-[0.5rem] h-1.5 w-1.5 flex-shrink-0 translate-y-[-0.1rem] rounded-full bg-text-faint" />
-                            <span className="min-w-0 flex-1">{it.text}</span>
-                            {it.date && <span className="flex-shrink-0 text-[0.75rem] text-text-faint">{shortDate(it.date)}</span>}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            ))}
-            {sections.length === 0 && (
-              <p className="text-[0.9375rem] text-text-muted">
-                {notes.length === 0 ? 'No notes here yet - tap + to write one.' : 'No key points were extracted - tap the pencil to see the notes as written.'}
-              </p>
-            )}
-          </div>
-        )}
-        {editingNotes && (
-          <>
-            <p className="mb-2 px-1 text-[0.8125rem] text-text-muted">Editing notes: tap a note to change or delete it. Tap ✓ when done.</p>
-            <div className="flex flex-col gap-2.5">
-              {[...notes]
-                .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.id - a.id)
-                .map((n) => (
-                  <InteractionCard key={n.id} interaction={n} variant="source" />
-                ))}
-            </div>
-          </>
-        )}
-      </section>
 
-      {/* To-dos and Lists - each its own part, with its own + and pencil. */}
-      <InitiativeThings items={items} labels={labels} spaceId={initiative?.id ?? null} spaceName={spaceName} />
+      {/* Notes, To-dos and Lists - each its own part, with its own + and pencil, in the order chosen while editing the space. */}
+      <InitiativeThings
+        items={items}
+        labels={labels}
+        spaceId={initiative?.id ?? null}
+        spaceName={spaceName}
+        order={order}
+        onMove={editingSpace ? move : undefined}
+        notesSection={notesSection}
+      />
 
       {openNote && (
         // The note's sheet floats above the page, so the card itself stays out of sight.

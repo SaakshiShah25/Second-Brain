@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from 'react'
-import { Check, ListChecks, ListTodo, Pencil, Plus, Trash2, X, type LucideIcon } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, ListChecks, ListTodo, Pencil, Plus, Trash2, X, type LucideIcon } from 'lucide-react'
 import { useUpdateList, useDeleteList } from '../api/lists'
 import { useDeleteItem, useUpdateTaskStatus } from '../api/tasks'
 import type { ItemList, Task } from '../api/types'
 import { byDue } from '../lib/items'
+import type { SpaceSection } from '../lib/useSectionOrder'
 import ConfirmDialog from './ConfirmDialog'
 import DragToSpace, { Draggable } from './DragToSpace'
 import ItemRow from './ItemRow'
@@ -36,6 +37,7 @@ export function SectionHeader({
   editing,
   onEdit,
   editLabel,
+  mover,
 }: {
   icon: LucideIcon
   title: string
@@ -46,6 +48,8 @@ export function SectionHeader({
   // Omit when there is nothing to edit yet.
   onEdit?: () => void
   editLabel: string
+  // While the space is being edited: move this part up or down the page.
+  mover?: { canUp: boolean; canDown: boolean; onUp: () => void; onDown: () => void }
 }) {
   return (
     <div className="mb-2 flex items-center gap-2 px-1">
@@ -54,6 +58,16 @@ export function SectionHeader({
         {title}
         <span className="font-medium text-text-faint"> · {count}</span>
       </h2>
+      {mover && (
+        <span className="flex items-center rounded-full bg-bg-elevated">
+          <button type="button" onClick={mover.onUp} disabled={!mover.canUp} aria-label={`Move ${title} up`} className="pressable flex h-9 w-9 items-center justify-center rounded-full text-text-muted disabled:opacity-30">
+            <ChevronUp size={19} strokeWidth={2.4} />
+          </button>
+          <button type="button" onClick={mover.onDown} disabled={!mover.canDown} aria-label={`Move ${title} down`} className="pressable flex h-9 w-9 items-center justify-center rounded-full text-text-muted disabled:opacity-30">
+            <ChevronDown size={19} strokeWidth={2.4} />
+          </button>
+        </span>
+      )}
       {add}
       {onEdit && (
         <button
@@ -163,12 +177,22 @@ export default function InitiativeThings({
   labels = [],
   spaceId = null,
   spaceName = 'this space',
+  order,
+  onMove,
+  notesSection,
 }: {
   items: Task[]
   labels?: ItemList[]
   spaceId?: number | null
   spaceName?: string
+  // The order of the three parts of the space page, and (only while the space is being edited) how to move one.
+  order: SpaceSection[]
+  onMove?: (section: SpaceSection, by: -1 | 1) => void
+  // The Notes part, drawn by the page; it sits among the other two in this order.
+  notesSection: (mover?: { canUp: boolean; canDown: boolean; onUp: () => void; onDown: () => void }) => ReactNode
 }) {
+  const moverFor = (section: SpaceSection) =>
+    onMove ? { canUp: order.indexOf(section) > 0, canDown: order.indexOf(section) < order.length - 1, onUp: () => onMove(section, -1), onDown: () => onMove(section, 1) } : undefined
   const updateStatus = useUpdateTaskStatus()
   const deleteItem = useDeleteItem()
   const deleteList = useDeleteList()
@@ -201,61 +225,65 @@ export default function InitiativeThings({
     onDelete: (t) => deleteItem.mutate(t.id),
     onSwipeRemove: (t) => deleteItem.mutate(t.id),
   }
+  const todosNode = (
+  <section key="todos" className="mb-6" aria-label="To-dos">
+    <SectionHeader
+      icon={ListTodo}
+      title="To-dos"
+      count={todos.length}
+      add={<PlusButton onClick={() => setAddingTodo((v) => !v)} label={addingTodo ? 'Close' : 'Add a to-do'} open={addingTodo} />}
+      editing={editTodos}
+      onEdit={todos.length ? () => setEditTodos((v) => !v) : undefined}
+      editLabel="Edit to-dos"
+          mover={moverFor('todos')}
+    />
+    {addingTodo && <QuickAdd listId={null} initiativeId={spaceId} placeholder="Add a to-do" autoFocus />}
+    {todos.length > 0 ? (
+      <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
+        {todos.map((t) => (
+          <Draggable key={t.id} task={t}>
+            <ItemRow task={t} compactDate onToggle={row.onToggle} onOpen={row.onOpen} onDelete={editTodos ? row.onDelete : undefined} onSwipeRemove={row.onSwipeRemove} />
+          </Draggable>
+        ))}
+      </div>
+    ) : (
+      <p className="px-1 text-[0.875rem] text-text-faint">No to-dos here yet - tap + to add one.</p>
+    )}
+  </section>
+  )
+  const listsNode = (
+  <section key="lists" className="mb-6" aria-label="Lists">
+    <SectionHeader
+      icon={ListChecks}
+      title="Lists"
+      count={lists.size}
+      add={<AddToSpace spaceId={spaceId} spaceName={spaceName} kind="list" />}
+      editing={editLists}
+      onEdit={lists.size ? () => setEditLists((v) => !v) : undefined}
+      editLabel="Edit lists"
+          mover={moverFor('lists')}
+    />
+    {lists.size === 0 && (
+      <p className="px-1 text-[0.875rem] text-text-faint">No lists yet - tap + to start one (a reading list, say), then add to it as you go.</p>
+    )}
+    {[...lists.entries()].map(([id, l]) => (
+      <ListBlock
+        key={id}
+        list={{ id, name: l.name }}
+        title={l.title}
+        items={l.items}
+        spaceId={spaceId}
+        editing={editLists}
+        onDeleteList={() => setRemoving({ id, name: l.name, count: l.items.length })}
+        {...row}
+      />
+    ))}
+  </section>
+  )
   return (
     <DragToSpace tasks={items}>
       <div className="mb-4">
-        {/* To-dos: separate from the lists; its + adds a to-do, its pencil removes to-dos. */}
-        <section className="mb-6" aria-label="To-dos">
-          <SectionHeader
-            icon={ListTodo}
-            title="To-dos"
-            count={todos.length}
-            add={<PlusButton onClick={() => setAddingTodo((v) => !v)} label={addingTodo ? 'Close' : 'Add a to-do'} open={addingTodo} />}
-            editing={editTodos}
-            onEdit={todos.length ? () => setEditTodos((v) => !v) : undefined}
-            editLabel="Edit to-dos"
-          />
-          {addingTodo && <QuickAdd listId={null} initiativeId={spaceId} placeholder="Add a to-do" autoFocus />}
-          {todos.length > 0 ? (
-            <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
-              {todos.map((t) => (
-                <Draggable key={t.id} task={t}>
-                  <ItemRow task={t} compactDate onToggle={row.onToggle} onOpen={row.onOpen} onDelete={editTodos ? row.onDelete : undefined} onSwipeRemove={row.onSwipeRemove} />
-                </Draggable>
-              ))}
-            </div>
-          ) : (
-            <p className="px-1 text-[0.875rem] text-text-faint">No to-dos here yet - tap + to add one.</p>
-          )}
-        </section>
-
-        {/* Lists: any number; the + here starts a new list, the + on a list adds to that list. */}
-        <section aria-label="Lists">
-          <SectionHeader
-            icon={ListChecks}
-            title="Lists"
-            count={lists.size}
-            add={<AddToSpace spaceId={spaceId} spaceName={spaceName} kind="list" />}
-            editing={editLists}
-            onEdit={lists.size ? () => setEditLists((v) => !v) : undefined}
-            editLabel="Edit lists"
-          />
-          {lists.size === 0 && (
-            <p className="px-1 text-[0.875rem] text-text-faint">No lists yet - tap + to start one (a reading list, say), then add to it as you go.</p>
-          )}
-          {[...lists.entries()].map(([id, l]) => (
-            <ListBlock
-              key={id}
-              list={{ id, name: l.name }}
-              title={l.title}
-              items={l.items}
-              spaceId={spaceId}
-              editing={editLists}
-              onDeleteList={() => setRemoving({ id, name: l.name, count: l.items.length })}
-              {...row}
-            />
-          ))}
-        </section>
+        {order.map((section) => (section === 'notes' ? notesSection(moverFor('notes')) : section === 'todos' ? todosNode : listsNode))}
         {editTodos && <p className="mt-2 px-1 text-[0.8125rem] text-text-muted">Editing to-dos: tap one to change it, tap the bin to remove it. Tap ✓ when done.</p>}
         {editLists && <p className="mt-2 px-1 text-[0.8125rem] text-text-muted">Editing lists: rename a list, remove a list or its entries. Tap ✓ when done.</p>}
         {active && <ItemSheet task={active} onClose={() => setOpenId(null)} />}
