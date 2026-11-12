@@ -189,6 +189,14 @@ If an answer invents details that aren't in your notes, that is a bug — please
 - **Login / reset password:** the eye icon shows or hides what you typed.
 - **Settings → Notifications → Task reminders:** turn on (allow notifications) → **Send me a test now** → a notification listing your tasks grouped by category. The scheduled ones arrive at **9 AM and 5 PM**, once each, only if you have open tasks. (iPhone: add the app to the Home Screen first.)
 
+### Tour, Help & FAQ, feedback (feedback needs `scripts/migration_46_feedback.sql`)
+
+- **Settings → Help → Take the tour again:** *Log anything* types a sample note into a mock chat, then shows what the app makes of it (space, key points, a to-do with its date); *Ask anything* types a sample question and shows the answer with its source chip; then Today, Spaces and Settings are spotlighted. The sample follows the Work / Personal / Both choice. Nothing is saved and no AI is called. Back replays the animation.
+- **Settings → Help → Help & FAQ:** collapsible questions in five groups; the last group answers privacy ("Groq and Cohere, and NVIDIA when Groq is busy").
+- **Rating card:** after you have saved about 5 notes, the next successful save shows "How is MyConfía working for you?" with four faces under the reply. Tap a face → a short form (Okay / Poor also ask what got in the way) → Send → "Thank you" and the card does not return for ~60 days. **Not now** hides it for ~30 days. It never appears after an error or an undone note. Settings → Help → **Rate MyConfía** opens the same form any time.
+- **Report a problem:** Settings → Help → **Report a problem**, or the **flag** under a reply (its category is pre-picked). Needs a category (optional) and a description. The box "Include this reply…" is **off** unless you tick it - nothing from your notes is attached otherwise.
+- **Admin → Feedback card:** average rating out of 4, a bar per face, the common reasons, and each reported problem with who sent it, where, and **New / Seen / Fixed** buttons. A Poor rating or a report also emails the admin (throttled). Before the migration, the card says to run it.
+
 ## 5. Things v1.0 deliberately does not do
 
 People/contact profiles and birthdays, documents and files, a calendar view, the morning brief, answering general-knowledge

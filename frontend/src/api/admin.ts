@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 
 // Mirrors api/routers/admin.py's /overview.
@@ -52,5 +52,42 @@ export function useAdminOverview(days: number) {
     queryKey: ['admin', 'overview', days],
     queryFn: () => api.get<AdminOverview>(`/api/admin/overview?days=${days}`),
     refetchInterval: 60_000,
+  })
+}
+
+// Mirrors api/routers/admin.py's /feedback.
+export interface AdminFeedback {
+  available: boolean
+  days: number
+  ratings?: { count: number; average: number | null; counts: Record<'1' | '2' | '3' | '4', number>; weekly: { week: string; count: number; average: number }[] }
+  reasons?: { tag: string; count: number }[]
+  open_issues?: number
+  items?: {
+    id: number
+    at: string
+    kind: 'rating' | 'issue'
+    rating: number | null
+    tags: string[]
+    message: string | null
+    screen: string | null
+    status: 'new' | 'seen' | 'fixed'
+    user: string
+    context: { app_version?: string; error_id?: string; about?: string; included?: string }
+  }[]
+}
+
+export function useAdminFeedback(days = 30) {
+  return useQuery({
+    queryKey: ['admin', 'feedback', days],
+    queryFn: () => api.get<AdminFeedback>(`/api/admin/feedback?days=${days}`),
+    refetchInterval: 60_000,
+  })
+}
+
+export function useSetFeedbackStatus() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, status }: { id: number; status: 'new' | 'seen' | 'fixed' }) => api.patch(`/api/admin/feedback/${id}`, { status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'feedback'] }),
   })
 }

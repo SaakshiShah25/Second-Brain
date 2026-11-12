@@ -48,6 +48,13 @@ export function describeError(err: unknown): FriendlyError | null {
 }
 
 let last = { key: '', at: 0 }
+let lastCode: { code: string; at: number } | null = null
+
+/** The reference code of the last server fault shown to the person, if it was in the last 10 minutes - attached to a
+ *  problem report so the exact failure can be found. */
+export function recentErrorCode(): string | undefined {
+  return lastCode && Date.now() - lastCode.at < 10 * 60_000 ? lastCode.code : undefined
+}
 
 /** Shows the popup for an error. The same message is not shown twice within `quietMs` (a failing screen that
  *  retries must not stack popups). */
@@ -58,6 +65,7 @@ export function showError(err: unknown, quietMs = 8000) {
   const now = Date.now()
   if (key === last.key && now - last.at < quietMs) return
   last = { key, at: now }
+  if (friendly.code) lastCode = { code: friendly.code, at: now }
   // A failure inside the app itself never reached the server, so it is reported (message and screen only).
   if (friendly.status === -1) report(friendly.message, err instanceof Error ? err.stack : undefined)
   listeners.forEach((l) => l(friendly))

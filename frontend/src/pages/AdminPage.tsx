@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
-import { AlertTriangle, Bug, Database, Gauge, RefreshCw, TrendingUp, UserX, Users } from 'lucide-react'
-import { useAdminOverview, type AdminOverview, type UserStorage } from '../api/admin'
+import { AlertTriangle, Bug, Database, Gauge, MessageSquareHeart, RefreshCw, TrendingUp, UserX, Users } from 'lucide-react'
+import { useAdminFeedback, useAdminOverview, useSetFeedbackStatus, type AdminOverview, type UserStorage } from '../api/admin'
 import PageHeader from '../components/PageHeader'
 import Segmented from '../components/Segmented'
 
@@ -382,6 +382,120 @@ function Daily({ o }: { o: AdminOverview }) {
   )
 }
 
+
+const FACE = { 4: '😍', 3: '🙂', 2: '😐', 1: '🙁' } as const
+const FACE_LABEL = { 4: 'Loving it', 3: 'Good', 2: 'Okay', 1: 'Poor' } as const
+const TAG_LABEL: Record<string, string> = {
+  wrong_answers: 'Wrong answers', slow: 'Slow', confusing: 'Confusing', missing_feature: 'Missing something', other: 'Something else',
+  wrong_answer: 'Wrong or odd answer', wrong_space: 'Filed in the wrong place', broke: 'Something broke', idea: 'Idea or request',
+}
+
+// What people say about the app (api/routers/feedback.py): the rating they gave, why, and the problems they reported.
+function Feedback() {
+  const { data } = useAdminFeedback(30)
+  const setStatus = useSetFeedbackStatus()
+  if (!data) return null
+  if (!data.available)
+    return (
+      <Card icon={MessageSquareHeart} title="Feedback">
+        <Empty>Run the database migration (schema.sql section 46) to start collecting ratings and reports.</Empty>
+      </Card>
+    )
+  const r = data.ratings!
+  const items = data.items ?? []
+  const issues = items.filter((i) => i.kind === 'issue')
+  const lowRatings = items.filter((i) => i.kind === 'rating' && (i.message || (i.rating ?? 4) <= 2))
+  const max = Math.max(1, ...Object.values(r.counts))
+  const list = [...issues, ...lowRatings].sort((a, b) => b.at.localeCompare(a.at))
+  return (
+    <Card
+      icon={MessageSquareHeart}
+      title="Feedback"
+      aside={data.open_issues ? `${data.open_issues} new ${data.open_issues === 1 ? 'report' : 'reports'}` : 'last 30 days'}
+    >
+      {r.count === 0 ? (
+        <Empty>No ratings yet. The card appears after someone has saved a few notes.</Empty>
+      ) : (
+        <>
+          <p className="mb-3 text-[0.9375rem]">
+            <span className="text-2xl font-semibold tabular-nums">{r.average?.toFixed(1)}</span>
+            <span className="text-text-muted"> / 4 from {r.count} {r.count === 1 ? 'rating' : 'ratings'}</span>
+          </p>
+          <div className="flex flex-col gap-2">
+            {([4, 3, 2, 1] as const).map((n) => (
+              <div key={n} className="flex items-center gap-2.5 text-[0.8125rem]">
+                <span className="w-6 text-center text-base" aria-hidden="true">{FACE[n]}</span>
+                <span className="w-16 text-text-muted">{FACE_LABEL[n]}</span>
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-bg-elevated">
+                  <div className={`h-full rounded-full ${n <= 2 ? 'bg-danger' : 'bg-success'}`} style={{ width: `${(r.counts[String(n) as '1'] / max) * 100}%` }} />
+                </div>
+                <span className="w-6 text-right tabular-nums text-text-muted">{r.counts[String(n) as '1']}</span>
+              </div>
+            ))}
+          </div>
+          {r.weekly.length > 1 && (
+            <p className="mt-3 text-[0.8125rem] text-text-muted">
+              By week: {r.weekly.map((w) => `${w.average.toFixed(1)} (${w.count})`).join(' → ')}
+            </p>
+          )}
+        </>
+      )}
+
+      {(data.reasons?.length ?? 0) > 0 && (
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {data.reasons!.map((t) => (
+            <span key={t.tag} className="rounded-full bg-bg-elevated px-2.5 py-1 text-[0.75rem] text-text-muted">
+              {TAG_LABEL[t.tag] ?? t.tag} · {t.count}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {list.length > 0 && (
+        <div className="mt-4 flex flex-col gap-2.5">
+          {list.map((i) => (
+            <div key={i.id} className="rounded-xl border border-border p-3 text-[0.875rem]">
+              <div className="flex items-center gap-2 text-[0.75rem] text-text-muted">
+                <span>{i.kind === 'issue' ? 'Problem' : `${FACE[(i.rating ?? 1) as 1]} ${FACE_LABEL[(i.rating ?? 1) as 1]}`}</span>
+                {i.tags.length > 0 && <span>· {i.tags.map((t) => TAG_LABEL[t] ?? t).join(', ')}</span>}
+                <span className="ml-auto">{when(i.at)}</span>
+              </div>
+              {i.message && <p className="mt-1.5 whitespace-pre-wrap leading-snug">{i.message}</p>}
+              {i.context.included && (
+                <p className="mt-1.5 rounded-lg bg-bg-elevated px-2.5 py-1.5 text-[0.8125rem] leading-snug text-text-muted">
+                  Reply they included: {i.context.included}
+                </p>
+              )}
+              <p className="mt-1.5 text-[0.75rem] text-text-faint">
+                {i.user}
+                {i.screen ? ` · ${i.screen}` : ''}
+                {i.context.about ? ` · about ${i.context.about}` : ''}
+                {i.context.app_version ? ` · ${i.context.app_version}` : ''}
+                {i.context.error_id ? ` · ref ${i.context.error_id}` : ''}
+              </p>
+              {i.kind === 'issue' && (
+                <div className="mt-2 flex gap-1.5">
+                  {(['new', 'seen', 'fixed'] as const).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setStatus.mutate({ id: i.id, status: st })}
+                      aria-pressed={i.status === st}
+                      className={`pressable h-8 rounded-full border px-3 text-[0.8125rem] capitalize ${i.status === st ? 'border-accent bg-accent-soft text-accent' : 'border-border-strong text-text-muted'}`}
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  )
+}
+
 export default function AdminPage() {
   const [days, setDays] = useState<'1' | '7' | '30'>('1')
   const { data, isLoading, error, refetch, isFetching } = useAdminOverview(Number(days))
@@ -421,6 +535,7 @@ export default function AdminPage() {
             </p>
           )}
           <Budget o={data} />
+          <Feedback />
           <Totals o={data} />
           <Problems o={data} />
           <Limits o={data} />

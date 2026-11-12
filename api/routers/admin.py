@@ -11,6 +11,9 @@ Who is an admin: the ADMIN_EMAILS list below (hardcoded, not an env var).
                                 (tokens by feature, storage), accounts that
                                 aren't using the app, a scaling estimate,
                                 where limits are being hit, recent errors
+  GET  /api/admin/feedback      ratings (average, how many of each, week by week, common reasons) and
+                                reported problems, with a status the admin can change
+  PATCH /api/admin/feedback/{id}  mark a report new / seen / fixed
   POST /api/admin/daily-report  cron (X-Cron-Secret): emails yesterday's
                                 summary to ALERT_EMAIL and deletes events
                                 older than 30 days
@@ -329,6 +332,59 @@ def _overview(days: int) -> dict:
 @router.get("/overview")
 def overview(days: int = 7, _: str = Depends(require_admin)):
     return _overview(max(1, min(days, RETENTION_DAYS)))
+
+
+def _feedback(days: int) -> dict:
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    try:
+        rows = db.get_feedback(since.isoformat())
+    except Exception:   # schema.sql section 46 not applied yet
+        return {"available": False, "days": days}
+    try:
+        emails = {uid: a["email"] for uid, a in db.get_all_users().items()}
+    except Exception:
+        emails = {}
+    ratings = [r for r in rows if r["kind"] == "rating" and r.get("rating")]
+    counts = Counter(r["rating"] for r in ratings)
+    weeks: dict = defaultdict(list)
+    for r in ratings:
+        d = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")).date()
+        weeks[(d - timedelta(days=d.weekday())).isoformat()].append(r["rating"])
+    reasons = Counter(t for r in rows for t in (r.get("tags") or []))
+    return {
+        "available": True,
+        "days": days,
+        "ratings": {
+            "count": len(ratings),
+            "average": round(sum(r["rating"] for r in ratings) / len(ratings), 2) if ratings else None,
+            "counts": {str(n): counts.get(n, 0) for n in (1, 2, 3, 4)},
+            "weekly": [{"week": w, "count": len(v), "average": round(sum(v) / len(v), 2)} for w, v in sorted(weeks.items())],
+        },
+        "reasons": [{"tag": t, "count": c} for t, c in reasons.most_common()],
+        "open_issues": sum(1 for r in rows if r["kind"] == "issue" and r["status"] == "new"),
+        "items": [
+            {
+                "id": r["id"], "at": r["created_at"], "kind": r["kind"], "rating": r.get("rating"), "tags": r.get("tags") or [],
+                "message": r.get("message"), "screen": r.get("screen"), "status": r["status"],
+                "user": emails.get(r["user_id"], r["user_id"]), "context": r.get("context") or {},
+            }
+            for r in rows[:100]
+        ],
+    }
+
+
+@router.get("/feedback")
+def feedback(days: int = 30, _: str = Depends(require_admin)):
+    return _feedback(max(1, min(days, 365)))
+
+
+@router.patch("/feedback/{feedback_id}")
+def set_feedback_status(feedback_id: int, body: dict, _: str = Depends(require_admin)):
+    status = (body or {}).get("status")
+    if status not in ("new", "seen", "fixed"):
+        raise HTTPException(400, "status must be new, seen or fixed")
+    db.update_feedback_status(feedback_id, status)
+    return {"ok": True}
 
 
 @router.post("/daily-report")

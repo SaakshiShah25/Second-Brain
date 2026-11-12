@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Activity, Check, Compass, Download, LogOut, Moon, ShieldCheck, Sun, Trash2, Type, UserRound } from 'lucide-react'
+import { Activity, Check, CircleHelp, Compass, Flag, Smile, Download, LogOut, Moon, ShieldCheck, Sun, Trash2, Type, UserRound } from 'lucide-react'
 import { useIsAdmin } from '../api/admin'
 import { fetchBlob } from '../api/client'
 import { useDeleteAccount, useSettings, useUpdateSettings } from '../api/settings'
@@ -13,6 +13,8 @@ import { ListGroup, ListRow } from '../components/ListGroup'
 import NameSheet from '../components/NameSheet'
 import PageHeader from '../components/PageHeader'
 import Segmented from '../components/Segmented'
+import FeedbackSheet from '../components/FeedbackSheet'
+import ReportSheet from '../components/ReportSheet'
 import { useTour } from '../components/TourGate'
 import { savedName } from '../lib/displayName'
 import { USAGE_MODE_OPTIONS, useUsageMode } from '../lib/usageMode'
@@ -56,6 +58,8 @@ export default function SettingsPage() {
   const navigate = useNavigate()
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [editingName, setEditingName] = useState(false)
+  const [rating, setRating] = useState(false)
+  const [reporting, setReporting] = useState(false)
   const name = savedName(user)
   const initial = (name[0] ?? user?.email?.[0] ?? '?').toUpperCase()
   const usage = useUsageMode()
@@ -170,7 +174,7 @@ export default function SettingsPage() {
 
       <ListGroup
         title="Privacy"
-        footer="Your notes are encrypted at rest. To power search and AI extraction, the app decrypts your notes and shares text with our AI providers (Groq, Cohere) for that processing only. We never sell or share your data."
+        footer="Your notes are encrypted at rest. To power search and AI extraction, the app decrypts your notes and shares text with our AI providers (Groq and Cohere, and NVIDIA when Groq is busy) for that processing only. We never sell or share your data."
       >
         <ListRow icon={ShieldCheck} iconColor="var(--sb-text-muted)" soft label="Encrypted at rest" />
         <ListRow
@@ -199,8 +203,13 @@ export default function SettingsPage() {
       )}
 
       <ListGroup title="Help">
+        <ListRow icon={CircleHelp} iconColor="var(--sb-text-muted)" soft label="Help & FAQ" detail="Answers to common questions" chevron onClick={() => navigate('/help')} />
         <ListRow icon={Compass} iconColor="var(--sb-text-muted)" soft label="Take the tour again" chevron onClick={() => startTour()} />
+        <ListRow icon={Smile} iconColor="var(--sb-text-muted)" soft label="Rate MyConfía" detail="Tell us how it's going" chevron onClick={() => setRating(true)} />
+        <ListRow icon={Flag} iconColor="var(--sb-text-muted)" soft label="Report a problem" detail="Something not working or helping?" chevron onClick={() => setReporting(true)} />
       </ListGroup>
+      {rating && <FeedbackSheet onClose={() => setRating(false)} />}
+      {reporting && <ReportSheet onClose={() => setReporting(false)} />}
 
       <ListGroup>
         <ListRow icon={LogOut} iconColor="var(--sb-text-muted)" soft label="Sign out" onClick={() => signOut()} />

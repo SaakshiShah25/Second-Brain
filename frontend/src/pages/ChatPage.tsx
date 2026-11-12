@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ListTodo, MapPin, MessageCircleQuestion, Mic, SquarePen, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useChat } from '../api/chat'
+import { useRatingPrompt } from '../api/feedback'
 import { ApiError } from '../api/client'
 import { useInitiatives } from '../api/initiatives'
 import { showError } from '../lib/errorDialog'
@@ -13,6 +14,8 @@ import Greeting from '../components/Greeting'
 import ChatBubble from '../components/chat/ChatBubble'
 import TypingIndicator from '../components/chat/TypingIndicator'
 import ChatInput, { type ChatInputHandle } from '../components/chat/ChatInput'
+import RatingCard from '../components/RatingCard'
+import ReportSheet from '../components/ReportSheet'
 import { useChatSession } from '../chat/ChatSessionContext'
 import { deleteCapture } from '../lib/undoCapture'
 import { useVoiceInput } from '../lib/useVoiceInput'
@@ -88,6 +91,8 @@ export default function ChatPage() {
   const [pendingLocation, setPendingLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [locationLoading, setLocationLoading] = useState(false)
   const [confirmingClear, setConfirmingClear] = useState(false)
+  const [reporting, setReporting] = useState<{ about: string; reply: string; tag?: string } | null>(null)
+  const ratingPrompt = useRatingPrompt()
   const usage = useUsageMode()
   const queryClient = useQueryClient()
 
@@ -319,8 +324,12 @@ export default function ChatPage() {
             onSaveAsNote={i === messages.length - 1 && !isBusy ? (t) => submitText(t, true) : undefined}
             onCaptureChange={(capture) => setMessages((prev) => prev.map((msg, idx) => (idx === i ? { ...msg, capture } : msg)))}
             onUndo={m.capture && !m.undone ? () => undoCapture(i) : undefined}
+            onReport={() => setReporting({ about: m.capture ? 'a saved note' : 'an answer', reply: m.content, tag: m.capture ? 'wrong_space' : 'wrong_answer' })}
           />
         ))}
+
+        {/* After a successful save, once they've logged a few notes (the server decides) - never after an error. */}
+        {ratingPrompt.data?.ask && !isBusy && messages[messages.length - 1]?.capture && !messages[messages.length - 1]?.undone && <RatingCard />}
 
         {showTyping && <TypingIndicator stage={stage} />}
 
@@ -403,6 +412,8 @@ export default function ChatPage() {
           />
         </div>
       )}
+
+      {reporting && <ReportSheet about={reporting.about} reply={reporting.reply} initialTag={reporting.tag} onClose={() => setReporting(null)} />}
 
       {confirmingClear && (
         <ConfirmDialog

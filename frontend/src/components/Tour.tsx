@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { useUsageMode } from '../lib/usageMode'
 import Button from './Button'
+import TourDemo, { type DemoKind } from './TourDemo'
 
 // A real spotlight tour, not a card floating in a fixed corner - it
 // ACTUALLY NAVIGATES to each section as it advances (so "here's Notes"
@@ -39,6 +40,8 @@ interface Step {
   // Which [data-tour-nav] element to spotlight, when it isn't the tab for
   // `path` itself (Settings lives behind the profile button on a tab).
   target?: string
+  // An animated example shown in the card (a sample note, a sample question).
+  demo?: DemoKind
 }
 
 const STEPS: Step[] = [
@@ -47,17 +50,19 @@ const STEPS: Step[] = [
     title: 'Log anything',
     description: 'Type or tap the mic and talk about anything — the AI works out what to remember and what you need to do, and by when.',
     path: '/',
+    demo: 'log',
   },
   {
     icon: MessageCircleQuestion,
     title: 'Ask anything',
-    description: 'The same box doubles as search — ask “what did I note about pricing?” and it answers from your own notes.',
+    description: 'The same box doubles as search — ask in your own words and it answers from your own notes, and shows which note it used.',
     path: '/',
+    demo: 'ask',
   },
   {
     icon: CalendarCheck,
     title: 'Today',
-    description: 'What needs you, from every space — Today, Upcoming and Anytime (the to-dos with no date). Tap one to set a priority or a reminder.',
+    description: 'What needs you, from every space — Today, Upcoming and Anytime (the to-dos with no date). Tap one to set a priority or a reminder, or add to the list from the box at the bottom — it saves whatever you type or say.',
     path: '/today',
   },
   {
@@ -75,18 +80,8 @@ const STEPS: Step[] = [
   },
 ]
 
-// The first two steps' examples follow what the account is used for.
-const MODE_COPY: Record<'work' | 'personal' | 'both', Record<number, string>> = {
-  work: {
-    0: 'Type or tap the mic after a meeting or call — the AI works out what was agreed and what you owe, and by when.',
-    1: 'The same box doubles as search — ask “what did I note about pricing?” or “what’s overdue?”.',
-  },
-  personal: {
-    0: 'Type or tap the mic to jot down anything — a thought, a plan, or a reminder for later.',
-    1: 'The same box doubles as search — ask “what’s coming up this week?” or “what did I note about the trip?”',
-  },
-  both: {},
-}
+// The first two steps' sample note and question follow what the account is used for (TourDemo.tsx); the rest is the same for everyone.
+const MODE_COPY: Record<'work' | 'personal' | 'both', Record<number, string>> = { work: {}, personal: {}, both: {} }
 
 // How far the spotlight hole extends past the icon's own edges, and how
 // far the arrow/card sit past the spotlight's edge.
@@ -159,6 +154,7 @@ export default function Tour({ onDone }: TourProps) {
         </span>
         <h3 className="font-display tracking-[-0.025em] text-xl font-semibold">{current.title}</h3>
       </div>
+      {current.demo && <TourDemo key={`demo-${step}`} kind={current.demo} mode={mode} />}
       <p className="mb-4 text-[0.9375rem] leading-relaxed text-text-muted">{current.description}</p>
 
       <div className="mb-3 flex justify-center gap-1.5">

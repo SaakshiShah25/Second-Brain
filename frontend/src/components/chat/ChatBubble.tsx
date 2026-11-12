@@ -2,7 +2,7 @@ import { useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useNavigate } from 'react-router-dom'
-import { ListChecks, NotebookText } from 'lucide-react'
+import { Flag, ListChecks, NotebookText } from 'lucide-react'
 import type { AnswerSource, CaptureSavedResult, ChatMessage } from '../../api/types'
 import { friendlyDate } from '../../lib/dates'
 import CopyButton from '../CopyButton'
@@ -46,6 +46,7 @@ export default function ChatBubble({
   onSaveAsNote,
   onCaptureChange,
   onUndo,
+  onReport,
 }: {
   message: ChatMessage
   // Only passed for the latest message while nothing is in flight.
@@ -54,6 +55,8 @@ export default function ChatBubble({
   onCaptureChange?: (capture: CaptureSavedResult) => void
   // Takes back what a capture saved (only on capture replies that haven't been undone).
   onUndo?: () => Promise<void>
+  // "Something wrong with this reply?" - opens the report form for it.
+  onReport?: () => void
 }) {
   const bodyRef = useRef<HTMLDivElement>(null)
   if (message.role === 'user') {
@@ -92,8 +95,19 @@ export default function ChatBubble({
       )}
       {message.sources && message.sources.length > 0 && <Sources sources={message.sources} />}
       {!message.status && (
-        <div className="-ml-1.5 mt-1">
+        <div className="-ml-1.5 mt-1 flex items-center gap-1">
           <CopyButton text={message.content} source={bodyRef} />
+          {onReport && (
+            <button
+              type="button"
+              onClick={onReport}
+              aria-label="Report a problem with this reply"
+              title="Something wrong?"
+              className="pressable flex h-8 w-8 items-center justify-center rounded-full text-text-faint"
+            >
+              <Flag size={15} strokeWidth={1.9} />
+            </button>
+          )}
         </div>
       )}
     </div>

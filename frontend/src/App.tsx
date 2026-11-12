@@ -7,6 +7,7 @@ import TodayPage from './pages/TodayPage'
 import ChatPage from './pages/ChatPage'
 import NotesPage from './pages/NotesPage'
 import SettingsPage from './pages/SettingsPage'
+import HelpPage from './pages/HelpPage'
 import AdminPage from './pages/AdminPage'
 import AccountDeletionInfoPage from './pages/AccountDeletionInfoPage'
 import PublicPrivacyPage from './pages/PublicPrivacyPage'
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="/lists/:listId" element={<RedirectToToday />} />
           <Route path="/digest" element={<Navigate to="/today" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/help" element={<HelpPage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Route>
       </Route>

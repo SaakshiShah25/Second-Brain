@@ -899,3 +899,31 @@ if __name__ == "__main__":
     client = get_client()
     resp = client.table("interaction").select("id").limit(1).execute()
     print("Connected to Supabase successfully. `interaction` table is reachable.")
+
+
+# ---------- Feedback (schema.sql section 46) ----------
+
+def insert_feedback(row: dict) -> dict:
+    return get_client().table("feedback").insert(row).execute().data[0]
+
+
+def count_feedback_since(user_id: str, since_iso: str, kinds: list) -> int:
+    resp = (get_client().table("feedback").select("id", count="exact").eq("user_id", user_id)
+            .in_("kind", kinds).gte("created_at", since_iso).limit(1).execute())
+    return resp.count or 0
+
+
+def count_interactions(user_id: str) -> int:
+    resp = get_client().table("interaction").select("id", count="exact").eq("user_id", user_id).limit(1).execute()
+    return resp.count or 0
+
+
+def get_feedback(since_iso: str) -> list:
+    """Every rating and reported problem since `since_iso`, newest first (snoozes are bookkeeping, not feedback)."""
+    return (get_client().table("feedback").select("*").neq("kind", "snooze")
+            .gte("created_at", since_iso).order("created_at", desc=True).limit(1000).execute().data)
+
+
+def update_feedback_status(feedback_id: int, status: str) -> None:
+    get_client().table("feedback").update({"status": status}).eq("id", feedback_id).execute()
+
