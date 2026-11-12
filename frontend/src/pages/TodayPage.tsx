@@ -14,7 +14,7 @@ import QuickAdd from '../components/QuickAdd'
 import { useConnection } from '../lib/connection'
 import { isoLocal } from '../lib/dates'
 import { matchesInitiative, useInitiativeFilter } from '../lib/initiativeFilter'
-import { byDue, openCountsByInitiative, todayIso } from '../lib/items'
+import { byDue, isOverdue, openCountsByInitiative, todayIso } from '../lib/items'
 import { PRIORITY_RANK, priorityOf, taskInitiativeId } from '../lib/taskOptions'
 import { useOpenItem } from '../lib/useOpenItem'
 
@@ -92,6 +92,12 @@ export default function TodayPage() {
     }
   }, [view])
   const [showDone, setShowDone] = useState(false)
+  // Re-checks every 30 seconds so a task moves up into Overdue the minute its time passes, without a reload.
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30000)
+    return () => window.clearInterval(timer)
+  }, [])
   const everything = data?.tasks ?? []
   const [initiativeFilter] = useInitiativeFilter('today')
   const all = everything.filter((t) => matchesInitiative(initiativeFilter, taskInitiativeId(t)))
@@ -106,8 +112,10 @@ export default function TodayPage() {
   })()
   const open = all.filter((t) => t.status === 'open' || (t.status === 'done' && justDone.has(t.id)))
   const dated = open.filter((t) => t.due_date).sort(byPriorityThenDue)
-  const overdue = dated.filter((t) => t.due_date! < today)
-  const dueToday = dated.filter((t) => t.due_date === today)
+  // Overdue: the day has passed, or it is today and the time has passed. Earliest first, so the oldest is on top.
+  const overdue = dated.filter((t) => isOverdue({ ...t, status: 'open' }, now)).sort(byDue) // (a one just ticked stays where it was)
+  const overdueIds = new Set(overdue.map((t) => t.id))
+  const dueToday = dated.filter((t) => t.due_date === today && !overdueIds.has(t.id))
   const soon = dated.filter((t) => t.due_date! > today && t.due_date! <= horizon)
   const later = dated.filter((t) => t.due_date! > horizon)
   // To-dos with no date, and not on a list (list entries stay in their space) - the Anytime view.
