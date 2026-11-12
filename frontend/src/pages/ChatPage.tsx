@@ -3,7 +3,7 @@ import { ListTodo, MapPin, MessageCircleQuestion, Mic, SquarePen, X } from 'luci
 import { useQueryClient } from '@tanstack/react-query'
 import { useChat } from '../api/chat'
 import { useRatingPrompt } from '../api/feedback'
-import { ApiError } from '../api/client'
+import { api, ApiError } from '../api/client'
 import { useInitiatives } from '../api/initiatives'
 import { showError } from '../lib/errorDialog'
 import type { CapturePart, CaptureSavedResult, ChatMessage, ChatResult } from '../api/types'
@@ -166,6 +166,25 @@ export default function ChatPage() {
     setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, undone: true } : m)))
   }
 
+  // "Delete the space Work?" - Yes: delete it (its notes, to-dos and lists move to Others); No: leave it.
+  async function confirmDelete(index: number) {
+    const confirm = messages[index]?.confirm
+    if (!confirm) return
+    try {
+      await api.delete(`/api/initiatives/${confirm.id}`)
+    } catch (err) {
+      showError(err)
+      return
+    }
+    for (const key of ['initiatives', 'notes', 'tasks', 'lists']) queryClient.invalidateQueries({ queryKey: [key] })
+    setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, confirm: undefined, content: `Deleted the space **${confirm.name}**. Its notes, to-dos and lists are now under Others.` } : m)))
+  }
+
+  function declineDelete(index: number) {
+    const confirm = messages[index]?.confirm
+    setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, confirm: undefined, content: `Okay - kept **${confirm?.name ?? 'the space'}**.` } : m)))
+  }
+
   function handleChatResult(result: ChatResult, sentText: string) {
     if (result.intent === 'blocked') {
       // Failed the safety check, or asked for something this product
@@ -179,7 +198,7 @@ export default function ChatPage() {
       handleSavedCapture(result)
     } else if (result.intent === 'command') {
       // An instruction to the app (create a list / a space) that was carried out: say what happened.
-      appendMessage('assistant', result.answer, { status: true })
+      appendMessage('assistant', result.answer, { status: true, ...(result.confirm ? { confirm: result.confirm } : {}) })
       for (const what of result.changed) queryClient.invalidateQueries({ queryKey: [what] })
       if (result.capture) handleSavedCapture(result.capture)
     } else {
@@ -324,6 +343,8 @@ export default function ChatPage() {
             onSaveAsNote={i === messages.length - 1 && !isBusy ? (t) => submitText(t, true) : undefined}
             onCaptureChange={(capture) => setMessages((prev) => prev.map((msg, idx) => (idx === i ? { ...msg, capture } : msg)))}
             onUndo={m.capture && !m.undone ? () => undoCapture(i) : undefined}
+            onConfirm={m.confirm ? () => confirmDelete(i) : undefined}
+            onDecline={m.confirm ? () => declineDelete(i) : undefined}
             onReport={() => setReporting({ about: m.capture ? 'a saved note' : 'an answer', reply: m.content, tag: m.capture ? 'wrong_space' : 'wrong_answer' })}
           />
         ))}

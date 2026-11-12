@@ -50,6 +50,10 @@ const SECTIONS: { title: string; items: { q: string; a: string }[] }[] = [
         a: 'The same input as Home, but it only saves: whatever you type or say becomes to-dos and notes, and a card shows exactly what was filed (with Undo). It never answers questions - if you ask one, it points you to Home and keeps your text.',
       },
       {
+        q: 'Can I create or delete a space by typing?',
+        a: 'Yes, on the Home tab. “Create a workspace called IBM and add this task: send the deck tomorrow” makes the space and files the task in it. “Delete the space Work” asks you to confirm first; its notes, to-dos and lists move to Others rather than being deleted. You can also manage spaces from the sliders button on Today and Spaces.',
+      },
+      {
         q: 'What are lists?',
         a: 'Things you collect rather than do - books, movies, places. Say “add Dune to my reading list” and it lands in the right list. “Create a reading list in Personal” makes one.',
       },

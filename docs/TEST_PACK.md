@@ -96,6 +96,9 @@ On the Tasks tab each open task has a **flag** and a **bell**:
 
 ### Instructions to the app, and pronouns
 
+- `Create a workspace named IBM and add this task: Send the onboarding document tomorrow.` → "Created the space **IBM**" **and** a to-do "Send the onboarding document" (due tomorrow) filed under IBM. "Workspace", "space", "category", "folder" and "area" all mean the same.
+- `Delete the section Work under spaces tab` (also "remove the space Work", "delete workspace IBM", "delete the IBM workspace") → the app **asks**: "Delete the space Work? Its notes, to-dos and lists … move to Others." with **Delete Work** / **Keep it** buttons. Nothing is deleted until you tap Delete. Say it for a space you don't have → it lists the spaces you do have. "Delete the old files folder" with no such space is just saved as a to-do. In the Today box the same sentence says to do it on Home.
+
 - `Create a new initiative called reading. Read conscious capitalism by john mackey.` creates **Reading** (tagged NEW) with **one** task, "Read Conscious Capitalism by John Mackey" - no task called "Create a new initiative...".
 - A note that says "him" / "her" / "they" after naming someone must come out with the **name** in its bullets and tasks (e.g. "Chat with Pratik Bhai about ideas"), never a bare "him".
 - The home greeting says just "Good evening" until you give a name (asked once after sign-in, or Settings → Your name).

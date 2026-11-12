@@ -1,10 +1,10 @@
 """
 commands.py — Messages that are an instruction TO THE APP, not something to log: "create a reading list in
-Personal", "make a new space called Health". They are read in plain code (no LLM call) before a message is
+Personal", "make a new space called Health", "delete the space Work". They are read in plain code (no LLM call) before a message is
 classified, because otherwise they are saved as a to-do ("Create a reading list") and nothing is created.
 
-parse() only recognises a clear instruction to make a list or a space; anything else comes back None and goes the
-usual way. A command may be followed by something to add - "create a reading list in Personal and add Dune" -
+parse() only recognises a clear instruction to make a list or a space, or to delete a space; anything else comes
+back None and goes the usual way. Deleting is never done straight away - chat.py asks for a Yes first. A command may be followed by something to add - "create a reading list in Personal and add Dune" -
 which comes back as `then`, to be captured as an ordinary message once the list exists.
 
 Nothing here touches the database; api/routers/chat.py carries the command out.
@@ -16,16 +16,16 @@ from typing import Optional
 _POLITE = r"^\s*(?:(?:hey\s+)?(?:confi[aá]\s*,?\s*)?)(?:(?:please|can\s+you|could\s+you|would\s+you|i\s+want\s+(?:you\s+)?to|i(?:'d|\s+would)\s+like\s+(?:you\s+)?to|let'?s)\s+)*"
 _MAKE = r"(?:create|make|start|set\s+up|add)"
 _ART = r"(?:me\s+)?(?:a\s+|an\s+|the\s+|my\s+)?(?:new\s+|another\s+)?"
-_WHERE = r"(?:\s+(?:in|under|inside|within|into|to|for)\s+(?:my\s+|the\s+)?(?P<space>[\w'& -]+?)(?:\s+(?:space|area|initiative|category|folder))?)?"
+_WHERE = r"(?:\s+(?:in|under|inside|within|into|to|for)\s+(?:my\s+|the\s+)?(?P<space>[\w'& -]+?)(?:\s+(?:space|workspace|area|initiative|category|folder))?)?"
 _NAME = r"[\w'&-]+(?:\s+[\w'&-]+){0,3}?"
 
 # "create a list called Reading" / "make a list for groceries in Personal"
 _LIST_CALLED = re.compile(rf"{_POLITE}{_MAKE}\s+{_ART}(?:list|label)\s+(?:called|named|for)\s+['\"“]?(?P<name>{_NAME})['\"”]?{_WHERE}\s*[.!]?\s*$", re.I)
 # "create a reading list" / "make a new movies list in Personal" - not "add": "add milk to my shopping list" is a capture
 _LIST_PLAIN = re.compile(rf"{_POLITE}(?:create|make|start|set\s+up)\s+{_ART}(?P<name>{_NAME})\s+list{_WHERE}\s*[.!]?\s*$", re.I)
-# "create a space called Health" (space / category / folder / area); initiative and project need a name given with "called"
+# "create a space called Health" (space / workspace / category / folder / area); initiative and project need a name given with "called"
 _SPACE = re.compile(
-    rf"{_POLITE}{_MAKE}\s+{_ART}(?:(?:space|category|folder|area)(?:\s+(?:called|named|for))?|(?:initiative|project)\s+(?:called|named))\s+"
+    rf"{_POLITE}{_MAKE}\s+{_ART}(?:(?:space|workspace|category|folder|area)(?:\s+(?:called|named|for))?|(?:initiative|project)\s+(?:called|named))\s+"
     rf"['\"“]?(?P<name>{_NAME})['\"”]?\s*[.!]?\s*$",
     re.I,
 )
@@ -35,11 +35,22 @@ _THEN = re.compile(r"\s*(?:,|;|\.|\band\b|\bthen\b)\s+(?=(?:also\s+)?(?:add|put)
 # "...and add it to the Personal space": says where the list goes, it is not something else to capture
 _PLACE_IT = re.compile(
     r"^(?:also\s+)?(?:add|put|file|move|keep)\s+(?:it|that|this|the\s+list)\s+(?:to|in|into|under|inside)\s+(?:my\s+|the\s+)?"
-    r"(?P<space>[\w'& -]+?)(?:\s+(?:space|area|initiative|category|folder))?\s*[.!]?$",
+    r"(?P<space>[\w'& -]+?)(?:\s+(?:space|workspace|area|initiative|category|folder))?\s*[.!]?$",
     re.I,
 )
 
-_NOT_A_NAME = {"to", "do", "to do", "to-do", "todo", "task", "tasks", "new", "my", "a", "an", "the"}
+# "delete the space Work" / "remove workspace IBM" / "delete the section Work under the spaces tab" (the noun comes first:
+# certain it means a space) and "delete the IBM workspace" (the noun after the name: only a space if one has that name -
+# "delete the old files folder" may just be a to-do, so chat.py lets it through when no space matches).
+_DEL = r"(?:delete|remove|get\s+rid\s+of|drop)"
+_DWORD = r"(?:space|workspace|section|category|folder|area|initiative)"
+_DTAIL = r"(?:\s+(?:under|in|from|on|inside|within)\s+(?:the\s+|my\s+)?(?:spaces?|notes?|workspaces?)(?:\s+(?:tab|page|screen))?)?"
+_DELETE_NAMED = re.compile(
+    rf"{_POLITE}{_DEL}\s+(?:the\s+|my\s+)?{_DWORD}\s+(?:(?:called|named)\s+)?['\"“]?(?P<name>{_NAME})['\"”]?{_DTAIL}\s*[.!]?\s*$", re.I)
+_DELETE_AFTER = re.compile(
+    rf"{_POLITE}{_DEL}\s+(?:the\s+|my\s+)?['\"“]?(?P<name>{_NAME})['\"”]?\s+{_DWORD}{_DTAIL}\s*[.!]?\s*$", re.I)
+
+_NOT_A_NAME = {"from", "in", "under", "on", "of", "inside", "within", "to", "do", "to do", "to-do", "todo", "task", "tasks", "new", "my", "a", "an", "the"}
 
 
 def _tidy(name: str) -> str:
@@ -48,10 +59,18 @@ def _tidy(name: str) -> str:
 
 
 def parse(text: str) -> Optional[dict]:
-    """{"kind": "create_list", "name", "space"?, "then"?} or {"kind": "create_space", "name", "then"?}; else None."""
+    """{"kind": "create_list", "name", "space"?, "then"?}, {"kind": "create_space", "name", "then"?} or
+    {"kind": "delete_space", "name", "certain"}; else None."""
     raw = " ".join((text or "").split())
     if not raw or len(raw) > 200:
         return None
+    for pattern, certain in ((_DELETE_NAMED, True), (_DELETE_AFTER, False)):
+        m = pattern.match(raw)
+        if m:
+            name = _tidy(m.group("name"))
+            if not name or name.lower() in _NOT_A_NAME or name.split()[0].lower() in _NOT_A_NAME or len(name.split()) > 4:
+                return None
+            return {"kind": "delete_space", "name": name, "certain": certain}
     head, then = raw, ""
     split = _THEN.search(raw)
     if split:

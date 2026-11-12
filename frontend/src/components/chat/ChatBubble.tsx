@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useNavigate } from 'react-router-dom'
@@ -41,12 +41,41 @@ function Sources({ sources }: { sources: AnswerSource[] }) {
   )
 }
 
+// "Delete the space Work?" - answered with a button, never by the sentence alone.
+function ConfirmButtons({ label, onConfirm, onDecline }: { label: string; onConfirm: () => Promise<void>; onDecline: () => void }) {
+  const [busy, setBusy] = useState(false)
+  return (
+    <div className="mt-3 flex gap-2">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true)
+          try {
+            await onConfirm()
+          } finally {
+            setBusy(false)
+          }
+        }}
+        className="pressable h-10 rounded-full border border-border-strong bg-bg-card px-4 text-sm font-medium text-danger disabled:opacity-50"
+      >
+        {busy ? 'Deleting…' : label}
+      </button>
+      <button type="button" disabled={busy} onClick={onDecline} className="pressable h-10 rounded-full px-4 text-sm font-medium text-text-muted disabled:opacity-50">
+        Keep it
+      </button>
+    </div>
+  )
+}
+
 export default function ChatBubble({
   message,
   onSaveAsNote,
   onCaptureChange,
   onUndo,
   onReport,
+  onConfirm,
+  onDecline,
 }: {
   message: ChatMessage
   // Only passed for the latest message while nothing is in flight.
@@ -57,6 +86,9 @@ export default function ChatBubble({
   onUndo?: () => Promise<void>
   // "Something wrong with this reply?" - opens the report form for it.
   onReport?: () => void
+  // Yes / No on a message that asks before doing something it can't take back (message.confirm).
+  onConfirm?: () => Promise<void>
+  onDecline?: () => void
 }) {
   const bodyRef = useRef<HTMLDivElement>(null)
   if (message.role === 'user') {
@@ -83,6 +115,7 @@ export default function ChatBubble({
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
         )}
       </div>
+      {message.confirm && onConfirm && onDecline && <ConfirmButtons label={`Delete ${message.confirm.name}`} onConfirm={onConfirm} onDecline={onDecline} />}
       {message.saveAsNote && (
         <button
           type="button"

@@ -99,3 +99,70 @@ def test_creating_a_space_twice_is_said_not_repeated(monkeypatch):
     assert "already have" in chat._run_command("u", {"kind": "create_space", "name": "health"}, None)["answer"]
     out = chat._run_command("u", {"kind": "create_space", "name": "Fitness"}, None)
     assert made["spaces"] == ["Fitness"] and out["changed"] == ["initiatives"]
+
+
+# ---- "workspace" and deleting a space ----
+
+def test_workspace_is_a_word_for_a_space_and_the_task_after_it_is_kept():
+    assert commands.parse("Create a workspace named IBM and add this task: Send the onboarding document tomorrow.") == {
+        "kind": "create_space", "name": "IBM", "then": "add this task: Send the onboarding document tomorrow."}
+    assert commands.parse("make a new workspace for Health") == {"kind": "create_space", "name": "Health"}
+    assert commands.parse("create a list called Books in the IBM workspace") == {"kind": "create_list", "name": "Books", "space": "IBM"}
+
+
+def test_deleting_a_space_is_recognised_in_the_usual_wordings():
+    for text, name, certain in [
+        ("Delete the section Work under spaces tab", "Work", True),
+        ("remove the space Work", "Work", True),
+        ("delete workspace IBM", "IBM", True),
+        ("please remove the Health space", "Health", False),
+        ("delete the IBM workspace", "IBM", False),
+    ]:
+        assert commands.parse(text) == {"kind": "delete_space", "name": name, "certain": certain}, text
+
+
+def test_ordinary_messages_with_delete_in_them_are_not_commands():
+    for text in ["remove milk from my shopping list", "delete the draft email", "delete the category from my notes", "Delete my account"]:
+        assert commands.parse(text) is None, text
+
+
+def test_deleting_a_space_only_asks_and_never_deletes(monkeypatch):
+    chat, made = _chat(monkeypatch, [{"id": 2, "name": "Personal"}, {"id": 3, "name": "Work"}])
+    out = chat._run_command("u", {"kind": "delete_space", "name": "work", "certain": True}, None)
+    assert out["confirm"] == {"action": "delete_space", "id": 3, "name": "Work"}
+    assert "move to Others" in out["answer"] and out["changed"] == []
+    assert made["spaces"] == []  # nothing was touched
+
+
+def test_a_space_that_does_not_exist_is_said_or_let_through(monkeypatch):
+    chat, _ = _chat(monkeypatch, [{"id": 2, "name": "Personal"}])
+    sure = chat._run_command("u", {"kind": "delete_space", "name": "IBM", "certain": True}, None)
+    assert "confirm" not in sure and "IBM" in sure["answer"] and "Personal" in sure["answer"]
+    unsure = chat._run_command("u", {"kind": "delete_space", "name": "Old files", "certain": False}, None)
+    assert unsure.get("fallthrough") is True  # "delete the old files folder" may just be a to-do
+
+
+def test_the_task_added_with_a_new_workspace_is_filed_in_it(monkeypatch):
+    import asyncio
+    chat, made = _chat(monkeypatch, [])
+    captured = []
+
+    async def fake_capture(uid, text, lat, lng, request, on_stage=None, initiative_id=None):
+        captured.append((text, initiative_id))
+        return {"status": "saved", "parts": []}
+
+    monkeypatch.setattr(chat.capture_router, "_capture_text_core", fake_capture)
+    body = types.SimpleNamespace(initiative_id=None, geo_lat=None, geo_lng=None, save_only=False)
+    cmd = commands.parse("Create a workspace named IBM and add this task: Send the onboarding document tomorrow.")
+    out = asyncio.run(chat._handle_command("u", body, None, cmd))
+    assert made["spaces"] == ["IBM"]
+    assert captured == [("Send the onboarding document tomorrow.", out["space_id"])]  # the wrapper words are dropped
+    assert out["capture"]["status"] == "saved"
+
+
+def test_the_today_box_does_not_offer_to_delete_a_space(monkeypatch):
+    import asyncio
+    chat, _ = _chat(monkeypatch, [{"id": 3, "name": "Work"}])
+    body = types.SimpleNamespace(initiative_id=None, geo_lat=None, geo_lng=None, save_only=True)
+    out = asyncio.run(chat._handle_command("u", body, None, commands.parse("delete the space Work")))
+    assert out["intent"] == "blocked" and "Home tab" in out["answer"] and "confirm" not in out

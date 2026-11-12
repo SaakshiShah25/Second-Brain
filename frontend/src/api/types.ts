@@ -174,6 +174,15 @@ export interface ChatMessage {
   capture?: CaptureSavedResult
   // Set once the user took back everything this capture saved (see CaptureReply's Undo).
   undone?: boolean
+  // A question the app is waiting on before doing something it can't take back ("Delete the space Work?") - shown as
+  // Yes / No buttons under the message until answered.
+  confirm?: ConfirmDelete
+}
+
+export interface ConfirmDelete {
+  action: 'delete_space'
+  id: number
+  name: string
 }
 
 // ---------- Unified chat (single thread, no mode tabs) ----------
@@ -199,6 +208,7 @@ export interface ChatCommandResult {
   answer: string
   changed: ('lists' | 'initiatives')[]
   capture?: CaptureSavedResult
+  confirm?: ConfirmDelete
 }
 export type ChatResult = ChatCaptureResult | ChatAskResult | ChatBlockedResult | ChatCommandResult
 

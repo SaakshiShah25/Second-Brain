@@ -90,11 +90,32 @@ def _find_space(spaces: list, said: str):
     return partial[0] if len(partial) == 1 else None
 
 
+# "add this task: Send the deck" -> "Send the deck": the words that only introduce what to add.
+_WRAPPER = re.compile(r"^(?:also\s+)?(?:add|put|create)\s+(?:this|the|a|an|another|these)?\s*(?:task|to-?do|reminder|note)s?\s*[:,\-]?\s*", re.I)
+
+
 def _run_command(user_id: str, cmd: dict, picked_space_id) -> dict:
     """Carries out "create a reading list in Personal" / "create a space called Health" (commands.parse) and says what
     happened. `picked_space_id` is the space chosen in the input bar, used when the message names none."""
     spaces = db.get_initiatives(user_id)
     reply = {"intent": "command", "status": "answered", "changed": [], "space_id": None, "list_name": None}
+    if cmd["kind"] == "delete_space":
+        space = _find_space(spaces, cmd["name"])
+        if not space:
+            if not cmd.get("certain"):
+                reply["fallthrough"] = True  # "delete the old files folder": no such space, so an ordinary message
+                return reply
+            names = ", ".join(f"**{s['name']}**" for s in spaces) or "none yet"
+            reply["answer"] = f"I don't have a space called “{cmd['name']}”. Your spaces: {names}."
+            return reply
+        # Never deleted from a sentence: the person is asked, and the app deletes only when they say yes.
+        reply.update(
+            answer=(f"Delete the space **{space['name']}**? Its notes, to-dos and lists are not deleted - they move to Others. "
+                    "The space itself can't be brought back."),
+            confirm={"action": "delete_space", "id": space["id"], "name": space["name"]},
+        )
+        return reply
+
     if cmd["kind"] == "create_space":
         try:
             made = db.create_initiative(user_id, cmd["name"][:40])
@@ -148,8 +169,18 @@ async def _handle_command(user_id: str, body: ChatRequest, request: Request, cmd
     """Runs a command, then - for "create a reading list in Personal and add Dune" - captures the rest of the message
     as usual, into the list that was just made (and its space)."""
     result = await run_in_threadpool(_run_command, user_id, cmd, body.initiative_id)
+    if body.save_only and result.get("confirm"):
+        # The Today box only saves: the confirmation for deleting a space lives in the Home chat.
+        return {"intent": "blocked", "status": "answered", "reason": "out_of_scope",
+                "answer": "Deleting a space is done on the Home tab - say it there and you'll be asked to confirm."}
     then = cmd.get("then")
-    if then and result.get("list_name"):
+    if then and cmd["kind"] == "create_space" and result.get("space_id"):
+        # "Create a workspace named IBM and add this task: send the deck tomorrow": the task goes into the new space.
+        then = _WRAPPER.sub("", then).strip() or None
+        if then:
+            result["capture"] = await capture_router._capture_text_core(
+                user_id, then, body.geo_lat, body.geo_lng, request, on_stage=on_stage, initiative_id=result["space_id"])
+    elif then and result.get("list_name"):
         if not re.search(r"\b(?:to|in|into)\b", then, re.I):
             then = f"{then} to my {result['list_name'].lower()}"
         captured = await capture_router._capture_text_core(
@@ -170,7 +201,9 @@ async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_c
     # "Create a reading list in Personal" is an instruction to the app: do it, instead of logging it as a to-do.
     cmd = None if body.as_note else commands.parse(body.text)
     if cmd:
-        return await _handle_command(user_id, body, request, cmd)
+        result = await _handle_command(user_id, body, request, cmd)
+        if not result.get("fallthrough"):
+            return result
 
     with step("intent_classify"):
         detected = _route_without_model(body) or await run_in_threadpool(intent.classify, body.text)
@@ -253,8 +286,10 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
         cmd = None if body.as_note else commands.parse(body.text)
         if cmd:
             await push_stage("saving")
-            await queue.put(("result", await _handle_command(user_id, body, request, cmd, on_stage=push_stage)))
-            return
+            result = await _handle_command(user_id, body, request, cmd, on_stage=push_stage)
+            if not result.get("fallthrough"):
+                await queue.put(("result", result))
+                return
 
         detected = _route_without_model(body)
         if detected is None:
