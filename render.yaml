@@ -54,6 +54,10 @@ services:
       # paid key - its free tier may use content for training.
       - key: GEMINI_FALLBACK
         value: "off"
+      # Second AI provider for note extraction (nvidia_client.py): used when Groq's free budget for the
+      # extraction model is used up. On whenever the key is set; NVIDIA_FALLBACK=off turns it off.
+      - key: NVIDIA_API_KEY
+        sync: false
       # Observability (observability.py, api/routers/admin.py): every alert
       # (errors, AI budget at 80% / used up, users hitting caps, uninvited
       # sign-ins) and the daily report go here. Also the admin page's login.

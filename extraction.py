@@ -13,8 +13,9 @@ from datetime import date
 from typing import Optional
 
 import gemini_client
+import nvidia_client
 import text_utils
-from groq import RateLimitError
+from groq import APIConnectionError, InternalServerError, RateLimitError
 import llm_budget
 from llm_client import MODEL_NAME
 
@@ -329,6 +330,20 @@ def quick_extract(raw_text: str, list_names: list = None) -> Optional[dict]:
     }
 
 
+# What one note costs Groq (system prompt ~5K tokens + the note + the answer): below this much budget left, don't try.
+EXTRACTION_TOKENS = 6000
+
+
+def _from_fallbacks(providers, system_prompt: str, user_content: str):
+    """The first provider that returns JSON text, or None. A fallback failing never hides the original problem."""
+    for provider in providers:
+        try:
+            return text_utils.normalize_text(provider.generate_json(system_prompt, user_content, temperature=0.2))
+        except Exception:  # noqa: BLE001 - try the next provider
+            continue
+    return None
+
+
 def extract_info(raw_text: str, reference_date: date = None, initiative_names: list = None,
                  list_names: list = None) -> dict:
     """
@@ -358,27 +373,31 @@ def extract_info(raw_text: str, reference_date: date = None, initiative_names: l
     # unwrapped user turn reads too much like a normal conversational
     # message the model might feel obligated to respond/comply with.
     user_content = f"<note>\n{raw_text}\n</note>"
-    try:
-        response = llm_budget.chat(MODEL_NAME,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
-            ],
-            temperature=0.2,
-            response_format={"type": "json_object"},
-        )
-        content = text_utils.normalize_text(response.choices[0].message.content)
-    except RateLimitError:
-        # Groq's account-wide free-tier TPM budget is shared across every
-        # user's extraction calls (see gemini_client.py's docstring) - on
-        # a 429, fall back to Gemini's more generous free tier rather than
-        # failing the user's note outright. Only if GEMINI_API_KEY is set;
-        # otherwise re-raise so callers see the same error as before.
-        if not gemini_client.available():
-            raise
-        content = text_utils.normalize_text(
-            gemini_client.generate_json(system_prompt, user_content, temperature=0.2)
-        )
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_content},
+    ]
+    # Groq's free budget for this model is shared by every user (8K tokens a minute, 200K a day), and one note
+    # takes ~5.5K - so a second person logging in the same minute is refused. When another provider is set up,
+    # use it straight away instead of waiting out the refusal (retries=0: no silent 20-40 s backoff), and go to
+    # it first while Groq's budget is known to be used up.
+    fallbacks = [f for f in (nvidia_client, gemini_client) if f.available()]
+    content = None
+    tried_fallbacks = False
+    if fallbacks and not llm_budget.can_spend(MODEL_NAME, EXTRACTION_TOKENS):
+        content, tried_fallbacks = _from_fallbacks(fallbacks, system_prompt, user_content), True
+    if content is None:
+        try:
+            response = llm_budget.chat(MODEL_NAME, retries=0 if fallbacks else 2, messages=messages, temperature=0.2,
+                                       response_format={"type": "json_object"})
+            content = text_utils.normalize_text(response.choices[0].message.content)
+        except (RateLimitError, APIConnectionError, InternalServerError):
+            # Out of budget, or Groq itself is down / timing out: either way another provider can take the note.
+            if not fallbacks or tried_fallbacks:
+                raise  # nothing else to try: the same message as before fallbacks existed
+            content = _from_fallbacks(fallbacks, system_prompt, user_content)
+            if content is None:
+                raise
 
     try:
         return json.loads(content)

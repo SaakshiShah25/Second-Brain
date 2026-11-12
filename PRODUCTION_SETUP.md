@@ -29,6 +29,7 @@ Render dashboard → your service (`second-brain-api`) → **Environment** → a
 | `FRONTEND_URL` | your Vercel URL, e.g. `https://myconfia.vercel.app` | CORS (which websites may call the API) |
 | `CRON_SECRET` | a long random string (see below) | Protects the scheduled jobs; must match GitHub |
 | `GEMINI_FALLBACK` | `off` | Gemini's free tier may use data for training |
+| `NVIDIA_API_KEY` | your key from build.nvidia.com | When Groq's free budget for note extraction is used up (or two people log in the same minute), the note is extracted by NVIDIA's Nemotron models instead of failing. Set `NVIDIA_FALLBACK=off` to switch it off. Read NVIDIA's API terms on data use first. |
 
 Keep the variables that are already there (`GROQ_API_KEY`, `COHERE_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`, `ENCRYPTION_KEY`, …).
 
