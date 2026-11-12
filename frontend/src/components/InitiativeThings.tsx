@@ -172,7 +172,7 @@ function ListBlock({
 const SECTION_LABEL: Record<SpaceSection, string> = { notes: 'Notes', todos: 'To-dos', lists: 'Lists' }
 
 // The three parts of a space, as pages side by side that you move between - one fills the whole space at a time.
-// On a phone you swipe (CSS scroll-snap, so it feels native) and a faint arrow hints at the page out of sight. On a
+// On a phone you swipe (CSS scroll-snap, so it feels native, and it goes round too) with faint arrows at both edges. On a
 // laptop there are round arrow buttons in the margins, with soft shadows at both edges to say "there is more this way";
 // they go round in a circle (after Lists comes Notes again), and the left / right arrow keys do the same.
 // A tab bar on both shows where you are and jumps straight to a part. The strip is only as tall as the page you are
@@ -233,6 +233,26 @@ function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record
   }, [step])
   const nameAt = (i: number) => SECTION_LABEL[order[(i + n) % n]]
 
+  // A phone's swipe goes round too: a scroll strip stops at its ends, so a swipe that tries to go past the last page
+  // (or before the first) is caught when the finger lifts and sent round to the other end.
+  const touch = useRef<{ x: number; y: number } | null>(null)
+  const onTouchStart = (e: React.TouchEvent) => {
+    touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+  }
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const start = touch.current
+    touch.current = null
+    const el = strip.current
+    if (!start || !el) return
+    const dx = e.changedTouches[0].clientX - start.x
+    const dy = e.changedTouches[0].clientY - start.y
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return // not a clear sideways swipe
+    const atEnd = el.scrollLeft >= el.scrollWidth - el.clientWidth - 2
+    const atStart = el.scrollLeft <= 2
+    if (dx < 0 && atEnd) goTo(0)
+    else if (dx > 0 && atStart) goTo(n - 1)
+  }
+
   return (
     <div className="relative lg:px-14">
       {/* Tab bar: shows where you are, and jumps to a part. */}
@@ -256,6 +276,8 @@ function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record
       <div
         ref={strip}
         onScroll={onScroll}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
         className="no-scrollbar -mx-4 flex snap-x snap-mandatory items-start overflow-x-auto overflow-y-hidden overscroll-x-contain transition-[height] duration-200 lg:mx-0"
         style={height !== undefined ? { height } : undefined}
       >
@@ -293,12 +315,12 @@ function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record
         <ChevronRight size={22} strokeWidth={2} />
       </button>
       {/* Faint arrows toward the pages out of sight - a hint, not a button (the tab bar and the swipe do the work). */}
-      {active > 0 && (
+      {(
         <span aria-hidden="true" className="pointer-events-none fixed top-1/2 left-0.5 z-10 text-text-muted lg:hidden" style={{ animation: 'nudge-left 2.2s ease-in-out infinite' }}>
           <ChevronLeft size={28} strokeWidth={1.8} />
         </span>
       )}
-      {active < order.length - 1 && (
+      {(
         <span aria-hidden="true" className="pointer-events-none fixed top-1/2 right-0.5 z-10 text-text-muted lg:hidden" style={{ animation: 'nudge-right 2.2s ease-in-out infinite' }}>
           <ChevronRight size={28} strokeWidth={1.8} />
         </span>
