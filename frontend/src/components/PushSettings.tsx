@@ -23,6 +23,7 @@ export default function PushSettings() {
   const [on, setOn] = useState(false)
   const [busy, setBusy] = useState(false)
   const [prefs, setPrefs] = useState<ReminderPrefs | null>(null)
+  const [prefsLoaded, setPrefsLoaded] = useState(false)
   const [message, setMessage] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null)
   const blocked = support === 'ok' && typeof Notification !== 'undefined' && Notification.permission === 'denied'
 
@@ -34,8 +35,13 @@ export default function PushSettings() {
 
   // This device's summary times and alarm choice, once reminders are on.
   useEffect(() => {
-    if (on) void getReminderPrefs().then(setPrefs)
-    else setPrefs(null)
+    setPrefsLoaded(false)
+    if (on) {
+      void getReminderPrefs().then((p) => {
+        setPrefs(p)
+        setPrefsLoaded(true)
+      })
+    } else setPrefs(null)
   }, [on])
 
   async function changePrefs(changes: Partial<ReminderPrefs>) {
@@ -176,6 +182,16 @@ export default function PushSettings() {
       />
       {on && <ListRow icon={Bell} iconColor="var(--sb-text-muted)" soft label="Send me a test now" chevron onClick={test} disabled={busy} />}
     </ListGroup>
+    {on && prefsLoaded && !prefs && (
+      // The server answered with nothing: it is an older version, or the database script hasn't been run - say so rather
+      // than quietly showing no choices.
+      <ListGroup
+        title="When to remind me"
+        footer="Choosing the times, and the alarm, needs the latest server update and its database script (scripts/migration_46_reminder_prefs.sql). Until then reminders arrive at 9 AM and 5 PM as a normal notification."
+      >
+        <ListRow icon={BellRing} iconColor="var(--sb-text-muted)" soft label="Not available yet" detail="The server needs updating" />
+      </ListGroup>
+    )}
     {on && prefs && (
       <>
         {/* When the summaries arrive: each can be switched off and set to any time. */}
