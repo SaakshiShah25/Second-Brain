@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Check, ListFilter, Search, SlidersHorizontal } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
@@ -25,7 +25,12 @@ export default function InitiativeBar({ counts, search, hideChips = false, scope
     if (typeof filter === 'number' && filter > 0 && initiatives && !initiatives.some((i) => i.id === filter)) setFilter(null)
   }, [initiatives, filter, setFilter])
 
-  const currentLabel = filter === null ? 'All spaces' : filter === -1 ? 'Others' : (initiatives?.find((i) => i.id === filter)?.name ?? 'All spaces')
+  // Whichever space is chosen (from the list or a chip) is scrolled to the middle of the row, so it never hides off-screen.
+  const bar = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = bar.current?.querySelector<HTMLElement>(`[data-space="${filter ?? 'all'}"]`)
+    el?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
+  }, [filter, initiatives])
   const choose = (value: number | null) => {
     setFilter(value)
     setPicking(false)
@@ -46,31 +51,31 @@ export default function InitiativeBar({ counts, search, hideChips = false, scope
   return (
     <>
       {/* mt-auto pushes it to the foot of a short page; sticky keeps it on screen while a long page scrolls. */}
-      <div className="sticky bottom-0 z-10 -mx-4 -mb-6 mt-auto border-t border-border bg-bg/95 pt-2.5 pb-2.5 backdrop-blur-xl">
+      <div ref={bar} className="sticky bottom-0 z-10 -mx-4 -mb-6 mt-auto border-t border-border bg-bg/95 pt-2.5 pb-2.5 backdrop-blur-xl">
       {/* On a laptop the box and chips stay one readable, centred width under the wider page. */}
       <div className="w-full">
       {search && <div className={`px-4 ${hideChips ? '' : 'mb-2.5'}`}>{search}</div>}
       {!hideChips && (
       <ChipRow className="!mx-0">
         {/* Every space in one vertical list: quicker than scrolling the chips when there are many. */}
-        <Chip onClick={() => setPicking(true)} aria-label="Choose a space from a list" className="!min-w-0 max-w-[11rem] !px-3">
+        <Chip onClick={() => setPicking(true)} aria-label="Choose a space from a list" className="!min-w-0 !px-3">
           <ListFilter size={15} strokeWidth={2} className="flex-shrink-0" />
-          <span className="truncate">{currentLabel}</span>
+          Select
         </Chip>
-        <Chip active={filter === null} onClick={() => setFilter(null)}>
+        <Chip data-space="all" active={filter === null} onClick={() => setFilter(null)}>
           All
         </Chip>
         {initiatives?.map((i) => {
           const style = getInitiativeStyle(i)
           return (
-            <Chip key={i.id} active={filter === i.id} color={style?.color} onClick={() => setFilter(i.id)}>
+            <Chip key={i.id} data-space={i.id} active={filter === i.id} color={style?.color} onClick={() => setFilter(i.id)}>
               {style && <style.Icon size={14} strokeWidth={2} />}
               {i.name}
               {count(i.id)}
             </Chip>
           )
         })}
-        <Chip active={filter === -1} onClick={() => setFilter(-1)}>
+        <Chip data-space="-1" active={filter === -1} onClick={() => setFilter(-1)}>
           Others
           {count(-1)}
         </Chip>
