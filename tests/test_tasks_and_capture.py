@@ -56,7 +56,7 @@ def test_capture_saves_the_note_and_its_tasks_without_any_person():
     assert "person_id" not in saved["interaction"] and "person_id" not in saved["tasks"][0][2]
     (_, d1, k1), (_, d2, k2), (_, d3, k3) = saved["tasks"]
     assert (d1, k1["due_date"], k1["due_time"], k1["owner"]) == ("Email Priya the deck", date.today().isoformat(), "18:00", "me")
-    assert k2["owner"] == "them" and k2["due_date"] is None
+    assert k2["owner"] == "me" and k2["due_date"] is None  # who-owes is not tracked (capture.TRACK_WHO_OWES)
     assert k3["owner"] == "me" and k3["due_time"] == "19:00" and k3["due_date"] == date.today().isoformat()  # a time with no day means today
     assert [t["description"] for t in one["tasks_created"]] == [d1, d2, d3]
     assert ("note", [7]) in saved["indexed"]

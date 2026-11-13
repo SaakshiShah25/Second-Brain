@@ -1,7 +1,7 @@
 -- Run this once in the Supabase SQL editor (safe to run more than once).
 -- Adds the table behind the rating card, "Report a problem" and the admin page's Feedback card.
 
--- 46. User feedback: a "how is it going?" rating, reported problems, and "ask me later" markers (so the
+-- 47. User feedback: a "how is it going?" rating, reported problems, and "ask me later" markers (so the
 --     rating card is asked once per account, not once per device). Read and written only by the backend's
 --     service key (RLS on, no policies), like app_event. Shown on the admin page (api/routers/admin.py).
 --     Safe to run more than once.

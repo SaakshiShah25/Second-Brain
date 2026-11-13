@@ -398,7 +398,7 @@ function Feedback() {
   if (!data.available)
     return (
       <Card icon={MessageSquareHeart} title="Feedback">
-        <Empty>Run the database migration (schema.sql section 46) to start collecting ratings and reports.</Empty>
+        <Empty>Run the database migration (schema.sql section 47) to start collecting ratings and reports.</Empty>
       </Card>
     )
   const r = data.ratings!

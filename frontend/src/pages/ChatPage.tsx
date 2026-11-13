@@ -56,8 +56,7 @@ function formatPart(part: CapturePart, showCategory: boolean): string {
   if (part.tasks_created.length > 0) {
     lines.push('**Tasks:**')
     for (const t of part.tasks_created) {
-      const owner = t.owner === 'them' ? 'Someone else' : 'Me'
-      lines.push(`- ${t.description}${t.due_date ? ` _(due ${dueLabel(t.due_date, t.due_time)})_` : ''} — ${owner}`)
+      lines.push(`- ${t.description}${t.due_date ? ` _(due ${dueLabel(t.due_date, t.due_time)})_` : ''}`)
     }
   }
   return lines.join('\n\n')
@@ -283,13 +282,13 @@ export default function ChatPage() {
   }[usage.mode]
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex w-full flex-1 flex-col ">
       {/* Sticky: after a long conversation the profile button must still be in reach without scrolling back up. */}
       <header className="sticky top-0 z-20 -mx-4 -mt-2 flex h-[3.25rem] items-center gap-2 bg-bg px-4 pt-2">
-        <span className="flex h-8 w-8 items-center justify-center text-text">
+        <span className="flex h-8 w-8 items-center justify-center text-text lg:hidden">
           <ConfiaLogo size={24} />
         </span>
-        <span className="text-[1.0625rem] font-semibold tracking-[-0.02em]">MyConfía</span>
+        <span className="text-[1.0625rem] font-semibold tracking-[-0.02em] lg:hidden">MyConfía</span>
         <span className="flex-1" />
         {messages.length > 0 && (
           <button
@@ -307,14 +306,14 @@ export default function ChatPage() {
 
       <div className="flex flex-1 flex-col gap-5 pt-4 pb-4">
         {isEmpty && (
-          <div className="flex flex-1 flex-col justify-end pb-2">
+          <div className="flex flex-1 flex-col justify-end pb-2 lg:justify-center lg:pb-16">
             <Greeting />
-            <p className="mt-2 mb-6 max-w-xs text-[0.9375rem] leading-relaxed text-text-muted">
+            <p className="mt-2 mb-6 max-w-xs text-[0.9375rem] leading-relaxed text-text-muted lg:max-w-xl lg:text-base">
               {usage.mode === 'personal'
                 ? 'Jot down anything, or ask about what you’ve noted.'
                 : 'Jot down a note or a task, or ask about what you’ve logged.'}
             </p>
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-2.5 lg:grid lg:grid-cols-3 lg:gap-4">
               {starters.map(({ icon: Icon, title, body, onClick }) => (
                 <button
                   key={title}

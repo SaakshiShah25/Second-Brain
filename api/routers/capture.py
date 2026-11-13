@@ -28,10 +28,13 @@ import voice
 from timing import step
 from api.auth import get_current_user_id
 from api.rate_limit import limiter
+
 from api.schemas import CaptureRequest
 from date_utils import first_occurrence, normalize_repeat, resolve_relative_phrase, to_valid_time
 
 router = APIRouter()
+
+TRACK_WHO_OWES = False
 
 
 def _reject_if_unsafe(text: str) -> None:
@@ -163,7 +166,9 @@ def _parse_items(extracted: dict) -> list:
         desc = text_utils.clean_task_text(item.get("description", ""))
         if not desc:
             continue
-        owner = item.get("owner") if item.get("owner") in ("me", "them") else "me"
+        # The app doesn't track "someone else owes this" yet (the toggle and labels are gone), so everything the AI finds
+        # is a plain to-do. Flip TRACK_WHO_OWES to bring the AI's guess back.
+        owner = item.get("owner") if TRACK_WHO_OWES and item.get("owner") in ("me", "them") else "me"
         detail = " ".join(str(item.get("detail") or "").split())[:1000] or None
         items.append({**item, "description": desc, "owner": owner, "detail": detail})
     return items

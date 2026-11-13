@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { CalendarCheck, Home, LayoutGrid, type LucideIcon } from 'lucide-react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { CalendarCheck, Home, Keyboard, LayoutGrid, Settings as SettingsIcon, type LucideIcon } from 'lucide-react'
+import ConfiaLogo from './ConfiaLogo'
 import Toaster from './Toast'
 import ConnectionBanner from './ConnectionBanner'
 import { syncReminders } from '../lib/push'
+import NotificationPrompt from './NotificationPrompt'
+import AlarmOverlay from './AlarmOverlay'
+import Sheet from './Sheet'
+import { useInitiatives } from '../api/initiatives'
+import { getInitiativeStyle } from '../lib/initiativeStyle'
+import { useInitiativeFilter } from '../lib/initiativeFilter'
+import { useOpenSpace } from '../lib/useOpenSpace'
 
 // Each tab has its own hue (index.css --sb-fun-*), shown when it's the
 // active tab - full class strings so Tailwind can see them.
@@ -95,9 +103,94 @@ function useHoverLabels() {
   }, [])
 }
 
+// Keyboard shortcuts for a laptop (ignored while typing in a field, and on a phone-sized window):
+//   g then t / h / s   go to Today / Home / Spaces      / or n   jump to the add / search box      ?   this list
+const SHORTCUTS: { keys: string; does: string }[] = [
+  { keys: 'g  then  t', does: 'Go to Today' },
+  { keys: 'g  then  h', does: 'Go to Home' },
+  { keys: 'g  then  s', does: 'Go to Spaces' },
+  { keys: '/   or   n', does: 'Jump to the add / search box' },
+  { keys: 'Esc', does: 'Close a pop-up' },
+  { keys: '?', does: 'Show this list' },
+]
+
+function useShortcuts(onHelp: () => void) {
+  const navigate = useNavigate()
+  useEffect(() => {
+    let waitingForSecondKey = false
+    let timer = 0
+    const isTyping = (el: EventTarget | null) =>
+      el instanceof HTMLElement && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return
+      if (!window.matchMedia('(min-width: 1024px)').matches) return
+      if (document.querySelector('[role="dialog"]')) return // a pop-up is open
+      if (waitingForSecondKey) {
+        waitingForSecondKey = false
+        window.clearTimeout(timer)
+        const to = { t: '/today', h: '/', s: '/notes' }[e.key.toLowerCase()]
+        if (to) {
+          e.preventDefault()
+          navigate(to)
+        }
+        return
+      }
+      if (e.key === 'g') {
+        waitingForSecondKey = true
+        timer = window.setTimeout(() => (waitingForSecondKey = false), 1200)
+      } else if (e.key === '/' || e.key === 'n') {
+        const box = document.querySelector<HTMLElement>('main textarea, main input[type="search"], main input:not([type="checkbox"])')
+        if (box) {
+          e.preventDefault()
+          box.focus()
+        }
+      } else if (e.key === '?') {
+        onHelp()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      window.clearTimeout(timer)
+    }
+  }, [navigate, onHelp])
+}
+
+// The sidebar's list of spaces under "Spaces": one click goes straight into one.
+function SidebarSpaces() {
+  const { data: initiatives } = useInitiatives()
+  const [filter] = useInitiativeFilter()
+  const openSpace = useOpenSpace()
+  const { pathname } = useLocation()
+  if (!initiatives || initiatives.length === 0) return null
+  const rows = [...initiatives.map((i) => ({ id: i.id as number | null, name: i.name, style: getInitiativeStyle(i), key: i.id })), { id: null, name: 'Others', style: null, key: -1 }]
+  return (
+    <div className="mt-1 mb-1 ml-5 flex flex-col gap-0.5 border-l border-border pl-2">
+      {rows.map((r) => {
+        const active = pathname.startsWith('/notes') && filter === (r.id === null ? -1 : r.id)
+        return (
+          <button
+            key={r.key}
+            type="button"
+            onClick={() => openSpace(r.id)}
+            className={`pressable flex h-8 items-center gap-2 rounded-lg px-2.5 text-left text-[0.8125rem] ${
+              active ? 'bg-bg-hover font-semibold text-text' : 'text-text-muted hover:bg-bg-hover'
+            }`}
+          >
+            {r.style ? <r.style.Icon size={14} strokeWidth={2} style={{ color: r.style.color }} className="flex-shrink-0" /> : <span className="h-3.5 w-3.5 flex-shrink-0" />}
+            <span className="truncate">{r.name}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function Layout() {
   useHoverLabels()
   const { pathname } = useLocation()
+  const [help, setHelp] = useState(false)
+  useShortcuts(() => setHelp(true))
   // If task reminders are on, tell the server this device's current time zone each time the app opens.
   useEffect(() => {
     syncReminders()
@@ -106,28 +199,81 @@ export default function Layout() {
   const showTabs = !TABLESS.some((re) => re.test(pathname)) && !keyboardOpen
 
   return (
-    // The whole app is one phone-width column - this is a mobile PWA,
-    // not a responsive website. On a wider screen (a desktop browser,
-    // a tablet) it simply stays a centered phone column rather than
-    // stretching into a desktop layout.
+    // Two layouts from one codebase. Below 1024px (phones, and a phone-sized browser window) the app is one
+    // phone-width column with a tab bar along the bottom - exactly the installed-app experience. From 1024px up
+    // (a laptop or desktop browser) it is a simple web app: a navigation sidebar on the left and a wider, centred
+    // content column.
     //
     // h-dvh (dynamic viewport height), not 100vh, so the column tracks
     // the real visible area as mobile browser chrome shows/hides. The tab
     // bar is an in-flow flex child below the scroll area, not
     // position:fixed, so content can never end up hidden underneath it.
-    <div className="bg-bg text-text">
-      <div className="pt-safe relative mx-auto flex h-dvh max-w-[480px] flex-col bg-bg min-[481px]:border-x min-[481px]:border-border">
+    <div className="bg-bg text-text lg:flex lg:h-dvh">
+      {/* Sidebar: web only. */}
+      <aside className="hidden w-60 flex-shrink-0 flex-col border-r border-border px-3 py-6 lg:flex">
+        <div className="mb-8 flex items-center gap-2.5 px-3">
+          <ConfiaLogo size={30} className="text-accent" />
+          <span className="font-display text-xl font-semibold tracking-tight">MyConfía</span>
+        </div>
+        <nav className="flex flex-col gap-1" aria-label="Main">
+          {tabs.map((tab) => (
+            <div key={tab.to}>
+              <NavLink
+                to={tab.to}
+                end={tab.end}
+                data-tour-nav={tab.to}
+                className={({ isActive }) =>
+                  `pressable flex h-11 items-center gap-3 rounded-xl px-3 text-[0.9375rem] ${isActive ? `${tab.pill} font-semibold` : 'text-text-muted hover:bg-bg-hover'}`
+                }
+              >
+                <tab.icon size={20} strokeWidth={1.9} />
+                {tab.label}
+              </NavLink>
+              {tab.to === '/notes' && <SidebarSpaces />}
+            </div>
+          ))}
+        </nav>
+        <span className="flex-1" />
+        <button type="button" onClick={() => setHelp(true)} className="pressable mb-2 flex h-9 items-center gap-2 rounded-lg px-3 text-left text-[0.8125rem] text-text-faint hover:bg-bg-hover">
+          <Keyboard size={18} strokeWidth={1.8} className="flex-shrink-0" />
+          Keyboard shortcuts
+        </button>
+        <NavLink
+          to="/settings"
+          className={({ isActive }) =>
+            `pressable flex h-11 items-center gap-3 rounded-xl px-3 text-[0.9375rem] ${isActive ? 'bg-bg-hover font-semibold' : 'text-text-muted hover:bg-bg-hover'}`
+          }
+        >
+          <SettingsIcon size={20} strokeWidth={1.9} />
+          Settings
+        </NavLink>
+      </aside>
+      <div className="pt-safe relative mx-auto flex h-dvh max-w-[480px] flex-col bg-bg min-[481px]:border-x min-[481px]:border-border lg:max-w-none lg:min-w-0 lg:flex-1 lg:border-x-0">
         <ConnectionBanner />
         <main id="app-scroll" className="flex-1 overflow-y-auto overscroll-contain">
-          <div className="flex min-h-full flex-col px-4 pt-2 pb-6">
+          <div className="mx-auto flex min-h-full w-full flex-col px-4 pt-2 pb-6 lg:max-w-4xl lg:pt-6">
             <Outlet />
           </div>
         </main>
 
         <Toaster />
+        <NotificationPrompt />
+        <AlarmOverlay />
+        {help && (
+          <Sheet onClose={() => setHelp(false)} title="Keyboard shortcuts">
+            <ul className="flex flex-col divide-y divide-border">
+              {SHORTCUTS.map((s) => (
+                <li key={s.keys} className="flex items-center justify-between gap-4 py-3 text-[0.9375rem]">
+                  <span>{s.does}</span>
+                  <kbd className="whitespace-pre rounded-lg border border-border-strong bg-bg-elevated px-2 py-1 text-[0.8125rem] font-medium text-text-muted">{s.keys}</kbd>
+                </li>
+              ))}
+            </ul>
+          </Sheet>
+        )}
 
         {showTabs && (
-          <nav className="pb-safe flex-shrink-0 border-t border-border bg-bg/90 backdrop-blur-xl">
+          <nav className="pb-safe flex-shrink-0 border-t border-border bg-bg/90 backdrop-blur-xl lg:hidden">
             <div className="flex h-16 items-stretch px-2">
               {tabs.map((tab) => (
                 <NavLink

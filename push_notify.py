@@ -83,15 +83,46 @@ def valid_timezone(name: str) -> bool:
         return False
 
 
-def due_slot(timezone_name: str, now_utc: Optional[datetime] = None):
-    """(slot, local_date_iso) when this device's local time is inside a reminder window, else
-    None. `slot` is '9am' or '5pm'."""
+def _minutes_of(hhmm, default_hour: int) -> int:
+    """'07:30' -> 450; anything unreadable falls back to the slot's usual hour."""
+    try:
+        h, m = (int(x) for x in str(hhmm)[:5].split(":"))
+        if 0 <= h < 24 and 0 <= m < 60:
+            return h * 60 + m
+    except (ValueError, TypeError):
+        pass
+    return default_hour * 60
+
+
+def slot_times(sub: Optional[dict]) -> list:
+    """[(slot, minute of the day)] for the summaries this device still wants, at the times it chose (default 9 AM and
+    5 PM). The slot names stay '9am' and '5pm' - they are the keys the 'last sent' columns use - whatever the time."""
+    sub = sub or {}
+    out = []
+    if sub.get("morning_on", True):
+        out.append(("9am", _minutes_of(sub.get("morning_time"), 9)))
+    if sub.get("evening_on", True):
+        out.append(("5pm", _minutes_of(sub.get("evening_time"), 17)))
+    return out
+
+
+def due_slot(timezone_name: str, now_utc: Optional[datetime] = None, sub: Optional[dict] = None):
+    """(slot, local_date_iso) when this device's local time is inside one of its summary windows, else
+    None. `slot` is '9am' (the morning one) or '5pm' (the evening one), at the times the device chose."""
     local = _local_now(timezone_name, now_utc)
     minutes = local.hour * 60 + local.minute
-    for slot, hour in SLOTS:
-        if hour * 60 <= minutes < hour * 60 + WINDOW_MINUTES:
+    for slot, start in slot_times(sub):
+        if start <= minutes < start + WINDOW_MINUTES:
             return slot, local.date().isoformat()
     return None
+
+
+def for_device(sub: dict, message: dict) -> dict:
+    """A reminder for one task, as this device wants it: alarm-style devices get `alarm` set, which the app turns into
+    a full-screen card with sound and vibration. Summaries (no task_ids) are never alarms."""
+    if sub.get("alarm_style") and message.get("task_ids"):
+        return {**message, "alarm": True}
+    return message
 
 
 def _local_now(timezone_name: str, now_utc: Optional[datetime] = None) -> datetime:
@@ -188,10 +219,39 @@ def _send_webpush(subscription: dict, message: dict) -> None:
         raise
 
 
-def send_to_user(user_id: str, slot: str = "9am", sender: Optional[Callable] = None) -> int:
+def alarm_test_message(user_id: str) -> dict:
+    """A sample alarm (the 'test alarm' button): the user's most important open task, so the full-screen card shows real
+    content; with no tasks it is a plain test card."""
+    tasks = [t for t in db.get_all_tasks_with_context(user_id, status="open") if not t.get("list_id")]
+    tasks.sort(key=lambda t: (PRIORITY_RANK.get(t.get("priority"), 1), t.get("due_date") or "9999-12-31", t["id"]))
+    top = tasks[0] if tasks else None
+    return {
+        "title": "Alarm test" + (f" · {_short(top['description'])}" if top else ""),
+        "body": "This is how a reminder will ring.",
+        "url": TASKS_URL,
+        "tag": "alarm-test",
+        "task_ids": [top["id"]] if top else [],
+        "alarm": True,
+        "test": True,
+    }
+
+
+def send_to_user(user_id: str, slot: str = "9am", sender: Optional[Callable] = None, alarm: bool = False) -> int:
     """Sends the current task list to every device of one user right now (the 'send me a test'
-    button). Returns how many devices accepted it."""
+    button), or a sample alarm with alarm=True. Returns how many devices accepted it."""
     sender = sender or _send_webpush
+    if alarm:
+        message = alarm_test_message(user_id)
+        sent = 0
+        for sub in db.get_push_subscriptions(user_id):
+            try:
+                sender(sub, message)
+                sent += 1
+            except SubscriptionGone:
+                db.delete_push_subscription(sub["endpoint"])
+            except Exception as e:
+                print(f"[warn] alarm test to {sub['endpoint'][:48]}… failed: {e}")
+        return sent
     message = build_message(group_open_tasks(user_id), slot) or {
         "title": "Nothing open right now", "body": "You have no open tasks. Nice.", "url": TASKS_URL, "tag": "tasks-test",
     }
@@ -232,6 +292,7 @@ def build_reminder_message(tasks: list, local_date: str) -> Optional[dict]:
         "url": TASKS_URL,
         # one tag per reminder, so a 9 AM and a 3 PM reminder on the same day don't replace each other
         "tag": f"task-reminder-{ordered[0]['id']}",
+        "task_ids": [t["id"] for t in ordered],
     }
 
 
@@ -275,7 +336,7 @@ def send_task_reminders(now_utc: Optional[datetime] = None, sender: Optional[Cal
         delivered = False
         for sub in subs:
             try:
-                sender(sub, message)
+                sender(sub, for_device(sub, message))
                 delivered = True
             except SubscriptionGone:
                 db.delete_push_subscription(sub["endpoint"])
@@ -342,7 +403,9 @@ def item_reminder(item: dict, timezone_name: str, now_utc: Optional[datetime] = 
         return None
     if item.get("reminded_key") == key:
         return None
-    return key, {"title": title, "body": body, "url": TASKS_URL, "tag": f"item-{item['id']}"}
+    return key, {"title": title, "body": body, "url": TASKS_URL, "tag": f"item-{item['id']}",
+                 # an "every N hours" nudge is a gentle notification, never a full-screen alarm
+                 **({} if hours else {"task_ids": [item["id"]]})}
 
 
 def _send_item_reminders(subs: list, now_utc: Optional[datetime], sender: Callable, result: dict) -> None:
@@ -364,7 +427,7 @@ def _send_item_reminders(subs: list, now_utc: Optional[datetime], sender: Callab
         delivered = False
         for sub in devices:
             try:
-                sender(sub, message)
+                sender(sub, for_device(sub, message))
                 delivered = True
             except SubscriptionGone:
                 db.delete_push_subscription(sub["endpoint"])
@@ -387,7 +450,7 @@ def send_due(now_utc: Optional[datetime] = None, sender: Optional[Callable] = No
     messages: dict = {}  # (user_id, slot) -> message, built once per user per tick
     for sub in subs:
         result["checked"] += 1
-        due = due_slot(sub.get("timezone") or "UTC", now_utc)
+        due = due_slot(sub.get("timezone") or "UTC", now_utc, sub)
         if not due:
             continue
         slot, local_date = due

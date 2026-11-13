@@ -29,7 +29,7 @@ export default function Toaster() {
   }, [])
   if (!msg) return null
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-28 z-[70] flex justify-center px-6">
+    <div className="pointer-events-none fixed inset-x-0 bottom-28 z-[70] flex justify-center px-6 lg:bottom-8 lg:justify-end lg:px-8">
       <div
         role="status"
         className="rounded-full bg-text px-4 py-2.5 text-sm font-medium text-bg shadow-card"

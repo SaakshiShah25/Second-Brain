@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react'
-import { Bell, BellRing } from 'lucide-react'
+import { Bell, BellRing, Check, Siren } from 'lucide-react'
 import {
   currentSubscription,
   deviceTimeZone,
   disableReminders,
   enableReminders,
+  getReminderPrefs,
+  saveReminderPrefs,
+  type ReminderPrefs,
   PermissionDenied,
   pushSupport,
   sendTestReminder,
   serverSupportsPush,
 } from '../lib/push'
 import { ListGroup, ListRow, Toggle } from './ListGroup'
+import { timeLabel } from '../lib/dates'
 
 // Settings > Notifications: turn the 9 AM / 5 PM task reminders on or off for THIS device.
 export default function PushSettings() {
@@ -18,6 +22,8 @@ export default function PushSettings() {
   const [serverReady, setServerReady] = useState<boolean | null>(null)
   const [on, setOn] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [prefs, setPrefs] = useState<ReminderPrefs | null>(null)
+  const [prefsLoaded, setPrefsLoaded] = useState(false)
   const [message, setMessage] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null)
   const blocked = support === 'ok' && typeof Notification !== 'undefined' && Notification.permission === 'denied'
 
@@ -26,6 +32,43 @@ export default function PushSettings() {
     serverSupportsPush().then(setServerReady)
     currentSubscription().then((sub) => setOn(!!sub && Notification.permission === 'granted'))
   }, [support])
+
+  // This device's summary times and alarm choice, once reminders are on.
+  useEffect(() => {
+    setPrefsLoaded(false)
+    if (on) {
+      void getReminderPrefs().then((p) => {
+        setPrefs(p)
+        setPrefsLoaded(true)
+      })
+    } else setPrefs(null)
+  }, [on])
+
+  async function changePrefs(changes: Partial<ReminderPrefs>) {
+    const before = prefs
+    if (before) setPrefs({ ...before, ...changes }) // shown at once; put back if it can't be saved
+    try {
+      setPrefs(await saveReminderPrefs(changes))
+      setMessage(null)
+    } catch (err) {
+      setPrefs(before)
+      setMessage({ text: err instanceof Error ? err.message : "Couldn't save that - please try again.", tone: 'error' })
+    }
+  }
+
+  async function testAlarm() {
+    if (busy) return
+    setBusy(true)
+    setMessage(null)
+    try {
+      await sendTestReminder(true)
+      setMessage({ text: 'Sent - the alarm should ring in a few seconds.', tone: 'ok' })
+    } catch (err) {
+      setMessage({ text: err instanceof Error ? err.message : "Couldn't send a test.", tone: 'error' })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function toggle() {
     if (busy) return
@@ -90,14 +133,42 @@ export default function PushSettings() {
   }
   if (serverReady === false) return null // the server has no push keys yet - don't offer it
 
+  const permission = typeof Notification !== 'undefined' ? Notification.permission : 'default'
   return (
+    <>
+    {/* Notifications themselves: allow them for this device (also what "Task reminders" below needs). */}
+    <ListGroup
+      title="Notifications"
+      footer={
+        permission === 'denied'
+          ? 'Blocked. Allow notifications for MyConfía in your browser or phone settings, then come back.'
+          : permission === 'default'
+            ? 'Your phone will ask once. This also switches on the task reminders below.'
+            : undefined
+      }
+    >
+      {permission === 'granted' ? (
+        <ListRow icon={BellRing} iconColor="var(--sb-text-muted)" soft label="Notifications" detail="Allowed" />
+      ) : (
+        <ListRow
+          icon={BellRing}
+          iconColor="var(--sb-text-muted)"
+          soft
+          label="Allow notifications"
+          detail={permission === 'denied' ? 'Blocked in your browser settings' : 'Tap to allow'}
+          chevron={permission !== 'denied'}
+          disabled={busy || permission === 'denied'}
+          onClick={toggle}
+        />
+      )}
+    </ListGroup>
     <ListGroup
       title="Task reminders"
       footer={
         message ? (
           <span className={message.tone === 'error' ? 'text-danger' : undefined}>{message.text}</span>
         ) : (
-          `Twice a day, at 9 AM and 5 PM (${deviceTimeZone()}), you get your open tasks grouped by space. Nothing is sent when you have none.`
+          `You get your open tasks grouped by space in a morning and an evening summary (${deviceTimeZone()}) - choose the times below once reminders are on. Nothing is sent when you have none.`
         )
       }
     >
@@ -106,10 +177,69 @@ export default function PushSettings() {
         iconColor="var(--sb-text-muted)"
         soft
         label="Task reminders"
-        detail={blocked ? 'Blocked in your browser settings' : '9 AM and 5 PM, grouped by space'}
+        detail={blocked ? 'Blocked in your browser settings' : 'Daily summaries and your own reminders'}
         trailing={<Toggle on={on} onChange={toggle} label="Task reminders" />}
       />
       {on && <ListRow icon={Bell} iconColor="var(--sb-text-muted)" soft label="Send me a test now" chevron onClick={test} disabled={busy} />}
     </ListGroup>
+    {on && prefsLoaded && !prefs && (
+      // The server answered with nothing: it is an older version, or the database script hasn't been run - say so rather
+      // than quietly showing no choices.
+      <ListGroup
+        title="When to remind me"
+        footer="Choosing the times, and the alarm, needs the latest server update and its database script (scripts/migration_46_reminder_prefs.sql). Until then reminders arrive at 9 AM and 5 PM as a normal notification."
+      >
+        <ListRow icon={BellRing} iconColor="var(--sb-text-muted)" soft label="Not available yet" detail="The server needs updating" />
+      </ListGroup>
+    )}
+    {on && prefs && (
+      <>
+        {/* When the summaries arrive: each can be switched off and set to any time. */}
+        <ListGroup title="When to remind me" footer="Your open tasks, grouped by space, at these times on this device. Reminders you set on a task go out at the time you chose for it.">
+          {([
+            { key: 'morning', label: 'Morning summary', on: prefs.morning_on, time: prefs.morning_time },
+            { key: 'evening', label: 'Evening summary', on: prefs.evening_on, time: prefs.evening_time },
+          ] as const).map((r) => (
+            <div key={r.key} className="flex min-h-[3.25rem] items-center gap-3 px-4 py-2.5">
+              <span className="min-w-0 flex-1">
+                <span className="block text-base">{r.label}</span>
+                <span className="mt-0.5 block text-[0.8125rem] text-text-muted">{r.on ? `Every day at ${timeLabel(r.time)}` : 'Off'}</span>
+              </span>
+              <input
+                type="time"
+                aria-label={`${r.label} time`}
+                value={r.time}
+                disabled={!r.on}
+                onChange={(e) => e.target.value && changePrefs({ [`${r.key}_time`]: e.target.value } as Partial<ReminderPrefs>)}
+                className="h-10 rounded-xl border border-border-strong bg-bg-card px-2.5 text-[0.9375rem] disabled:opacity-40"
+              />
+              <Toggle on={r.on} onChange={() => changePrefs({ [`${r.key}_on`]: !r.on } as Partial<ReminderPrefs>)} label={r.label} />
+            </div>
+          ))}
+        </ListGroup>
+        <ListGroup
+          title="How reminders arrive"
+          footer="With the alarm, a reminder you set on a task shows a full-screen card (the task, its priority, details and due date) with sound and vibration until you close it. With the app closed you get a notification that stays until you tap it. Phones decide the sound, and an app can't ring over the lock screen. The morning and evening summaries are always a quiet notification."
+        >
+          {([
+            { alarm: false, label: 'Notification only', detail: 'A normal reminder notification' },
+            { alarm: true, label: 'Notification and alarm', detail: 'Also buzzes and rings, with a full-screen card' },
+          ] as const).map((o) => (
+            <ListRow
+              key={String(o.alarm)}
+              icon={o.alarm ? Siren : Bell}
+              iconColor="var(--sb-text-muted)"
+              soft
+              label={o.label}
+              detail={o.detail}
+              onClick={() => prefs.alarm_style !== o.alarm && changePrefs({ alarm_style: o.alarm })}
+              trailing={prefs.alarm_style === o.alarm ? <Check size={20} strokeWidth={2.4} className="text-accent" /> : undefined}
+            />
+          ))}
+          {prefs.alarm_style && <ListRow icon={Bell} iconColor="var(--sb-text-muted)" soft label="Test the alarm" chevron onClick={testAlarm} disabled={busy} />}
+        </ListGroup>
+      </>
+    )}
+    </>
   )
 }

@@ -1168,7 +1168,17 @@ notify pgrst, 'reload schema';
 -- 45. "Remind me before": minutes before a task's due time to be reminded (null = none).
 alter table task add column if not exists remind_before integer;
 
--- 46. User feedback: a "how is it going?" rating, reported problems, and "ask me later" markers (so the
+-- 46. Per device (a row of push_subscription): the morning and evening summary can each be switched off and moved to a
+--     time of the user's choosing (the device's local time, "HH:MM"); alarm_style makes the reminders for individual
+--     tasks ring like an alarm (a full-screen card with sound and vibration) instead of a quiet notification.
+--     The defaults are exactly what every device had before: 9 AM and 5 PM, no alarm.
+alter table push_subscription add column if not exists morning_on boolean not null default true;
+alter table push_subscription add column if not exists morning_time text not null default '09:00';
+alter table push_subscription add column if not exists evening_on boolean not null default true;
+alter table push_subscription add column if not exists evening_time text not null default '17:00';
+alter table push_subscription add column if not exists alarm_style boolean not null default false;
+
+-- 47. User feedback: a "how is it going?" rating, reported problems, and "ask me later" markers (so the
 --     rating card is asked once per account, not once per device). Read and written only by the backend's
 --     service key (RLS on, no policies), like app_event. Shown on the admin page (api/routers/admin.py).
 --     Safe to run more than once.

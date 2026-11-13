@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, ChevronDown } from 'lucide-react'
-import { useTasks, useUpdateTaskStatus } from '../api/tasks'
+import { ArrowUpDown, Check, CheckCircle2, ChevronDown } from 'lucide-react'
+import { useDeleteItem, useTasks, useUpdateTaskStatus } from '../api/tasks'
 import type { Task } from '../api/types'
 import Button from '../components/Button'
 import Chip, { ChipRow } from '../components/Chip'
@@ -11,10 +11,11 @@ import ItemSheet from '../components/ItemSheet'
 import PageHeader from '../components/PageHeader'
 import TodayComposer from '../components/TodayComposer'
 import QuickAdd from '../components/QuickAdd'
+import Sheet from '../components/Sheet'
 import { useConnection } from '../lib/connection'
 import { isoLocal } from '../lib/dates'
 import { matchesInitiative, useInitiativeFilter } from '../lib/initiativeFilter'
-import { byDue, openCountsByInitiative, todayIso } from '../lib/items'
+import { byDue, isOverdue, openCountsByInitiative, todayIso } from '../lib/items'
 import { PRIORITY_RANK, priorityOf, taskInitiativeId } from '../lib/taskOptions'
 import { useOpenItem } from '../lib/useOpenItem'
 
@@ -23,6 +24,16 @@ type View = 'today' | 'upcoming' | 'anytime'
 
 // What you marked high first, then the nearest date and time.
 const byPriorityThenDue = (a: Task, b: Task) => PRIORITY_RANK[priorityOf(a)] - PRIORITY_RANK[priorityOf(b)] || byDue(a, b) || a.id - b.id
+const byLowThenDue = (a: Task, b: Task) => PRIORITY_RANK[priorityOf(b)] - PRIORITY_RANK[priorityOf(a)] || byDue(a, b) || a.id - b.id
+
+// How the to-dos are ordered, inside every section. Overdue always stays on top, oldest first.
+type SortMode = 'high' | 'low' | 'date'
+const byDateOnly = (a: Task, b: Task) => byDue(a, b) || a.id - b.id
+const SORTS: { id: SortMode; label: string; hint: string }[] = [
+  { id: 'high', label: 'Priority: high to low', hint: 'Most important first; soonest due first among equals' },
+  { id: 'low', label: 'Priority: low to high', hint: 'Least important first; soonest due first among equals' },
+  { id: 'date', label: 'Due date', hint: 'Soonest due first, ignoring priority' },
+]
 
 function Section({ title, tasks, tone, ...rowProps }: {
   title: string
@@ -30,6 +41,7 @@ function Section({ title, tasks, tone, ...rowProps }: {
   tone?: 'danger'
   onToggle: (t: Task) => void
   onOpen: (t: Task) => void
+  onSwipeRemove: (t: Task) => void
 }) {
   if (tasks.length === 0) return null
   return (
@@ -71,6 +83,9 @@ export default function TodayPage() {
   const connection = useConnection()
   const offline = connection.offline || connection.unreachable
   const updateStatus = useUpdateTaskStatus()
+  const deleteItem = useDeleteItem()
+  // To-dos you just ticked stay where they were, struck through, until you swipe them away (or leave the page).
+  const [justDone, setJustDone] = useState<Set<number>>(new Set())
   // The tab you were on survives leaving and coming back (it used to snap back to Today).
   const [view, setView] = useState<View>(() => {
     try {
@@ -88,6 +103,31 @@ export default function TodayPage() {
     }
   }, [view])
   const [showDone, setShowDone] = useState(false)
+  const [sortMode, setSortMode] = useState<SortMode>(() => {
+    try {
+      const saved = localStorage.getItem('confia.todaySort')
+      return saved === 'low' || saved === 'date' ? saved : 'high'
+    } catch {
+      return 'high'
+    }
+  })
+  const [pickingSort, setPickingSort] = useState(false)
+  function chooseSort(mode: SortMode) {
+    setSortMode(mode)
+    setPickingSort(false)
+    try {
+      localStorage.setItem('confia.todaySort', mode)
+    } catch {
+      // not remembered - fine
+    }
+  }
+  const cmp = sortMode === 'low' ? byLowThenDue : sortMode === 'date' ? byDateOnly : byPriorityThenDue
+  // Re-checks every 30 seconds so a task moves up into Overdue the minute its time passes, without a reload.
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30000)
+    return () => window.clearInterval(timer)
+  }, [])
   const everything = data?.tasks ?? []
   const [initiativeFilter] = useInitiativeFilter('today')
   const all = everything.filter((t) => matchesInitiative(initiativeFilter, taskInitiativeId(t)))
@@ -100,27 +140,34 @@ export default function TodayPage() {
     d.setDate(d.getDate() + UPCOMING_DAYS)
     return isoLocal(d)
   })()
-  const open = all.filter((t) => t.status === 'open')
-  const dated = open.filter((t) => t.due_date).sort(byPriorityThenDue)
-  const overdue = dated.filter((t) => t.due_date! < today)
-  const dueToday = dated.filter((t) => t.due_date === today)
+  const open = all.filter((t) => t.status === 'open' || (t.status === 'done' && justDone.has(t.id)))
+  const dated = open.filter((t) => t.due_date).sort(cmp)
+  // Overdue: the day has passed, or it is today and the time has passed. Earliest first, so the oldest is on top.
+  const overdue = dated.filter((t) => isOverdue({ ...t, status: 'open' }, now)).sort(byDue) // (a one just ticked stays where it was)
+  const overdueIds = new Set(overdue.map((t) => t.id))
+  const dueToday = dated.filter((t) => t.due_date === today && !overdueIds.has(t.id))
   const soon = dated.filter((t) => t.due_date! > today && t.due_date! <= horizon)
   const later = dated.filter((t) => t.due_date! > horizon)
   // To-dos with no date, and not on a list (list entries stay in their space) - the Anytime view.
-  const anytime = open.filter((t) => !t.due_date && !t.list_id).sort(byPriorityThenDue)
+  const anytime = open.filter((t) => !t.due_date && !t.list_id).sort(cmp)
   // Today also holds anything you asked to be reminded about today (that isn't already due today or overdue).
   const remindedToday = open
     .filter((t) => !t.list_id && t.remind_on === today && !(t.due_date && t.due_date <= today))
-    .sort(byPriorityThenDue)
-  const todayItems = [...dueToday, ...remindedToday]
+    .sort(cmp)
+  const todayItems = [...dueToday, ...remindedToday].sort(cmp)
   // High-priority to-dos wherever they are in time (undated, or dated later) are pinned to Today; the ones already
   // overdue or due/reminded today are in those sections, so nothing shows twice.
   const shown = new Set([...overdue, ...todayItems].map((t) => t.id))
-  const important = open.filter((t) => !t.list_id && priorityOf(t) === 'high' && !shown.has(t.id)).sort(byPriorityThenDue)
-  const done = all.filter((t) => t.status === 'done' && !t.list_id).sort((a, b) => b.id - a.id).slice(0, 30)
+  const important = open.filter((t) => !t.list_id && priorityOf(t) === 'high' && !shown.has(t.id)).sort(cmp)
+  const done = all.filter((t) => t.status === 'done' && !t.list_id && !justDone.has(t.id)).sort((a, b) => b.id - a.id).slice(0, 30)
   const rowProps = {
-    onToggle: (t: Task) => updateStatus.mutate({ taskId: t.id, status: t.status === 'done' ? 'open' : 'done', repeats: !!t.repeat }),
+    onToggle: (t: Task) => {
+      const finishing = t.status !== 'done'
+      if (!t.repeat) setJustDone((prev) => new Set(finishing ? prev.add(t.id) : [...prev].filter((id) => id !== t.id)))
+      updateStatus.mutate({ taskId: t.id, status: finishing ? 'done' : 'open', repeats: !!t.repeat })
+    },
     onOpen: sheet.open,
+    onSwipeRemove: (t: Task) => deleteItem.mutate(t.id),
   }
   const subtitle = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
   const counts: Record<View, number> = { today: overdue.length + todayItems.length + important.length, upcoming: soon.length + later.length, anytime: anytime.length }
@@ -144,6 +191,42 @@ export default function TodayPage() {
         ))}
       </ChipRow>
 
+      <div className="-mt-2 mb-3 flex justify-end">
+        <button
+          type="button"
+          onClick={() => setPickingSort(true)}
+          aria-label="Change the order of to-dos"
+          className="pressable flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[0.8125rem] font-medium text-text-muted"
+        >
+          <ArrowUpDown size={14} strokeWidth={2.2} />
+          <span className="text-text-faint">Sort:</span> {SORTS.find((x) => x.id === sortMode)!.label}
+        </button>
+      </div>
+      {pickingSort && (
+        <Sheet onClose={() => setPickingSort(false)} title="Sort to-dos by">
+          <div className="flex flex-col gap-2">
+            {SORTS.map((x) => (
+              <button
+                key={x.id}
+                type="button"
+                onClick={() => chooseSort(x.id)}
+                aria-pressed={sortMode === x.id}
+                className={`pressable flex items-center gap-3 rounded-2xl border px-4 py-3 text-left ${
+                  sortMode === x.id ? 'border-accent/40 bg-accent-soft ring-1 ring-accent/40' : 'border-border-strong bg-bg-card'
+                }`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[0.9375rem] font-medium">{x.label}</span>
+                  <span className="block text-[0.8125rem] text-text-muted">{x.hint}</span>
+                </span>
+                {sortMode === x.id && <Check size={18} strokeWidth={2.4} className="flex-shrink-0 text-accent" />}
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-[0.8125rem] text-text-faint">Overdue to-dos always stay on top, oldest first.</p>
+        </Sheet>
+      )}
+
       {!data && (
         <div className="py-8 text-center">
           {error ? (
@@ -162,27 +245,29 @@ export default function TodayPage() {
       )}
 
       {data && view === 'today' && (
-        <>
+        <div>
           {overdue.length + todayItems.length + important.length === 0 && (
             <Empty title="Nothing on your plate." hint="Say “remind me to…” or “every night…” on Home and it shows up here on its day." />
           )}
           <Section title="Overdue" tasks={overdue} tone="danger" {...rowProps} />
           <Section title="Today" tasks={todayItems} {...rowProps} />
           <Section title="High priority" tasks={important} {...rowProps} />
-        </>
+        </div>
       )}
 
       {data && view === 'upcoming' && (
-        <>
+        <div>
           {soon.length + later.length === 0 && <Empty title="Nothing coming up." hint="Things with a date, a birthday or a routine show up here before their day." />}
           <Section title="Next 7 days" tasks={soon} {...rowProps} />
           <Section title="Later" tasks={later} {...rowProps} />
-        </>
+        </div>
       )}
 
       {data && view === 'anytime' && (
-        <>
-          <QuickAdd listId={null} placeholder="Add a to-do" filterScope="today" />
+        <div>
+          <div>
+            <QuickAdd listId={null} placeholder="Add a to-do" filterScope="today" />
+          </div>
           {anytime.length === 0 && <Empty title="No loose to-dos." hint="Anything you need to do with no date lands here." />}
           <Section title="To-dos" tasks={anytime} {...rowProps} />
           {done.length > 0 && (
@@ -205,7 +290,7 @@ export default function TodayPage() {
               )}
             </section>
           )}
-        </>
+        </div>
       )}
 
       {sheet.active && <ItemSheet task={sheet.active} onClose={sheet.close} />}

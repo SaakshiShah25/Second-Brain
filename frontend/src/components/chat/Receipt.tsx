@@ -4,12 +4,15 @@ import { ChevronRight, Repeat as RepeatIcon, Undo2 } from 'lucide-react'
 import type { CreatedItem } from '../../api/types'
 import { datedLabel, timeLabel } from '../../lib/dates'
 import { itemPath, repeatLabel } from '../../lib/items'
+import { useOpenSpace } from '../../lib/useOpenSpace'
+import ConfirmDialog from '../ConfirmDialog'
 
 // What a capture just saved as items, one tappable line per item - "🎬 Oppenheimer → Movies",
 // "☐ Pay Rahul → Tasks · Friday" - so the user can see where everything went and fix anything
-// in one tap (the line opens the item).
-export default function Receipt({ items }: { items: CreatedItem[] }) {
+// in one tap (the line opens the space it went to, or the item when no space is given).
+export default function Receipt({ items, spaceId }: { items: CreatedItem[]; spaceId?: number | null }) {
   const navigate = useNavigate()
+  const openSpace = useOpenSpace()
   if (items.length === 0) return null
   return (
     <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-bg-card">
@@ -19,7 +22,8 @@ export default function Receipt({ items }: { items: CreatedItem[] }) {
           <button
             key={item.id}
             type="button"
-            onClick={() => navigate(itemPath(item.id))}
+            // Inside a space's reply a tap goes to that space's tools; elsewhere it opens the item itself.
+            onClick={() => (spaceId !== undefined ? openSpace(spaceId) : navigate(itemPath(item.id)))}
             className="pressable flex w-full items-center gap-3 px-3.5 py-2.5 text-left"
           >
             {/* A to-do is marked with the same round ring as on the Today page; a list entry keeps its list's emoji. */}
@@ -33,7 +37,7 @@ export default function Receipt({ items }: { items: CreatedItem[] }) {
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[0.9375rem]">{item.description}</span>
               <span className="flex items-center gap-1.5 text-[0.8125rem] text-text-muted">
-                <span className="truncate">{item.list_name ?? (item.owner === 'them' ? 'Tasks · waiting on them' : 'Tasks')}</span>
+                <span className="truncate">{item.list_name ?? 'Tasks'}</span>
                 {when && <span className="flex-shrink-0">· {when}</span>}
                 {item.repeat && (
                   <span className="flex flex-shrink-0 items-center gap-1">
@@ -54,22 +58,35 @@ export default function Receipt({ items }: { items: CreatedItem[] }) {
 export function UndoButton({ label, onUndo }: { label: string; onUndo: () => Promise<void> }) {
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [asking, setAsking] = useState(false)
+  async function undo() {
+    setBusy(true)
+    setFailed(false)
+    try {
+      await onUndo()
+    } catch {
+      setFailed(true)
+    } finally {
+      setBusy(false)
+      setAsking(false)
+    }
+  }
   return (
     <div>
+      {asking && (
+        <ConfirmDialog
+          title="Are you sure?"
+          message={`${label.replace(/^Undo - /, 'This will ')}. This cannot be undone.`}
+          confirmLabel="Yes, undo it"
+          busy={busy}
+          onCancel={() => setAsking(false)}
+          onConfirm={undo}
+        />
+      )}
       <button
         type="button"
         disabled={busy}
-        onClick={async () => {
-          setBusy(true)
-          setFailed(false)
-          try {
-            await onUndo()
-          } catch {
-            setFailed(true)
-          } finally {
-            setBusy(false)
-          }
-        }}
+        onClick={() => setAsking(true)}
         className="pressable flex items-center gap-1.5 rounded-full border border-border-strong bg-bg-card px-3.5 py-1.5 text-[0.8125rem] font-medium text-text-muted disabled:opacity-50"
       >
         <Undo2 size={14} strokeWidth={2} />

@@ -192,7 +192,7 @@ If an answer invents details that aren't in your notes, that is a bug — please
 - **Login / reset password:** the eye icon shows or hides what you typed.
 - **Settings → Notifications → Task reminders:** turn on (allow notifications) → **Send me a test now** → a notification listing your tasks grouped by category. The scheduled ones arrive at **9 AM and 5 PM**, once each, only if you have open tasks. (iPhone: add the app to the Home Screen first.)
 
-### Tour, Help & FAQ, feedback (feedback needs `scripts/migration_46_feedback.sql`)
+### Tour, Help & FAQ, feedback (feedback needs `scripts/migration_47_feedback.sql`)
 
 - **Settings → Help → Take the tour again:** *Log anything* types a sample note into a mock chat, then shows what the app makes of it (space, key points, a to-do with its date); *Ask anything* types a sample question and shows the answer with its source chip; then Today, Spaces and Settings are spotlighted. The sample follows the Work / Personal / Both choice. Nothing is saved and no AI is called. Back replays the animation.
 - **Settings → Help → Help & FAQ:** collapsible questions in five groups; the last group answers privacy ("Groq and Cohere, and NVIDIA when Groq is busy").

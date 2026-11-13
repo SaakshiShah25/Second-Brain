@@ -13,6 +13,8 @@ interface ConfirmDialogProps {
   // a slow cascading delete visibly shows it's working.
   busy?: boolean
   busyLabel?: string
+  // 'danger' (red, the default) for deleting; 'primary' for a change that isn't destructive, like moving to another space.
+  tone?: 'danger' | 'primary'
 }
 
 export default function ConfirmDialog({
@@ -23,6 +25,7 @@ export default function ConfirmDialog({
   onCancel,
   busy = false,
   busyLabel = 'Working…',
+  tone = 'danger',
 }: ConfirmDialogProps) {
   return (
     <Sheet onClose={busy ? undefined : onCancel}>
@@ -34,7 +37,8 @@ export default function ConfirmDialog({
           block
           onClick={onConfirm}
           disabled={busy}
-          className="!border-transparent !bg-danger !text-white"
+          variant={tone === 'primary' ? 'primary' : undefined}
+          className={tone === 'danger' ? '!border-transparent !bg-danger !text-white' : undefined}
         >
           {busy ? busyLabel : confirmLabel}
         </Button>

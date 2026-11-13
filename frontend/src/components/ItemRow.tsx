@@ -1,9 +1,14 @@
+import { useState } from 'react'
 import { Bell, Check, Repeat as RepeatIcon, Trash2, TriangleAlert } from 'lucide-react'
+import { useEditTask, useUpdateTaskFields } from '../api/tasks'
 import type { Task } from '../api/types'
 import { datedLabel, dueLabel, shortDate, timeLabel } from '../lib/dates'
 import { isOverdue, repeatLabel } from '../lib/items'
-import { PRIORITIES, priorityOf } from '../lib/taskOptions'
-import { beforeLabel } from './TaskOptions'
+import { DEFAULT_REMIND_TIME, PRIORITIES, priorityOf } from '../lib/taskOptions'
+import ConfirmDialog from './ConfirmDialog'
+import SwipeToRemove from './SwipeToRemove'
+import { beforeLabel, ReminderSheet } from './TaskOptions'
+import { toast } from './Toast'
 
 // One item: a Things-style round checkbox, its wording, and one quiet line of facts (whose it
 // is, when, how often, which list). `showList` adds the list chip - on Today, where items from
@@ -16,6 +21,8 @@ export default function ItemRow({
   showList = false,
   compactDate = false,
   onDelete,
+  onSwipeRemove,
+  swipe = true,
 }: {
   task: Task
   onToggle: (task: Task) => void
@@ -26,7 +33,17 @@ export default function ItemRow({
   compactDate?: boolean
   // Editing a space: a remove button at the end of the row.
   onDelete?: (task: Task) => void
+  // Swipe the row to the right to remove it. Done items stay in the list, struck through, until you do.
+  onSwipeRemove?: (task: Task) => void
+  // False where a sideways swipe means something else (the space page's swipeable Notes / To-dos / Lists): the row then
+  // can't be swiped away on a phone, and is removed from edit mode instead. The laptop's hover bin still works.
+  swipe?: boolean
 }) {
+  const updateFields = useUpdateTaskFields()
+  const editTask = useEditTask()
+  const [reminding, setReminding] = useState(false)
+  // Swiping the row away, or its bin in edit mode, asks "Are you sure?" first.
+  const [confirmRemove, setConfirmRemove] = useState(false)
   const overdue = isOverdue(task)
   // A task you marked high or low colours its tick circle (normal keeps the plain grey).
   const priority = priorityOf(task)
@@ -39,7 +56,6 @@ export default function ItemRow({
       : dueLabel(task.due_date, task.due_time)
     : ''
   const facts = [
-    task.owner === 'them' && !list ? <span key="w" className="flex-shrink-0 text-them-task">Waiting</span> : null,
     when ? (
       <span key="d" className={`flex flex-shrink-0 items-center gap-1 whitespace-nowrap ${overdue ? 'font-medium text-danger' : ''}`}>
         {overdue && <TriangleAlert size={12} strokeWidth={2.2} />}
@@ -73,8 +89,8 @@ export default function ItemRow({
     ) : null,
   ].filter(Boolean)
 
-  return (
-    <div className="flex items-start gap-3 px-4 py-3">
+  const row = (
+    <div className="group flex items-start gap-3 px-4 py-3 lg:hover:bg-bg-hover">
       {/* Generous invisible hit area around the visible 22px circle. */}
       <button
         type="button"
@@ -85,9 +101,9 @@ export default function ItemRow({
       >
         <span
           className={`flex h-[1.375rem] w-[1.375rem] items-center justify-center rounded-full border-2 transition-colors ${
-            done ? 'border-success bg-success text-white' : task.owner === 'them' && !list ? 'border-them-task' : priorityColor ? '' : 'border-text-faint'
+            done ? 'border-success bg-success text-white' : priorityColor ? '' : 'border-text-faint'
           }`}
-          style={!done && priorityColor && !(task.owner === 'them' && !list) ? { borderColor: priorityColor } : undefined}
+          style={!done && priorityColor ? { borderColor: priorityColor } : undefined}
         >
           {done && <Check size={13} strokeWidth={3} />}
         </span>
@@ -103,10 +119,32 @@ export default function ItemRow({
           </span>
         )}
       </button>
+      {!done && (
+        <button
+          type="button"
+          onClick={() => setReminding(true)}
+          aria-label={task.remind_on || task.remind_before ? 'Change reminder' : 'Remind me'}
+          // On a laptop the bell stays out of the way until the row is hovered (or it already has a reminder).
+          className={`pressable -m-2 flex-shrink-0 p-2 ${task.remind_on || task.remind_before ? 'text-accent' : 'text-text-faint lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100'}`}
+        >
+          <Bell size={18} strokeWidth={1.9} fill={task.remind_on || task.remind_before ? 'currentColor' : 'none'} />
+        </button>
+      )}
+      {onSwipeRemove && !onDelete && (
+        // Swiping needs a finger; with a mouse, a bin appears on hover (it asks "Are you sure?" like the swipe does).
+        <button
+          type="button"
+          onClick={() => setConfirmRemove(true)}
+          aria-label={`Delete ${task.description}`}
+          className="pressable -m-2 hidden flex-shrink-0 p-2 text-text-faint opacity-0 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100 lg:block"
+        >
+          <Trash2 size={17} strokeWidth={1.9} />
+        </button>
+      )}
       {onDelete && (
         <button
           type="button"
-          onClick={() => onDelete(task)}
+          onClick={() => setConfirmRemove(true)}
           aria-label={`Remove ${task.description}`}
           className="pressable -m-2 flex-shrink-0 p-2 text-text-faint hover:text-danger"
         >
@@ -114,5 +152,54 @@ export default function ItemRow({
         </button>
       )}
     </div>
+  )
+  return (
+    <>
+      {onSwipeRemove && swipe ? <SwipeToRemove onRemove={() => setConfirmRemove(true)}>{row}</SwipeToRemove> : row}
+      {confirmRemove && (
+        <div onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+          <ConfirmDialog
+            title="Delete this?"
+            message={`“${task.description}” will be deleted${task.repeat ? ', along with its repeats' : ''}. This cannot be undone.`}
+            confirmLabel="Delete"
+            onCancel={() => setConfirmRemove(false)}
+            onConfirm={() => {
+              setConfirmRemove(false)
+              ;(onSwipeRemove ?? onDelete)?.(task)
+            }}
+          />
+        </div>
+      )}
+      {reminding && (
+        // Events from a sheet bubble up through React to the row's drag handle; keep them from starting a drag.
+        <div onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+        <ReminderSheet
+          task={task}
+          onClose={() => setReminding(false)}
+          onPickDue={(date, time) =>
+            editTask.mutate(
+              { taskId: task.id, due_date: date, due_time: time },
+              { onSuccess: () => toast(date ? `Due ${shortDate(date)}${time ? `, ${timeLabel(time)}` : ''}` : 'Due date removed') },
+            )
+          }
+          onPickBefore={
+            task.due_date
+              ? (minutes) =>
+                  updateFields.mutate(
+                    { taskId: task.id, fields: { remind_before: minutes } },
+                    { onSuccess: () => toast(minutes ? `You'll be reminded ${beforeLabel(minutes)} before` : 'Early reminder removed') },
+                  )
+              : undefined
+          }
+          onPick={(date, time) =>
+            updateFields.mutate(
+              { taskId: task.id, fields: { remind_on: date, remind_time: time } },
+              { onSuccess: () => toast(date ? `Reminder set for ${shortDate(date)}, ${timeLabel(time ?? DEFAULT_REMIND_TIME)}` : 'Reminder removed') },
+            )
+          }
+        />
+        </div>
+      )}
+    </>
   )
 }

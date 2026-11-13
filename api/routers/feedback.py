@@ -5,7 +5,7 @@ api/routers/feedback.py — "How is MyConfía working for you?" ratings and "Rep
                               notes, hasn't rated in the last 60 days and hasn't said "not now" in the last 30
   POST /api/feedback          a rating, a reported problem, or "not now" (kind = rating | issue | snooze)
 
-Stored in the `feedback` table (schema.sql section 46) and shown on the admin page. A rating of "poor" or any
+Stored in the `feedback` table (schema.sql section 47) and shown on the admin page. A rating of "poor" or any
 reported problem also emails the admin (observability.alert - throttled, so it can't flood). Nothing from a note is
 ever attached unless the person ticks "include this reply" themselves (the `include` context field).
 """
@@ -59,7 +59,7 @@ def prompt(user_id: str = Depends(get_current_user_id)):
         snoozed = db.count_feedback_since(user_id, _ago(SNOOZE_DAYS), ["snooze"])
         return {"ask": rated == 0 and snoozed == 0}
     except Exception:
-        return {"ask": False}  # table not created yet (schema.sql section 46): never nag
+        return {"ask": False}  # table not created yet (schema.sql section 47): never nag
 
 
 def _clean_context(ctx: dict) -> dict:

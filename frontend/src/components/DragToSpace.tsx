@@ -14,6 +14,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import { useInitiatives } from '../api/initiatives'
+import ConfirmDialog from './ConfirmDialog'
 import type { Initiative, Task } from '../api/types'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
 import { taskInitiativeId } from '../lib/taskOptions'
@@ -79,6 +80,8 @@ export default function DragToSpace({ tasks, children }: { tasks: Task[]; childr
   const { data: initiatives } = useInitiatives()
   const { move, prompt } = useMoveItem()
   const [draggingId, setDraggingId] = useState<number | null>(null)
+  // Dropping on a space asks "Move to X?" before anything moves.
+  const [dropped, setDropped] = useState<{ task: Task; spaceId: number | null } | null>(null)
   const dragging = tasks.find((t) => t.id === draggingId) ?? null
   // Press and hold (a phone) or drag (a mouse) to pick an item up; plain taps and scrolling still work.
   const sensors = useSensors(
@@ -92,13 +95,27 @@ export default function DragToSpace({ tasks, children }: { tasks: Task[]; childr
     const target = String(e.over?.id ?? '')
     if (!task || !/^space:\d+$/.test(target)) return
     const id = Number(target.split(':')[1])
-    void move(task, id === 0 ? null : id)
+    const spaceId = id === 0 ? null : id
+    if (spaceId !== taskInitiativeId(task)) setDropped({ task, spaceId })
   }
 
   return (
     <DndContext sensors={sensors} collisionDetection={collide} onDragStart={(e) => setDraggingId(Number(e.active.id))} onDragEnd={onDragEnd} onDragCancel={() => setDraggingId(null)}>
       {children}
       {prompt}
+      {dropped && (
+        <ConfirmDialog
+          tone="primary"
+          title={`Move to ${dropped.spaceId === null ? 'Others' : (initiatives?.find((i) => i.id === dropped.spaceId)?.name ?? 'that space')}?`}
+          message={`“${dropped.task.description}” will be filed there instead.`}
+          confirmLabel="Move"
+          onCancel={() => setDropped(null)}
+          onConfirm={() => {
+            void move(dropped.task, dropped.spaceId)
+            setDropped(null)
+          }}
+        />
+      )}
       {dragging && <DropTray initiatives={initiatives ?? []} currentId={taskInitiativeId(dragging)} />}
       <DragOverlay dropAnimation={null}>
         {dragging && <div className="rounded-2xl border border-border-strong bg-bg-card px-4 py-3 text-[0.9375rem] shadow-card">{dragging.description}</div>}

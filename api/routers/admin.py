@@ -338,7 +338,7 @@ def _feedback(days: int) -> dict:
     since = datetime.now(timezone.utc) - timedelta(days=days)
     try:
         rows = db.get_feedback(since.isoformat())
-    except Exception:   # schema.sql section 46 not applied yet
+    except Exception:   # schema.sql section 47 not applied yet
         return {"available": False, "days": days}
     try:
         emails = {uid: a["email"] for uid, a in db.get_all_users().items()}

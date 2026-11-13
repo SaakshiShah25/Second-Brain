@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
-import type { Repeat, Task, TaskFilter, TaskOwner, TasksResponse } from './types'
+import type { Repeat, Task, TaskFilter, TasksResponse } from './types'
 
 export function useTasks(filter: TaskFilter, enabled = true) {
   return useQuery({
@@ -48,7 +48,17 @@ export function useDeleteItem() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (taskId: number) => api.delete(`/api/tasks/${taskId}`),
-    onSuccess: () => {
+    // Gone from the list the instant it is swiped away; put back if the server says no.
+    onMutate: async (taskId) => {
+      await queryClient.cancelQueries({ queryKey: ['tasks'] })
+      const previous = queryClient.getQueriesData<TasksResponse>({ queryKey: ['tasks'] })
+      queryClient.setQueriesData<TasksResponse>({ queryKey: ['tasks'] }, (old) => (old ? { ...old, tasks: old.tasks.filter((t) => t.id !== taskId) } : old))
+      return { previous }
+    },
+    onError: (_err, _id, context) => {
+      context?.previous.forEach(([queryKey, data]) => queryClient.setQueryData(queryKey, data))
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['lists'] })
     },
@@ -77,29 +87,6 @@ export function useUpdateTaskStatus() {
       const previous = queryClient.getQueriesData<TasksResponse>({ queryKey: ['tasks'] })
       queryClient.setQueriesData<TasksResponse>({ queryKey: ['tasks'] }, (old) =>
         old ? { ...old, tasks: old.tasks.map((t) => (t.id === taskId ? { ...t, status } : t)) } : old,
-      )
-      return { previous }
-    },
-    onError: (_err, _vars, context) => {
-      context?.previous.forEach(([queryKey, data]) => queryClient.setQueryData(queryKey, data))
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      queryClient.invalidateQueries({ queryKey: ['lists'] })
-    },
-  })
-}
-
-export function useUpdateTaskOwner() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ taskId, owner }: { taskId: number; owner: TaskOwner }) =>
-      api.patch(`/api/tasks/${taskId}`, { owner }),
-    onMutate: async ({ taskId, owner }) => {
-      await queryClient.cancelQueries({ queryKey: ['tasks'] })
-      const previous = queryClient.getQueriesData<TasksResponse>({ queryKey: ['tasks'] })
-      queryClient.setQueriesData<TasksResponse>({ queryKey: ['tasks'] }, (old) =>
-        old ? { ...old, tasks: old.tasks.map((t) => (t.id === taskId ? { ...t, owner } : t)) } : old,
       )
       return { previous }
     },

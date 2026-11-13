@@ -85,8 +85,33 @@ export async function disableReminders(): Promise<void> {
   await api.post('/api/push/unsubscribe', { endpoint })
 }
 
-export async function sendTestReminder(): Promise<void> {
-  await api.post('/api/push/test')
+export async function sendTestReminder(alarm = false): Promise<void> {
+  await api.post(`/api/push/test${alarm ? '?alarm=true' : ''}`)
+}
+
+// This device's choices: when its daily summaries arrive (each can be off) and whether task reminders ring like an alarm.
+export interface ReminderPrefs {
+  morning_on: boolean
+  morning_time: string
+  evening_on: boolean
+  evening_time: string
+  alarm_style: boolean
+}
+
+export async function getReminderPrefs(): Promise<ReminderPrefs | null> {
+  const sub = await currentSubscription()
+  if (!sub) return null
+  try {
+    return await api.get<ReminderPrefs>(`/api/push/prefs?endpoint=${encodeURIComponent(sub.endpoint)}`)
+  } catch {
+    return null
+  }
+}
+
+export async function saveReminderPrefs(changes: Partial<ReminderPrefs>): Promise<ReminderPrefs> {
+  const sub = await currentSubscription()
+  if (!sub) throw new Error('Turn reminders on first.')
+  return api.put<ReminderPrefs>('/api/push/prefs', { endpoint: sub.endpoint, ...changes })
 }
 
 // Called when the app opens: if reminders are on, tell the server the device's current time zone

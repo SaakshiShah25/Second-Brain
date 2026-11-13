@@ -16,11 +16,15 @@ const COPY: Record<Kind, { placeholder: string; hint?: string }> = {
   note: { placeholder: 'Write your note' },
 }
 
-// The + at the top of a space: add by hand, without the chat - a to-do, a new (empty) list, or a note. Entries of a
-// list are added from the + on the list itself. Everything lands in this space.
-export default function AddToSpace({ spaceId, spaceName }: { spaceId: number | null; spaceName: string }) {
+const TITLE: Record<Kind, string> = { todo: 'Add a to-do', list: 'New list', note: 'Add a note' }
+
+// A + that adds by hand, without the chat. With `kind` it adds only that: a note (the Notes part of a space), or a
+// new empty list (the Lists part) - to-dos and a list's entries have their own + beside them. Without `kind` the
+// sheet lets you pick. Everything lands in this space.
+export default function AddToSpace({ spaceId, spaceName, kind: fixedKind }: { spaceId: number | null; spaceName: string; kind?: Kind }) {
   const [open, setOpen] = useState(false)
-  const [kind, setKind] = useState<Kind>('todo')
+  const [pickedKind, setKind] = useState<Kind>('todo')
+  const kind = fixedKind ?? pickedKind
   const [text, setText] = useState('')
   const [error, setError] = useState('')
   const createItem = useCreateItem()
@@ -53,14 +57,14 @@ export default function AddToSpace({ spaceId, spaceName }: { spaceId: number | n
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={`Add to ${spaceName}`}
+        aria-label={fixedKind ? `${TITLE[fixedKind]} in ${spaceName}` : `Add to ${spaceName}`}
         className="pressable flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-contrast"
       >
         <Plus size={19} strokeWidth={2.4} />
       </button>
       {open && (
-        <Sheet onClose={busy ? undefined : close} title={`Add to ${spaceName}`}>
-          <Segmented
+        <Sheet onClose={busy ? undefined : close} title={fixedKind ? `${TITLE[fixedKind]} · ${spaceName}` : `Add to ${spaceName}`}>
+          {!fixedKind && <Segmented
             className="mb-4"
             value={kind}
             onChange={(k) => {
@@ -72,7 +76,7 @@ export default function AddToSpace({ spaceId, spaceName }: { spaceId: number | n
               { value: 'list', label: 'List' },
               { value: 'note', label: 'Note' },
             ]}
-          />
+          />}
           {kind === 'note' ? (
             <Textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder={COPY[kind].placeholder} autoFocus />
           ) : (

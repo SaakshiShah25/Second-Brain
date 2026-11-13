@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, MapPin, Pencil, TriangleAlert, type LucideIcon } from 'lucide-react'
+import { Check, ChevronRight, MapPin, Pencil, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { useCreateInitiative, useInitiatives } from '../../api/initiatives'
 import { useUpdateInteraction } from '../../api/notes'
 import { useUpdateTaskFields } from '../../api/tasks'
@@ -7,6 +7,7 @@ import type { CapturePart, CaptureSavedResult } from '../../api/types'
 import { dueLabel } from '../../lib/dates'
 import { notePoints } from '../../lib/initiativeFilter'
 import { getInitiativeStyle } from '../../lib/initiativeStyle'
+import { useOpenSpace } from '../../lib/useOpenSpace'
 import Button from '../Button'
 import Receipt, { UndoButton } from './Receipt'
 import CategorySheet from '../CategorySheet'
@@ -34,6 +35,18 @@ function List({ items }: { items: React.ReactNode[] }) {
 
 // Everything shares one look: bold headings in the initiative's colour (Others in a neutral grey).
 const OTHERS_COLOR = '#78716c'
+
+// "Space: Work" - tap it to go into that space (its notes, to-dos and lists).
+function SpaceLink({ id, name, Icon }: { id: number | null; name: string | null; Icon?: LucideIcon }) {
+  const openSpace = useOpenSpace()
+  return (
+    <button type="button" onClick={() => openSpace(id)} aria-label={`Open ${name ?? 'Others'}`} className="pressable flex items-center gap-1.5 text-left">
+      {Icon && <Icon size={16} strokeWidth={2.4} className="flex-shrink-0" />}
+      <span className="underline decoration-current/40 underline-offset-4">Space: {name ?? 'Others'}</span>
+      <ChevronRight size={15} strokeWidth={2.6} className="flex-shrink-0 opacity-70" />
+    </button>
+  )
+}
 
 function Label({ children, color }: { children: string; color: string }) {
   return (
@@ -129,10 +142,7 @@ function Section({
   return (
     <section className="py-1 pl-3.5" style={{ borderLeft: `3px solid ${color}` }}>
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[1rem] font-bold" style={{ color }}>
-        <span className="flex items-center gap-1.5">
-          {Icon && <Icon size={16} strokeWidth={2.4} className="flex-shrink-0" />}
-          Space: {part.initiative_name ?? 'Others'}
-        </span>
+        <SpaceLink id={part.initiative_id} name={part.initiative_name} Icon={Icon} />
         <button
           type="button"
           onClick={() => setChanging(true)}
@@ -161,7 +171,6 @@ function Section({
                 {t.description}
                 {t.list_name && <span className="text-text-muted"> → {t.list_name}</span>}
                 {t.due_date && <span className="text-text-muted"> · due {dueLabel(t.due_date, t.due_time)}</span>}
-                {t.owner === 'them' && <span className="text-them-task"> · someone else owes this</span>}
               </>
             ))}
           />
@@ -218,10 +227,7 @@ function ItemsSection({
   return (
     <section className="py-1 pl-3.5" style={{ borderLeft: `3px solid ${color}` }}>
       <p className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[1rem] font-bold" style={{ color }}>
-        <span className="flex items-center gap-1.5">
-          {Icon && <Icon size={16} strokeWidth={2.4} className="flex-shrink-0" />}
-          Space: {part.initiative_name ?? 'Others'}
-        </span>
+        <SpaceLink id={part.initiative_id} name={part.initiative_name} Icon={Icon} />
         <button
           type="button"
           onClick={() => setChanging(true)}
@@ -238,7 +244,7 @@ function ItemsSection({
           {part.change_note}
         </p>
       )}
-      <Receipt items={part.tasks_created} />
+      <Receipt items={part.tasks_created} spaceId={part.initiative_id} />
       {changing && (
         <CategorySheet
           title="Which space should these go in?"

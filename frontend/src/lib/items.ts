@@ -26,8 +26,15 @@ export function todayIso(): string {
   return isoLocal(new Date())
 }
 
-export function isOverdue(task: Task): boolean {
-  return task.status === 'open' && !!task.due_date && task.due_date < todayIso()
+/** Overdue = an open item whose day has gone by, or whose day is today and whose time has already passed. An item due
+ * today with no time stays on time until the day ends. */
+export function isOverdue(task: Task, now: Date = new Date()): boolean {
+  if (task.status !== 'open' || !task.due_date) return false
+  const today = isoLocal(now)
+  if (task.due_date !== today) return task.due_date < today
+  if (!task.due_time) return false
+  const clock = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  return task.due_time.slice(0, 5) < clock
 }
 
 /** The category an item belongs to: its own, or the one its note was filed under. */

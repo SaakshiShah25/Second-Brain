@@ -23,7 +23,18 @@ interface SpeechRecognitionLike extends EventTarget {
   onend: (() => void) | null
 }
 
+// On a phone the browser's recogniser plays the system's start / stop / error tones every time it starts or ends (it
+// stops by itself after a short silence, and again on every hiccup), and it competes with the recorder for the one
+// microphone - that is the random "paused / failed" sounds in the middle of a recording. The recording itself and
+// Whisper's transcript are all a phone needs, so the live preview is a desktop-only extra.
+function isPhone(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const touchMac = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1 // iPadOS reports as a Mac
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || touchMac
+}
+
 function getRecognitionCtor(): (new () => SpeechRecognitionLike) | undefined {
+  if (isPhone()) return undefined
   const w = window as unknown as {
     SpeechRecognition?: new () => SpeechRecognitionLike
     webkitSpeechRecognition?: new () => SpeechRecognitionLike
