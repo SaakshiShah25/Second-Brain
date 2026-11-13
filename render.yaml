@@ -39,10 +39,8 @@ services:
         sync: false
       - key: ENCRYPTION_KEY
         sync: false
-      # "Connect MyConfía to Claude" (docs/MCP.md): a long random value that signs the tokens Claude holds. Without it
-      # /mcp is switched off. Generate: python -c "import secrets; print(secrets.token_urlsafe(48))"
-      - key: MCP_TOKEN_SECRET
-        sync: false
+      # "Connect MyConfía to Claude" (docs/MCP.md) needs NO setting: its tokens are signed with a key derived from
+      # ENCRYPTION_KEY (or the Supabase service key). Set MCP_TOKEN_SECRET only to use a separate secret of your own.
       # Production hardening (see api/main.py, api/auth.py):
       # APP_ENV=production drops the localhost CORS origins.
       - key: APP_ENV

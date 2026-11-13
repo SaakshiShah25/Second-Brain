@@ -10,8 +10,11 @@ backend instance can check any token:
     access      what Claude sends with every /mcp call                                     valid 1 hour
     refresh     lets Claude get a new access token without asking you again                valid 60 days
 
-Tokens are HS256 JWTs signed with MCP_TOKEN_SECRET (a long random value only the backend knows). Without that secret the
-whole feature is off - there is deliberately no default. Rotating the secret signs everyone out of Claude at once.
+Tokens are HS256 JWTs. The signing key needs no setup of its own: it is derived (HMAC, with a label that is used for nothing
+else) from a secret the backend already has - ENCRYPTION_KEY, or failing that the Supabase service key - so the key itself
+can never be read back from a token. Setting MCP_TOKEN_SECRET (32+ characters) overrides that. If no secret of any kind is
+available, or the only one is Supabase's PUBLIC anon key, the whole feature stays off - there is deliberately no default.
+Changing the underlying secret signs everyone out of Claude at once (they connect again).
 """
 
 import base64
@@ -32,8 +35,27 @@ REQUEST_TTL = 600
 CLIENT_TTL = 365 * 24 * 3600
 
 
+_LABEL = b"myconfia-mcp-token-signing-v1"
+
+
+def _is_public_supabase_key(value: str) -> bool:
+    """True for Supabase's anon key (a JWT with role "anon"): it is public, so a key derived from it could be worked out by anyone."""
+    try:
+        parts = value.split(".")
+        return len(parts) == 3 and json.loads(_unb64(parts[1])).get("role") == "anon"
+    except Exception:  # noqa: BLE001 - not a JWT at all
+        return False
+
+
 def _secret() -> bytes:
-    return os.environ.get("MCP_TOKEN_SECRET", "").encode()
+    explicit = os.environ.get("MCP_TOKEN_SECRET", "")
+    if len(explicit) >= 32:
+        return explicit.encode()
+    for name in ("ENCRYPTION_KEY", "SUPABASE_KEY"):
+        base = os.environ.get(name, "")
+        if len(base) >= 16 and not _is_public_supabase_key(base):
+            return hmac.new(base.encode(), _LABEL, hashlib.sha256).digest()
+    return b""
 
 
 def enabled() -> bool:

@@ -139,8 +139,25 @@ def test_tokens_are_not_interchangeable_or_forgeable():
     assert tokens.verify(tokens.sign({"typ": "mcp-access", "sub": "u"}, -5), "mcp-access") is None   # expired
 
 
-def test_without_a_secret_the_feature_is_off(monkeypatch):
-    monkeypatch.setenv("MCP_TOKEN_SECRET", "short")
+def test_the_signing_key_needs_no_setup_but_never_comes_from_a_public_key(monkeypatch):
+    monkeypatch.delenv("MCP_TOKEN_SECRET")
+    monkeypatch.setenv("ENCRYPTION_KEY", "e" * 44)
+    assert tokens.enabled()                                           # derived from a secret the server already has
+    t = tokens.sign({"typ": "mcp-access", "sub": "u"}, 60)
+    assert tokens.verify(t, "mcp-access") and "e" * 44 not in t       # and the base secret isn't in the token
+    monkeypatch.setenv("ENCRYPTION_KEY", "f" * 44)                    # changing it signs everyone out
+    assert tokens.verify(t, "mcp-access") is None
+    monkeypatch.delenv("ENCRYPTION_KEY")
+    anon = base64.urlsafe_b64encode(json.dumps({"role": "anon"}).encode()).rstrip(b"=").decode()
+    monkeypatch.setenv("SUPABASE_KEY", f"aaaa.{anon}.bbbb")           # Supabase's public key must never be the root
+    assert not tokens.enabled()
+    monkeypatch.setenv("SUPABASE_KEY", "s" * 60)                      # the private service key is fine
+    assert tokens.enabled()
+
+
+def test_without_any_secret_the_feature_is_off(monkeypatch):
+    for name in ("MCP_TOKEN_SECRET", "ENCRYPTION_KEY", "SUPABASE_KEY"):
+        monkeypatch.delenv(name, raising=False)
     assert client.get("/.well-known/oauth-protected-resource").status_code == 404
     assert client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "ping"}).status_code == 404
 

@@ -9,8 +9,8 @@ reminder, spaces, what a capture saved, and an answer with its sources.
 ## Turn it on (once)
 
 1. Run **`scripts/migration_48_mcp_revoke.sql`** in the Supabase SQL editor (makes "Disconnect" work).
-2. On Render, set **`MCP_TOKEN_SECRET`** to a long random value:
-   `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Without it `/mcp` answers 404 (off).
+2. Nothing to set for the signing key: it is derived from `ENCRYPTION_KEY` (or the Supabase service key) that the backend
+   already has. (Optional: set `MCP_TOKEN_SECRET` to a 32+ character random value to use a secret of its own.)
    `FRONTEND_URL` must already be set (the approval page lives on the website).
    If the backend sits behind a custom domain, also set `PUBLIC_BASE_URL` to its public address.
 3. Deploy the backend and the website.
@@ -38,10 +38,10 @@ OAuth 2.1 with PKCE and dynamic client registration, the standard for connectors
 | You cut Claude off | `POST /mcp/oauth/disconnect` (Settings → Disconnect Claude) |
 
 * **No new password.** Approval happens on the MyConfía site, where you are already signed in; the backend never sees a password.
-* **Nothing is stored.** Clients, codes and tokens are signed (HS256, `MCP_TOKEN_SECRET`). Access tokens last 1 hour, refresh tokens 60 days (each usable once), one-time codes 2 minutes.
+* **Nothing is stored.** Clients, codes and tokens are signed (HS256) with a key derived from a secret the backend already has (`ENCRYPTION_KEY`, else the Supabase service key; never Supabase's public anon key). Access tokens last 1 hour, refresh tokens 60 days (each usable once), one-time codes 2 minutes.
 * **Bound tokens.** A code only works for the client and redirect address it was issued to, and only with the PKCE secret; an access token only works at this server (`aud`).
 * **Same rules as the app.** The invite list (`ALLOWED_EMAILS`) is checked on every connection; the monthly AI limits apply to capture and questions; deleting anything needs an explicit `confirm`.
-* **Disconnect really disconnects.** It stamps the account; every token issued before then stops working immediately and cannot be refreshed. Rotating `MCP_TOKEN_SECRET` signs everybody out of Claude at once.
+* **Disconnect really disconnects.** It stamps the account; every token issued before then stops working immediately and cannot be refreshed. Changing `ENCRYPTION_KEY` (or `MCP_TOKEN_SECRET`) signs everybody out of Claude at once - they just connect again.
 
 ## The tools
 
