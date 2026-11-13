@@ -37,7 +37,7 @@ import voice
 from llm_client import get_client as get_llm_client
 from api.auth import get_current_user_id
 from api.rate_limit import limiter, token_subject
-from api.routers import admin, ask, capture, chat, feedback, initiatives, lists, notes, push, settings, tasks
+from api.routers import admin, ask, capture, chat, feedback, initiatives, lists, mcp, mcp_oauth, notes, push, settings, tasks
 
 # Error tracking (Sentry, free Developer plan) - only when SENTRY_DSN is
 # set. Notes are private, so nothing personal is sent: no request bodies,
@@ -234,6 +234,11 @@ app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
 app.include_router(push.router, prefix="/api/push", tags=["push"])
 app.include_router(feedback.router, prefix="/api/feedback", tags=["feedback"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+# "Connect MyConfía to Claude": the MCP server at /mcp, its sign-in under /mcp/oauth, and the discovery documents Claude
+# looks for at the root of the host (see docs/MCP.md).
+app.include_router(mcp.router, prefix="/mcp", tags=["mcp"])
+app.include_router(mcp_oauth.router, prefix="/mcp/oauth", tags=["mcp"])
+app.include_router(mcp_oauth.well_known, tags=["mcp"])
 
 
 @app.get("/api/health")
