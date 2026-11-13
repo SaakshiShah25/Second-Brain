@@ -26,6 +26,7 @@ Render dashboard → your service (`second-brain-api`) → **Environment** → a
 | `ALERT_EMAIL` | `sanket3shah@gmail.com` | Where every alert goes; also who can open the admin page |
 | `ALLOWED_EMAILS` | e.g. `sanket3shah@gmail.com, friend@x.com` (or `@company.com` for a whole domain) | Invite-only. Anyone not listed sees "You're not on the list yet". |
 | `APP_ENV` | `production` | Only your real frontend may call the API |
+| `MCP_TOKEN_SECRET` | optional - a long random string | "Connect to Claude" (`/mcp`) works without it (its key is derived from `ENCRYPTION_KEY`); set this only to use a separate secret |
 | `FRONTEND_URL` | your Vercel URL, e.g. `https://myconfia.vercel.app` | CORS (which websites may call the API) |
 | `CRON_SECRET` | a long random string (see below) | Protects the scheduled jobs; must match GitHub |
 | `GEMINI_FALLBACK` | `off` | Gemini's free tier may use data for training |
