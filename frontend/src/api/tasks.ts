@@ -14,17 +14,32 @@ export interface ItemEdit {
   description?: string
   due_date?: string | null
   due_time?: string | null
+  remind_on?: string | null
+  remind_time?: string | null
+  remind_before?: number | null
   repeat?: Repeat | null
   list_id?: number | null
   detail?: string | null
 }
 
 // Edits an item's wording, deadline, repeat, list or detail. A field sent as null clears it.
+// The change is shown the instant it is made (the sheet and the row update straight away) and put back if the server says no.
 export function useEditTask() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ taskId, ...fields }: { taskId: number } & ItemEdit) => api.patch(`/api/tasks/${taskId}`, fields),
-    onSuccess: () => {
+    onMutate: async ({ taskId, ...fields }) => {
+      await queryClient.cancelQueries({ queryKey: ['tasks'] })
+      const previous = queryClient.getQueriesData<TasksResponse>({ queryKey: ['tasks'] })
+      queryClient.setQueriesData<TasksResponse>({ queryKey: ['tasks'] }, (old) =>
+        old ? { ...old, tasks: old.tasks.map((t) => (t.id === taskId ? ({ ...t, ...fields } as Task) : t)) } : old,
+      )
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      context?.previous.forEach(([queryKey, data]) => queryClient.setQueryData(queryKey, data))
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['lists'] })
     },

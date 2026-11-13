@@ -6,16 +6,17 @@ import { useMoveItem } from '../lib/useMoveItem'
 import { useInitiatives } from '../api/initiatives'
 import { useLists } from '../api/lists'
 import type { Task } from '../api/types'
-import { dueLabel, fullDate, shortDate, timeLabel } from '../lib/dates'
+import { dueLabel, fullDate } from '../lib/dates'
 import { notePoints } from '../lib/initiativeFilter'
-import { autoReminderText, isOverdue, REPEAT_OPTIONS, repeatLabel } from '../lib/items'
-import { DEFAULT_REMIND_TIME, PRIORITIES, priorityOf, taskInitiativeId } from '../lib/taskOptions'
+import { isOverdue, REPEAT_OPTIONS, repeatLabel } from '../lib/items'
+import { dueAndReminderSummary } from '../lib/dueReminder'
+import { PRIORITIES, priorityOf, taskInitiativeId } from '../lib/taskOptions'
 import Button from './Button'
 import CategorySheet from './CategorySheet'
-import { beforeLabel, PriorityMark, priorityOptionStyle, ReminderSheet } from './TaskOptions'
+import DueReminderSheet from './DueReminderSheet'
+import { PriorityMark, priorityOptionStyle } from './TaskOptions'
 import ConfirmDialog from './ConfirmDialog'
 import Sheet from './Sheet'
-import { toast } from './Toast'
 import { Input, Label, Select, Textarea } from './fields'
 
 // One item, opened from any list or from Today: what it is, where it came from, and everything
@@ -32,26 +33,18 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
   const [choosingCategory, setChoosingCategory] = useState(false)
   const [choosingReminder, setChoosingReminder] = useState(false)
   const priority = priorityOf(task)
-  const early = task.remind_before ? `${beforeLabel(task.remind_before)} before it's due` : ''
-  const reminder = [
-    early,
-    task.remind_on ? `${shortDate(task.remind_on)}, ${timeLabel((task.remind_time ?? DEFAULT_REMIND_TIME).slice(0, 5))}` : early ? '' : autoReminderText(task),
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  const dueSummary = dueAndReminderSummary(task)
   const categoryId = taskInitiativeId(task)
   const categoryName = categoryId === null ? 'Others' : (initiatives.find((i) => i.id === categoryId)?.name ?? 'Others')
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [form, setForm] = useState({ description: '', date: '', time: '', repeat: '', listId: '', detail: '' })
+  const [form, setForm] = useState({ description: '', repeat: '', listId: '', detail: '' })
   const list = task.item_list
   const isTodo = !list
 
   function startEditing() {
     setForm({
       description: task.description,
-      date: task.due_date ?? '',
-      time: (task.due_time ?? '').slice(0, 5),
       repeat: task.repeat ?? '',
       listId: task.list_id ? String(task.list_id) : '',
       detail: task.detail ?? '',
@@ -64,9 +57,6 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
       {
         taskId: task.id,
         description: form.description.trim(),
-        due_date: form.date || null,
-        // A routine with no start date starts today (the server fills it in), so it can keep a time.
-        due_time: (form.date || form.repeat) && form.time ? form.time : null,
         repeat: form.repeat || null,
         list_id: form.listId ? Number(form.listId) : null,
         detail: form.detail.trim() || null,
@@ -116,10 +106,10 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
           onClick={() => setChoosingReminder(true)}
           className="pressable mb-3 flex w-full items-center gap-3 rounded-2xl border border-border bg-bg-elevated px-3.5 py-3 text-left"
         >
-          <Bell size={17} strokeWidth={2} className="flex-shrink-0 text-text-muted" style={task.remind_on ? { color: 'var(--sb-accent)' } : undefined} />
+          <Bell size={17} strokeWidth={2} className="flex-shrink-0 text-text-muted" style={task.remind_on || task.remind_before != null ? { color: 'var(--sb-accent)' } : undefined} />
           <span className="min-w-0 flex-1 text-[0.9375rem]">
-            <span className="text-text-muted">Reminder · </span>
-            <span className="font-medium">{reminder || 'None - tap to set one'}</span>
+            <span className="text-text-muted">Due and reminder · </span>
+            <span className="font-medium">{dueSummary || 'None - tap to set'}</span>
           </span>
           <ChevronRight size={16} strokeWidth={2} className="flex-shrink-0 text-text-faint" />
         </button>
@@ -168,16 +158,6 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
             <div>
               <Label>{isTodo ? 'What needs doing' : 'What it is'}</Label>
               <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label>Date</Label>
-                <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-              </div>
-              <div>
-                <Label>Time (optional)</Label>
-                <Input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} disabled={!form.date && !form.repeat} />
-              </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -251,35 +231,7 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
         </div>
       </Sheet>
 
-      {choosingReminder && (
-        <ReminderSheet
-          task={task}
-          onClose={() => setChoosingReminder(false)}
-          onPickDue={(date, time) =>
-            editTask.mutate(
-              { taskId: task.id, due_date: date, due_time: time },
-              { onSuccess: () => toast(date ? `Due ${shortDate(date)}${time ? `, ${timeLabel(time)}` : ''}` : 'Due date removed') },
-            )
-          }
-          onPickBefore={
-            task.due_date
-              ? (minutes) =>
-                  updateFields.mutate(
-                    { taskId: task.id, fields: { remind_before: minutes } },
-                    { onSuccess: () => toast(minutes ? `You'll be reminded ${beforeLabel(minutes)} before` : 'Early reminder removed') },
-                  )
-              : undefined
-          }
-          onPick={(date, time) =>
-            updateFields.mutate(
-              { taskId: task.id, fields: { remind_on: date, remind_time: time } },
-              {
-                onSuccess: () => toast(date ? `Reminder set for ${shortDate(date)}, ${timeLabel(time ?? DEFAULT_REMIND_TIME)}` : 'Reminder removed'),
-              },
-            )
-          }
-        />
-      )}
+      {choosingReminder && <DueReminderSheet task={task} onClose={() => setChoosingReminder(false)} />}
 
       {choosingCategory && (
         <CategorySheet

@@ -208,6 +208,8 @@ def update_task(task_id: int, body: TaskStatusUpdate, user_id: str = Depends(get
     if changes.get("due_date") is None and "due_date" in changes:
         changes["due_time"] = None  # no date -> no time of day either
         changes["repeat"] = None    # ...and nothing to repeat from
+    if any(k in changes for k in ("due_date", "due_time", "remind_before")):
+        changes["reminded_key"] = None  # a new due moment or "before" time: the new moment can ring again (a bell has its own reminded_on)
     if changes:
         try:
             db.update_task_fields(user_id, task_id, **changes)

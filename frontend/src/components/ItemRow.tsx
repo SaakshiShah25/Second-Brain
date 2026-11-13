@@ -1,14 +1,13 @@
 import { useState } from 'react'
 import { Bell, Check, Repeat as RepeatIcon, Trash2, TriangleAlert } from 'lucide-react'
-import { useEditTask, useUpdateTaskFields } from '../api/tasks'
 import type { Task } from '../api/types'
 import { datedLabel, dueLabel, shortDate, timeLabel } from '../lib/dates'
 import { isOverdue, repeatLabel } from '../lib/items'
-import { DEFAULT_REMIND_TIME, PRIORITIES, priorityOf } from '../lib/taskOptions'
+import { minutesLabel } from '../lib/dueReminder'
+import { PRIORITIES, priorityOf } from '../lib/taskOptions'
 import ConfirmDialog from './ConfirmDialog'
 import SwipeToRemove from './SwipeToRemove'
-import { beforeLabel, ReminderSheet } from './TaskOptions'
-import { toast } from './Toast'
+import DueReminderSheet from './DueReminderSheet'
 
 // One item: a Things-style round checkbox, its wording, and one quiet line of facts (whose it
 // is, when, how often, which list). `showList` adds the list chip - on Today, where items from
@@ -39,8 +38,6 @@ export default function ItemRow({
   // can't be swiped away on a phone, and is removed from edit mode instead. The laptop's hover bin still works.
   swipe?: boolean
 }) {
-  const updateFields = useUpdateTaskFields()
-  const editTask = useEditTask()
   const [reminding, setReminding] = useState(false)
   // Swiping the row away, or its bin in edit mode, asks "Are you sure?" first.
   const [confirmRemove, setConfirmRemove] = useState(false)
@@ -78,7 +75,7 @@ export default function ItemRow({
     task.remind_before && !done ? (
       <span key="e" className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap text-accent">
         <Bell size={12} strokeWidth={2.2} />
-        {beforeLabel(task.remind_before)} before
+        {minutesLabel(task.remind_before)} before
       </span>
     ) : null,
     showList && list ? (
@@ -173,31 +170,7 @@ export default function ItemRow({
       {reminding && (
         // Events from a sheet bubble up through React to the row's drag handle; keep them from starting a drag.
         <div onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-        <ReminderSheet
-          task={task}
-          onClose={() => setReminding(false)}
-          onPickDue={(date, time) =>
-            editTask.mutate(
-              { taskId: task.id, due_date: date, due_time: time },
-              { onSuccess: () => toast(date ? `Due ${shortDate(date)}${time ? `, ${timeLabel(time)}` : ''}` : 'Due date removed') },
-            )
-          }
-          onPickBefore={
-            task.due_date
-              ? (minutes) =>
-                  updateFields.mutate(
-                    { taskId: task.id, fields: { remind_before: minutes } },
-                    { onSuccess: () => toast(minutes ? `You'll be reminded ${beforeLabel(minutes)} before` : 'Early reminder removed') },
-                  )
-              : undefined
-          }
-          onPick={(date, time) =>
-            updateFields.mutate(
-              { taskId: task.id, fields: { remind_on: date, remind_time: time } },
-              { onSuccess: () => toast(date ? `Reminder set for ${shortDate(date)}, ${timeLabel(time ?? DEFAULT_REMIND_TIME)}` : 'Reminder removed') },
-            )
-          }
-        />
+          <DueReminderSheet task={task} onClose={() => setReminding(false)} />
         </div>
       )}
     </>

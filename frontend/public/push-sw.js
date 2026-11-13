@@ -21,15 +21,15 @@ self.addEventListener('push', (event) => {
     (async () => {
       if (data.alarm) {
         const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-        const inView = windows.filter((w) => w.visibilityState === 'visible')
-        if (inView.length > 0) {
-          // The app is in front of the person: ring inside it, no notification needed.
-          for (const w of inView) w.postMessage({ type: 'confia-alarm', ids, title: data.title || '', body: data.body || '', test: !!data.test })
-          return
-        }
+        // Every open window of the app is told, so the alarm card is already there (and ringing) when the person
+        // comes back to a tab or app that was in the background.
+        for (const w of windows) w.postMessage({ type: 'confia-alarm', ids, title: data.title || '', body: data.body || '', test: !!data.test })
+        // With the app in front of the person the card is enough; otherwise a notification is needed too (a closed
+        // app cannot be opened by a push - only by a tap on this notification).
+        if (windows.some((w) => w.visibilityState === 'visible')) return
       }
-      await self.registration.showNotification(data.title || 'MyConfía', {
-        body: data.body || '',
+      await self.registration.showNotification((data.alarm ? '⏰ ' : '') + (data.title || 'MyConfía'), {
+        body: data.alarm ? 'Tap to open the alarm' + (data.body ? ' · ' + data.body : '') : data.body || '',
         icon: '/icons/icon-192.png',
         badge: '/icons/icon-192.png',
         tag: data.tag || 'tasks',
