@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Navigate, Outlet } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { Lock } from 'lucide-react'
 import { INVITE_ONLY_EVENT } from '../api/client'
 import Button from '../components/Button'
@@ -27,6 +27,7 @@ function NotInvited({ email, onSignOut }: { email?: string; onSignOut: () => voi
 }
 
 export default function RequireAuth() {
+  const location = useLocation()
   const { session, user, loading, signOut } = useAuth()
   const [notInvited, setNotInvited] = useState(false)
 
@@ -40,6 +41,14 @@ export default function RequireAuth() {
     return <LoadingScreen />
   }
   if (!session) {
+    // Coming back from signing in: "Connect to Claude" needs the person to land on the approval page again.
+    if (location.pathname === '/connect-claude') {
+      try {
+        sessionStorage.setItem('confia.returnTo', location.pathname + location.search)
+      } catch {
+        // not remembered - they will land on Home after signing in and can restart from Claude
+      }
+    }
     return <Navigate to="/login" replace />
   }
   if (notInvited) {

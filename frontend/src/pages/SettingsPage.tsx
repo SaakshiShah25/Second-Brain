@@ -7,6 +7,7 @@ import { useDeleteAccount, useSettings, useUpdateSettings } from '../api/setting
 import type { FontSize, Theme } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import AppLockSettings from '../components/AppLockSettings'
+import ClaudeSettings from '../components/ClaudeSettings'
 import InstallSettings from '../components/InstallSettings'
 import PushSettings from '../components/PushSettings'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -142,6 +143,8 @@ export default function SettingsPage() {
       <PushSettings />
 
       <InstallSettings />
+
+      <ClaudeSettings />
 
       <AppLockSettings />
 

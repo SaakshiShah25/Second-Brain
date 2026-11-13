@@ -50,6 +50,32 @@ def _still_invited(user_id: str) -> bool:
     return ok
 
 
+# The moment a person last pressed "Disconnect Claude", remembered briefly (same reason as the invite check).
+_revoked: dict = {}
+REVOKE_CACHE_SECONDS = 30
+
+
+def _revoked_at(user_id: str) -> int:
+    hit = _revoked.get(user_id)
+    if hit and time.time() - hit[1] < REVOKE_CACHE_SECONDS:
+        return hit[0]
+    try:
+        at = db.get_mcp_revoked_at(user_id)
+    except Exception:  # noqa: BLE001
+        at = 0
+    _revoked[user_id] = (at, time.time())
+    return at
+
+
+def forget(user_id: str) -> None:
+    """Called right after a disconnect so it takes effect on this server instantly, not after the cache runs out."""
+    _revoked.pop(user_id, None)
+
+
+def is_revoked(claims: dict) -> bool:
+    return int(claims.get("iat", 0)) < _revoked_at(claims["sub"])
+
+
 def _user_for(request: Request):
     """(user_id, None) or (None, the 401/403 response)."""
     auth = request.headers.get("authorization", "")
@@ -60,6 +86,8 @@ def _user_for(request: Request):
     if claims:
         if claims.get("aud") != f"{base_url(request)}/mcp":
             return None, _unauthorized(request, bad_token=True)  # a token meant for some other server
+        if is_revoked(claims):
+            return None, _unauthorized(request, bad_token=True)  # the person disconnected Claude
         if not _still_invited(claims["sub"]):
             return None, JSONResponse({"error": "forbidden", "error_description": "This account isn't on the MyConfía invite list."}, status_code=403)
         return claims["sub"], None

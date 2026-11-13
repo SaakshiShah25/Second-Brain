@@ -603,6 +603,24 @@ def update_user_preference(user_id: str, **fields) -> dict:
     return resp.data[0]
 
 
+def get_mcp_revoked_at(user_id: str) -> int:
+    """Unix time of the person's last "Disconnect Claude" (0 = never, or before migration 48 has run)."""
+    try:
+        rows = get_client().table("user_preference").select("mcp_revoked_at").eq("user_id", user_id).execute().data
+    except Exception:  # noqa: BLE001 - the column isn't there yet
+        return 0
+    value = rows[0].get("mcp_revoked_at") if rows else None
+    if not value:
+        return 0
+    return int(datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp())
+
+
+def revoke_mcp(user_id: str) -> None:
+    """Cuts every Claude connection of this person off, now. Raises if migration 48 hasn't run."""
+    get_user_preference(user_id)  # make sure the row exists
+    get_client().table("user_preference").update({"mcp_revoked_at": datetime.now(timezone.utc).isoformat()}).eq("user_id", user_id).execute()
+
+
 def get_user_email(user_id: str) -> str:
     """Looks up the account's login email via the Auth admin API (not
     stored redundantly in `user_preference`) - used by

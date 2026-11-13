@@ -30,7 +30,15 @@ export default function LoginPage() {
   const [resending, setResending] = useState(false)
 
   if (!sessionLoading && session) {
-    return <Navigate to="/" replace />
+    let returnTo = '/'
+    try {
+      const saved = sessionStorage.getItem('confia.returnTo')
+      sessionStorage.removeItem('confia.returnTo')
+      if (saved && saved.startsWith('/') && !saved.startsWith('//')) returnTo = saved // e.g. the "Connect to Claude" page
+    } catch {
+      // storage unavailable - Home
+    }
+    return <Navigate to={returnTo} replace />
   }
 
   function switchMode(m: Mode) {

@@ -23,8 +23,15 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
+import db
 import mcp_tokens as tokens
 from api.auth import get_current_user_id
+
+def _revoked_since(claims: dict) -> bool:
+    from api.routers import mcp as mcp_router  # (late: mcp.py imports base_url from here)
+
+    return mcp_router.is_revoked(claims)
+
 
 # Two routers: the discovery documents live at the root of the host (that is where clients look), everything else
 # under /mcp/oauth so "all the endpoints are under /mcp".
@@ -202,6 +209,21 @@ def approve(body: ApproveRequest, user_id: str = Depends(get_current_user_id)):
     return {"redirect": _back(req["redirect_uri"], req["state"], code=code)}
 
 
+# ---------- disconnect ----------
+
+@router.post("/disconnect")
+def disconnect(user_id: str = Depends(get_current_user_id)):
+    """Settings > Disconnect Claude: every token Claude holds for this person stops working now."""
+    from api.routers import mcp as mcp_router
+
+    try:
+        db.revoke_mcp(user_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(503, "Disconnecting isn't available yet - run scripts/migration_48_mcp_revoke.sql first.") from e
+    mcp_router.forget(user_id)
+    return {"ok": True}
+
+
 # ---------- token ----------
 
 def _issue(request: Request, user_id: str, client_id: str) -> JSONResponse:
@@ -240,6 +262,8 @@ def token(
         old = tokens.verify(refresh_token, "mcp-refresh")
         if not old or (client_id and old["client_id"] != client_id):
             return _oauth_error("invalid_grant", "That refresh token is invalid or has expired.")
+        if _revoked_since(old):
+            return _oauth_error("invalid_grant", "Claude was disconnected from this account - connect again.")
         if not tokens.use_once(old["jti"], tokens.REFRESH_TTL):
             return _oauth_error("invalid_grant", "That refresh token was already used.")
         return _issue(request, old["sub"], old["client_id"])

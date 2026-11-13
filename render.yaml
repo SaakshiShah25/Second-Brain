@@ -39,6 +39,10 @@ services:
         sync: false
       - key: ENCRYPTION_KEY
         sync: false
+      # "Connect MyConfía to Claude" (docs/MCP.md): a long random value that signs the tokens Claude holds. Without it
+      # /mcp is switched off. Generate: python -c "import secrets; print(secrets.token_urlsafe(48))"
+      - key: MCP_TOKEN_SECRET
+        sync: false
       # Production hardening (see api/main.py, api/auth.py):
       # APP_ENV=production drops the localhost CORS origins.
       - key: APP_ENV

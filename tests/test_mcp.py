@@ -281,3 +281,29 @@ def test_open_space_lists_its_notes_and_todos(fake):
     out = _call("open_space", {"space": "home"})
     sel = out["structuredContent"]["selected"]
     assert sel["space"]["name"] == "Home" and [n["id"] for n in sel["notes"]] == [5] and [t["id"] for t in sel["todos"]] == [1]
+
+
+# ---------------------------------------------------------------- disconnecting
+
+def test_disconnect_cuts_off_tokens_issued_before_it(monkeypatch):
+    import time
+    revoked = {"at": 0}
+    monkeypatch.setattr(mcp_router.db, "get_mcp_revoked_at", lambda uid: revoked["at"])
+    mcp_router._revoked.clear()
+    cid, code, verifier = _full_flow()
+    t = client.post("/mcp/oauth/token", data={"grant_type": "authorization_code", "code": code, "client_id": cid, "redirect_uri": REDIRECT, "code_verifier": verifier}).json()
+    assert _rpc("ping", token=t["access_token"]).status_code == 200
+
+    monkeypatch.setattr(mcp_router.db, "revoke_mcp", lambda uid: revoked.update(at=int(time.time()) + 5))
+    assert client.post("/mcp/oauth/disconnect").json() == {"ok": True}
+    assert _rpc("ping", token=t["access_token"]).status_code == 401                     # the access token no longer works
+    again = client.post("/mcp/oauth/token", data={"grant_type": "refresh_token", "refresh_token": t["refresh_token"], "client_id": cid})
+    assert again.status_code == 400 and "disconnected" in again.json()["error_description"]   # nor can it be refreshed
+
+
+def test_disconnect_says_to_run_the_migration_when_it_cannot_save(monkeypatch):
+    def boom(uid):
+        raise RuntimeError("column does not exist")
+    monkeypatch.setattr(mcp_router.db, "revoke_mcp", boom)
+    r = client.post("/mcp/oauth/disconnect")
+    assert r.status_code == 503 and "migration_48" in r.json()["detail"]

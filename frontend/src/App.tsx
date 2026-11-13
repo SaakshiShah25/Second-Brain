@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import ConnectClaudePage from './pages/ConnectClaudePage'
 import RequireAuth from './auth/RequireAuth'
 import Layout from './components/Layout'
 import LoginPage from './pages/LoginPage'
@@ -35,6 +36,8 @@ export default function App() {
       <Route path="/account-deletion" element={<AccountDeletionInfoPage />} />
       <Route path="/privacy" element={<PublicPrivacyPage />} />
       <Route element={<RequireAuth />}>
+        {/* Claude sends people here to approve a connection (see pages/ConnectClaudePage.tsx). */}
+        <Route path="/connect-claude" element={<ConnectClaudePage />} />
         <Route
           element={
             <SettingsProvider>
