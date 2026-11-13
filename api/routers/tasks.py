@@ -208,6 +208,16 @@ def update_task(task_id: int, body: TaskStatusUpdate, user_id: str = Depends(get
     if changes.get("due_date") is None and "due_date" in changes:
         changes["due_time"] = None  # no date -> no time of day either
         changes["repeat"] = None    # ...and nothing to repeat from
+    if any(k in changes for k in ("due_date", "due_time", "remind_on", "remind_time")):
+        # A reminder comes BEFORE the due date: never on a day after it, and on the due day itself never at or after the due time.
+        current = db.get_task(user_id, task_id) or {}
+        pick = lambda key: changes[key] if key in changes else current.get(key)  # noqa: E731
+        due, due_t, rem, rem_t = pick("due_date"), pick("due_time"), pick("remind_on"), pick("remind_time")
+        if due and rem:
+            if str(rem)[:10] > str(due)[:10]:
+                raise HTTPException(400, "A reminder has to come before the due date.")
+            if str(rem)[:10] == str(due)[:10] and due_t and rem_t and str(rem_t)[:5] >= str(due_t)[:5]:
+                raise HTTPException(400, "On the due day, a reminder has to come before the due time.")
     if any(k in changes for k in ("due_date", "due_time", "remind_before")):
         changes["reminded_key"] = None  # a new due moment or "before" time: the new moment can ring again (a bell has its own reminded_on)
     if changes:
