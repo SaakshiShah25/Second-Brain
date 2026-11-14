@@ -94,7 +94,7 @@ export default function ReportSheet({
         maxLength={1500}
         value={message}
         onChange={(e) => setMessage(e.target.value)}
-        placeholder="What happened, and what did you expect?"
+        placeholder="What happened, and what did you expect? (required)"
       />
       <p className="mt-1.5 text-[0.75rem] text-text-faint">Please don’t include private details from your notes.</p>
 

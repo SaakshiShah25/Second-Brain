@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, Calendar, Check } from 'lucide-react'
+import { Bell, Calendar, Check, Clock } from 'lucide-react'
 import { useEditTask, type ItemEdit } from '../api/tasks'
 import type { Task } from '../api/types'
 import { datedLabel, timeLabel } from '../lib/dates'
@@ -150,32 +150,42 @@ export default function DueReminderSheet({ task, onClose }: { task: Task; onClos
               </button>
             )}
           </div>
-          <Input type="date" aria-label="Due date" value={task.due_date ?? ''} onChange={(e) => setDue(e.target.value || null)} />
+          <label className="block">
+            <span className="mb-1 block text-[0.8125rem] font-medium text-text-muted">Or pick a date</span>
+            <Input type="date" aria-label="Due date" value={task.due_date ?? ''} onChange={(e) => setDue(e.target.value || null)} />
+          </label>
           {hasDue && (
-            <div className="mt-3 flex items-center gap-3">
-              <span className="min-w-0 flex-1 text-[0.9375rem]">
-                All day
-                <span className="block text-[0.8125rem] text-text-muted">{timed ? `Due at ${timeLabel(dueTime)}` : 'No particular time'}</span>
-              </span>
-              {timed && (
-                <Input
-                  type="time"
-                  aria-label="Due time"
-                  value={dueTime ?? ''}
-                  onChange={(e) => e.target.value && save(afterDueChange({ due_date: task.due_date!, due_time: e.target.value }))}
-                  className="w-32"
+            <div className="mt-3">
+              <div className="flex items-center gap-3">
+                <span className="min-w-0 flex-1 text-[0.9375rem]">
+                  All day
+                  <span className="block text-[0.8125rem] text-text-muted">{timed ? `Due at ${timeLabel(dueTime)}` : 'No particular time'}</span>
+                </span>
+                <Toggle
+                  on={!timed}
+                  label="All day"
+                  onChange={() => {
+                    if (timed) {
+                      // To all day: a "before" counted from a time of day no longer makes sense.
+                      save({ due_time: null, ...(hasBefore && !PRESETS_ALL_DAY.includes(task.remind_before!) ? { remind_before: null } : {}) })
+                    } else save(afterDueChange({ due_date: task.due_date!, due_time: DEFAULT_ALL_DAY_HOUR }))
+                  }}
                 />
+              </div>
+              {/* On its own line, full width: next to the toggle it squeezed the label into a column of letters. */}
+              {timed && (
+                <label className="mt-2.5 block">
+                  <span className="mb-1 flex items-center gap-1.5 text-[0.8125rem] font-medium text-text-muted">
+                    <Clock size={13} strokeWidth={2} /> Time
+                  </span>
+                  <Input
+                    type="time"
+                    aria-label="Due time"
+                    value={dueTime ?? ''}
+                    onChange={(e) => e.target.value && save(afterDueChange({ due_date: task.due_date!, due_time: e.target.value }))}
+                  />
+                </label>
               )}
-              <Toggle
-                on={!timed}
-                label="All day"
-                onChange={() => {
-                  if (timed) {
-                    // To all day: a "before" counted from a time of day no longer makes sense.
-                    save({ due_time: null, ...(hasBefore && !PRESETS_ALL_DAY.includes(task.remind_before!) ? { remind_before: null } : {}) })
-                  } else save(afterDueChange({ due_date: task.due_date!, due_time: DEFAULT_ALL_DAY_HOUR }))
-                }}
-              />
             </div>
           )}
         </section>
@@ -220,20 +230,33 @@ export default function DueReminderSheet({ task, onClose }: { task: Task; onClos
               </div>
               {(customOpen || isCustom) && (
                 <div className="mt-3">
-                  <div className="flex items-center gap-2">
-                    <Input type="date" aria-label="Reminder date" min={today} max={task.due_date ?? undefined} value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="flex-1" />
-                    <Input type="time" aria-label="Reminder time" min={timeMin} max={timeMax} value={customTime} onChange={(e) => setCustomTime(e.target.value)} className="w-32" />
-                    <Button
-                      variant="primary"
-                      disabled={!customAt || !!customProblem}
-                      onClick={() => {
-                        save({ remind_on: customDate, remind_time: customTime === DEFAULT_ALL_DAY_HOUR ? null : customTime, remind_before: null })
-                        setCustomOpen(false)
-                      }}
-                    >
-                      Set
-                    </Button>
+                  {/* Day first, then the time of day, then the button that says what it does. */}
+                  <div className="flex items-end gap-2">
+                    <label className="min-w-0 flex-1">
+                      <span className="mb-1 flex items-center gap-1.5 text-[0.8125rem] font-medium text-text-muted">
+                        <Calendar size={13} strokeWidth={2} /> Day
+                      </span>
+                      <Input type="date" aria-label="Reminder day" min={today} max={task.due_date ?? undefined} value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+                    </label>
+                    <label className="w-40 flex-shrink-0">
+                      <span className="mb-1 flex items-center gap-1.5 text-[0.8125rem] font-medium text-text-muted">
+                        <Clock size={13} strokeWidth={2} /> Time
+                      </span>
+                      <Input type="time" aria-label="Reminder time" min={timeMin} max={timeMax} value={customTime} onChange={(e) => setCustomTime(e.target.value)} />
+                    </label>
                   </div>
+                  <Button
+                    variant="primary"
+                    block
+                    className="mt-3"
+                    disabled={!customAt || !!customProblem}
+                    onClick={() => {
+                      save({ remind_on: customDate, remind_time: customTime === DEFAULT_ALL_DAY_HOUR ? null : customTime, remind_before: null })
+                      setCustomOpen(false)
+                    }}
+                  >
+                    {customAt && !customProblem ? `Remind me ${momentLabel(customAt)}` : 'Set reminder'}
+                  </Button>
                   <p className={`mt-2 text-[0.8125rem] ${customProblem ? 'text-danger' : 'text-text-muted'}`}>
                     {customProblem || `Any day up to ${datedLabel(task.due_date)}${timed ? `, before ${timeLabel(dueTime)} on the day` : ''}.`}
                   </p>

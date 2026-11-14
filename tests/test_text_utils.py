@@ -138,3 +138,14 @@ def test_instructions_to_the_app_are_recognised_but_real_to_dos_are_not():
                  "Start exercising daily", "Connect with Pratik Bhai", "Decided to launch a new initiative on pricing",
                  "The initiative to onboard schools is going well", "Name the new hire in the org chart"):
         assert not text_utils.is_app_instruction(text), text
+
+
+def test_office_shorthand_for_a_deadline_is_a_date():
+    import datetime as dt
+    import date_utils
+    friday = dt.date(2026, 11, 13)
+    for phrase in ("EOD", "by EOD", "end of day", "end of the day", "COB", "tonight"):
+        assert date_utils.resolve_relative_phrase(phrase, friday) == "2026-11-13", phrase
+    assert date_utils.resolve_relative_phrase("EOW", dt.date(2026, 11, 10)) == "2026-11-13"   # the Friday that ends that week
+    assert date_utils.resolve_relative_phrase("end of the month", friday) == "2026-11-30"
+    assert date_utils.resolve_relative_phrase("EOM", dt.date(2026, 2, 3)) == "2026-02-28"

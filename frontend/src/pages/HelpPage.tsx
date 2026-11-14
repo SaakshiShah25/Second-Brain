@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { ChevronDown, Compass, Flag, Smile } from 'lucide-react'
-import FeedbackSheet from '../components/FeedbackSheet'
-import ReportSheet from '../components/ReportSheet'
+import { ChevronDown, Compass, Smile } from 'lucide-react'
+import FeedbackMenu from '../components/FeedbackMenu'
 import { useTour } from '../components/TourGate'
 import { ListGroup, ListRow } from '../components/ListGroup'
 import PageHeader from '../components/PageHeader'
@@ -119,15 +118,14 @@ function Question({ q, a }: { q: string; a: string }) {
         <span className="min-w-0 flex-1">{q}</span>
         <ChevronDown size={18} strokeWidth={2} className="flex-shrink-0 text-text-faint transition-transform group-open:rotate-180" />
       </summary>
-      <p className="px-4 pb-4 text-[0.9375rem] leading-relaxed text-text-muted">{a}</p>
+      <p className="px-4 pb-4 text-[0.9375rem] leading-relaxed" style={{ color: 'color-mix(in srgb, var(--sb-text) 88%, var(--sb-bg-card))' }}>{a}</p>
     </details>
   )
 }
 
 export default function HelpPage() {
   const { startTour } = useTour()
-  const [rating, setRating] = useState(false)
-  const [reporting, setReporting] = useState(false)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
   return (
     <div>
       <PageHeader backTo="/settings" backLabel="Settings" title="Help & FAQ" />
@@ -148,11 +146,9 @@ export default function HelpPage() {
       ))}
 
       <ListGroup title="Still stuck?" footer="Reports go straight to us - we read every one.">
-        <ListRow icon={Flag} iconColor="var(--sb-text-muted)" soft label="Report a problem" chevron onClick={() => setReporting(true)} />
-        <ListRow icon={Smile} iconColor="var(--sb-text-muted)" soft label="Send feedback" detail="Rate MyConfía" chevron onClick={() => setRating(true)} />
+        <ListRow icon={Smile} iconColor="var(--sb-text-muted)" soft label="Send feedback" detail="Rate the app or report a problem" chevron onClick={() => setFeedbackOpen(true)} />
       </ListGroup>
-      {rating && <FeedbackSheet onClose={() => setRating(false)} />}
-      {reporting && <ReportSheet onClose={() => setReporting(false)} />}
+      {feedbackOpen && <FeedbackMenu onClose={() => setFeedbackOpen(false)} />}
     </div>
   )
 }

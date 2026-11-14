@@ -68,8 +68,12 @@ def test_the_message_lists_each_category_with_a_few_tasks_and_a_count():
     msg = pn.build_message(pn.group_open_tasks("u"), "9am")
     assert msg["title"] == "Good morning · 7 open tasks" and msg["url"] == "/today"
     lines = msg["body"].split("\n")
-    assert lines[0].startswith("Work (4): Email the proposal · Send Priya the deck · Fourth work task +1 more")
-    assert lines[1] == "Personal (2): Pay rent · Book dentist" and lines[2] == "Others (1): Order a notebook"
+    # a coloured square and a count per category, then one bullet per task
+    assert lines[0] == "🟦 Work · 4"
+    assert lines[1:5] == ["   • Email the proposal", "   • Send Priya the deck", "   • Fourth work task", "   + 1 more"]
+    assert "🟧 Personal · 2" in lines and "   • Pay rent" in lines and "   • Book dentist" in lines
+    assert "🟩 Others · 1" in lines and "   • Order a notebook" in lines
+    assert len({line.split()[0] for line in lines if line[0] != " "}) == 3      # a different mark for each category
     assert pn.build_message(pn.group_open_tasks("u"), "5pm")["title"].startswith("Evening check-in")
     assert pn.build_message([], "9am") is None
 
@@ -213,6 +217,12 @@ def test_a_task_reminder_goes_out_once_its_own_time_has_passed_in_the_users_time
     out = pn.send_task_reminders(now_utc=utc(10, 0), sender=sender)
     assert out["reminded_tasks"] == 1 and sent[0][1]["title"] == "Reminder · Call the bank"
     assert sent[0][1]["tag"] == "task-reminder-8" and marked[-1] == ([8], "2026-10-28")
+
+
+def test_a_reminder_that_is_days_old_is_not_sent_late():
+    # set for 9 AM on the 26th, and the user's first device only appeared on the 28th: too stale to be useful
+    sent, marked, sender = _reminder_world([{"id": 5, "description": "Apply for leave", "remind_on": "2026-10-26"}])
+    assert pn.send_task_reminders(now_utc=utc(3, 40), sender=sender)["reminded_tasks"] == 0 and sent == []
 
 
 def test_nothing_is_sent_before_a_reminders_time_and_a_failed_send_is_retried():

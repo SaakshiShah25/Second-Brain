@@ -12,12 +12,21 @@ export interface AdminOverview {
   generated_at: string
   persisted: boolean
   budget: { model: string; used: number; limit: number; left: number; blocked: boolean; minute_left: number | null }[]
+  // Notes sent vs. notes that went through (and why the others did not).
+  notes_outcome: { sent: number; saved: number; failed: number; unknown: number; reasons: { reason: string; count: number }[] }
+  // The backup AI (NVIDIA): notes it took when Groq could not.
+  fallback: {
+    enabled: boolean; notes: number; failed: number; logged: number; groq_refused: number; tokens: number
+    last_used: string | null; last_failed: string | null; last_failure: string | null; models: { model: string; notes: number }[]
+  }
   capacity: { action: 'capture' | 'question'; samples: number; avg_tokens: Record<string, number>; left_today: number | null }[]
   features: { kind: string; feature: string; model: string; calls: number; tokens: number; avg_tokens: number; median_ms: number | null }[]
   users: {
     user_id: string
     email: string
     captures: number
+    captures_saved: number
+    captures_failed: number
     questions: number
     tokens: number
     requests: number
@@ -28,10 +37,12 @@ export interface AdminOverview {
     storage: UserStorage | null
     monthly: Record<'capture' | 'question', { used: number; cap: number | null } | null>
   }[]
-  inactive: { user_id: string; email: string; joined: string | null; last_sign_in: string | null; storage: UserStorage | null }[]
+  inactive: { user_id: string; email: string; joined: string | null; last_sign_in: string | null; storage: UserStorage | null; days_since_joined: number | null; days_since_sign_in: number | null }[]
   scale: { model: string; tokens_per_user_day: number; users_supported: number | null }[]
   storage: { available: boolean } & UserStorage
   accounts: number
+  // Test accounts (…@myconfia.local, example.com…) are left out of every list here.
+  hidden_accounts: number
   limits: { name: string; count: number; last: string | null; info: string; top_users: string[] }[]
   problems: { kind: 'error' | 'limit' | 'refused'; what: string; status: number | null; count: number; users: number; last: string | null; example: string | null; info: string }[]
   errors: { at: string; where: string; error_id: string; status: number | null; type: string | null; message: string | null; user: string | null }[]

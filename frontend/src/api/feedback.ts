@@ -17,7 +17,9 @@ export interface FeedbackBody {
 export function useRatingPrompt() {
   return useQuery({
     queryKey: ['feedback', 'prompt'],
-    queryFn: () => api.get<{ ask: boolean }>('/api/feedback/prompt'),
+    // Never an error popup: asking for a rating is optional, so a server that doesn't know this yet just means "no".
+    queryFn: () => api.get<{ ask: boolean }>('/api/feedback/prompt').catch(() => ({ ask: false })),
+    retry: false,
     staleTime: Infinity, // decided once per visit; answering it (below) refreshes it
   })
 }

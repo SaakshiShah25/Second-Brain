@@ -166,3 +166,15 @@ def test_the_today_box_does_not_offer_to_delete_a_space(monkeypatch):
     body = types.SimpleNamespace(initiative_id=None, geo_lat=None, geo_lng=None, save_only=True)
     out = asyncio.run(chat._handle_command("u", body, None, commands.parse("delete the space Work")))
     assert out["intent"] == "blocked" and "Home tab" in out["answer"] and "confirm" not in out
+
+
+def test_a_task_given_with_a_new_space_is_cleaned_of_its_wrapper_words():
+    import re
+    from api.routers import chat
+    cases = {
+        "Create a new space IBM and add a task to it: Submit the onboarding document": "Submit the onboarding document",
+        "Create a workspace named IBM and add this task: Send the onboarding document tomorrow.": "Send the onboarding document tomorrow.",
+        "create a space called Health and add a to-do in it: book a checkup": "book a checkup",
+    }
+    for text, expected in cases.items():
+        assert chat._WRAPPER.sub("", commands.parse(text)["then"]).strip() == expected, text

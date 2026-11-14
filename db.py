@@ -961,6 +961,35 @@ def get_all_users() -> dict:
         page += 1
 
 
+def upsert_activity_days(rows: list) -> None:
+    """[{user_id, day}] - a person used the app on that day (schema.sql section 49)."""
+    for start in range(0, len(rows), 500):
+        get_client().table("user_activity_day").upsert(rows[start:start + 500], on_conflict="user_id,day").execute()
+
+
+def get_activity_days() -> list:
+    out, start = [], 0
+    while True:
+        page = get_client().table("user_activity_day").select("user_id, day").range(start, start + 999).execute().data
+        out += page
+        if len(page) < 1000:
+            return out
+        start += 1000
+
+
+def get_note_dates() -> list:
+    """[{user_id, created_at}] for every saved note - dates only, never content - for the admin's Excel export
+    (how many days each person has actually used the app)."""
+    out, start = [], 0
+    while True:
+        page = (get_client().table("interaction").select("user_id, created_at")
+                .order("created_at").range(start, start + 999).execute().data)
+        out += page
+        if len(page) < 1000:
+            return out
+        start += 1000
+
+
 def get_storage_by_user() -> list:
     """Per-user row counts and byte sizes (migration 43). Counts/sizes only, never content."""
     return get_client().rpc("admin_storage_by_user").execute().data or []
@@ -984,6 +1013,13 @@ def count_feedback_since(user_id: str, since_iso: str, kinds: list) -> int:
     resp = (get_client().table("feedback").select("id", count="exact").eq("user_id", user_id)
             .in_("kind", kinds).gte("created_at", since_iso).limit(1).execute())
     return resp.count or 0
+
+
+def get_last_feedback(user_id: str, kinds: list):
+    """The newest feedback row of these kinds for this person, or None."""
+    rows = (get_client().table("feedback").select("kind, created_at, context").eq("user_id", user_id)
+            .in_("kind", kinds).order("created_at", desc=True).limit(1).execute().data)
+    return rows[0] if rows else None
 
 
 def count_interactions(user_id: str) -> int:

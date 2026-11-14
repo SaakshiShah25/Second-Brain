@@ -3,7 +3,7 @@ import { Bell, Check, Repeat as RepeatIcon, Trash2, TriangleAlert } from 'lucide
 import type { Task } from '../api/types'
 import { datedLabel, dueLabel, shortDate, timeLabel } from '../lib/dates'
 import { isOverdue, repeatLabel } from '../lib/items'
-import { minutesLabel } from '../lib/dueReminder'
+import { minutesLabel, reminderMoment } from '../lib/dueReminder'
 import { PRIORITIES, priorityOf } from '../lib/taskOptions'
 import ConfirmDialog from './ConfirmDialog'
 import SwipeToRemove from './SwipeToRemove'
@@ -46,6 +46,9 @@ export default function ItemRow({
   const priority = priorityOf(task)
   const priorityColor = priority === 'normal' ? undefined : PRIORITIES.find((p) => p.value === priority)?.color
   const done = task.status === 'done'
+  // A reminder that has already gone off is over: the card shows only ones still to come.
+  const nextReminder = reminderMoment(task)
+  const reminderComing = !!nextReminder && nextReminder.getTime() > Date.now() && !!(task.remind_on || task.remind_before)
   const list = task.item_list
   const when = task.due_date
     ? compactDate
@@ -65,14 +68,14 @@ export default function ItemRow({
         {repeatLabel(task.repeat)}
       </span>
     ) : null,
-    task.remind_on && !done ? (
+    task.remind_on && !done && reminderComing ? (
       <span key="b" className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap text-accent">
         <Bell size={12} strokeWidth={2.2} />
         {shortDate(task.remind_on)}
         {task.remind_time && `, ${timeLabel(task.remind_time.slice(0, 5))}`}
       </span>
     ) : null,
-    task.remind_before && !done ? (
+    task.remind_before && !done && reminderComing ? (
       <span key="e" className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap text-accent">
         <Bell size={12} strokeWidth={2.2} />
         {minutesLabel(task.remind_before)} before
@@ -120,11 +123,11 @@ export default function ItemRow({
         <button
           type="button"
           onClick={() => setReminding(true)}
-          aria-label={task.remind_on || task.remind_before ? 'Change reminder' : 'Remind me'}
+          aria-label={reminderComing ? 'Change reminder' : 'Remind me'}
           // On a laptop the bell stays out of the way until the row is hovered (or it already has a reminder).
-          className={`pressable -m-2 flex-shrink-0 p-2 ${task.remind_on || task.remind_before ? 'text-accent' : 'text-text-faint lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100'}`}
+          className={`pressable -m-2 flex-shrink-0 p-2 ${reminderComing ? 'text-accent' : 'text-text-faint lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100'}`}
         >
-          <Bell size={18} strokeWidth={1.9} fill={task.remind_on || task.remind_before ? 'currentColor' : 'none'} />
+          <Bell size={18} strokeWidth={1.9} fill={reminderComing ? 'currentColor' : 'none'} />
         </button>
       )}
       {onSwipeRemove && !onDelete && (

@@ -16,6 +16,7 @@ from groq import RateLimitError
 from starlette.concurrency import run_in_threadpool
 
 import db
+import observability
 import embeddings
 import entitlements
 import extraction
@@ -369,9 +370,42 @@ def _process_extracted(user_id: str, raw_text: str, extracted: dict,
 
 # ---------- Endpoints ----------
 
+# Why a capture that was sent did not end up saved, in words for the admin page (status -> reason).
+_FAILURE_REASONS = {402: "plan limit", 429: "AI busy or out of budget", 499: "cancelled by the person"}
+
+
+def _record_outcome(user_id: str, saved: bool, status: Optional[int] = None, where: Optional[str] = None) -> None:
+    """Every capture counts as 'sent' when it starts (entitlements.check_and_increment); this records how it ended, so
+    the admin page can say how many notes were sent and how many actually went through."""
+    try:
+        if saved:
+            observability.record("usage", "capture_saved", user_id=user_id)
+        else:
+            observability.record("usage", "capture_failed", user_id=user_id, status=status,
+                                 detail={"reason": _FAILURE_REASONS.get(status or 0, "error"), "where": where})
+    except Exception:
+        pass  # bookkeeping must never fail a person's note
+
+
 async def _capture_text_core(user_id: str, raw_text: str, geo_lat: Optional[float], geo_lng: Optional[float],
                               request: Request, on_stage: Optional[Callable[[str], Awaitable[None]]] = None,
                               initiative_id: Optional[int] = None) -> dict:
+    """Saves a captured note and records how it ended (saved / failed and why); see _capture_text_attempt."""
+    try:
+        result = await _capture_text_attempt(user_id, raw_text, geo_lat, geo_lng, request, on_stage, initiative_id)
+    except HTTPException as e:
+        _record_outcome(user_id, False, e.status_code)
+        raise
+    except Exception:
+        _record_outcome(user_id, False, 500)
+        raise
+    _record_outcome(user_id, True)
+    return result
+
+
+async def _capture_text_attempt(user_id: str, raw_text: str, geo_lat: Optional[float], geo_lng: Optional[float],
+                                 request: Request, on_stage: Optional[Callable[[str], Awaitable[None]]] = None,
+                                 initiative_id: Optional[int] = None) -> dict:
     """The actual capture-text logic, factored out of capture_text() below
     so api/routers/chat.py can call it directly after ITS OWN moderation
     check without triggering a second one here - moderation.py is one
@@ -462,17 +496,24 @@ async def capture_voice(
     # transcription cap above (extraction is a distinct LLM call/cost
     # from Whisper), same as a typed capture would be.
     _enforce(user_id, "interactions_logged")
-    initiatives = db.get_initiatives(user_id)
-    initiative_names = [i["name"] for i in initiatives]
     try:
-        list_names = _list_names(user_id)
-        extracted = extraction.quick_extract(text, list_names) or extraction.extract_info(
-            text, None, initiative_names, list_names)
-    except RateLimitError:
-        raise HTTPException(429, llm_budget.BUSY_MESSAGE)
-    except Exception as e:
-        raise HTTPException(500, f"Extraction failed: {e}")
-
-    result = _process_extracted(user_id, text, extracted, geo_lat=geo_lat, geo_lng=geo_lng)
+        initiatives = db.get_initiatives(user_id)
+        initiative_names = [i["name"] for i in initiatives]
+        try:
+            list_names = _list_names(user_id)
+            extracted = extraction.quick_extract(text, list_names) or extraction.extract_info(
+                text, None, initiative_names, list_names)
+        except RateLimitError:
+            raise HTTPException(429, llm_budget.BUSY_MESSAGE)
+        except Exception as e:
+            raise HTTPException(500, f"Extraction failed: {e}")
+        result = _process_extracted(user_id, text, extracted, geo_lat=geo_lat, geo_lng=geo_lng)
+    except HTTPException as e:
+        _record_outcome(user_id, False, e.status_code)
+        raise
+    except Exception:
+        _record_outcome(user_id, False, 500)
+        raise
+    _record_outcome(user_id, True)
     result["transcript"] = text
     return result

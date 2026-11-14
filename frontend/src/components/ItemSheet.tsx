@@ -107,9 +107,9 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
           className="pressable mb-3 flex w-full items-center gap-3 rounded-2xl border border-border bg-bg-elevated px-3.5 py-3 text-left"
         >
           <Bell size={17} strokeWidth={2} className="flex-shrink-0 text-text-muted" style={task.remind_on || task.remind_before != null ? { color: 'var(--sb-accent)' } : undefined} />
+          {/* Set: just the dates ("Due 16 Nov · reminder 1 day before"). Not set: the words "Due and reminder". */}
           <span className="min-w-0 flex-1 text-[0.9375rem]">
-            <span className="text-text-muted">Due and reminder · </span>
-            <span className="font-medium">{dueSummary || 'None - tap to set'}</span>
+            {dueSummary ? <span className="font-medium">{dueSummary}</span> : <span className="text-text-muted">Due and reminder</span>}
           </span>
           <ChevronRight size={16} strokeWidth={2} className="flex-shrink-0 text-text-faint" />
         </button>

@@ -1,8 +1,9 @@
 """
 api/routers/feedback.py — "How is MyConfía working for you?" ratings and "Report a problem".
 
-  GET  /api/feedback/prompt   {"ask": bool} - whether to show the rating card now: the person has saved a few
-                              notes, hasn't rated in the last 60 days and hasn't said "not now" in the last 30
+  GET  /api/feedback/prompt   {"ask": bool} - whether to show the rating card now. Counted in NOTES, not days:
+                              asked once the person has saved 5 notes; after "not now", again after 5 more notes;
+                              after a rating, again after 25 more notes (and not within 30 days)
   POST /api/feedback          a rating, a reported problem, or "not now" (kind = rating | issue | snooze)
 
 Stored in the `feedback` table (schema.sql section 47) and shown on the admin page. A rating of "poor" or any
@@ -24,8 +25,9 @@ from api.rate_limit import limiter
 router = APIRouter()
 
 MIN_NOTES_BEFORE_ASKING = 5
-RATING_COOLDOWN_DAYS = 60
-SNOOZE_DAYS = 30
+NOTES_AFTER_NOT_NOW = 5       # skipped it? ask again after this many more notes
+NOTES_AFTER_RATING = 25       # rated it? ask again after this many more notes...
+DAYS_AFTER_RATING = 30        # ...and not before this many days
 DAILY_CAP = 20  # per account - feedback is a few taps, never a stream
 
 RATING_WORDS = {1: "poor", 2: "okay", 3: "good", 4: "loving it"}
@@ -33,6 +35,8 @@ RATING_WORDS = {1: "poor", 2: "okay", 3: "good", 4: "loving it"}
 TAGS = {
     "wrong_answers", "slow", "confusing", "missing_feature", "other",
     "wrong_answer", "wrong_space", "broke", "idea",
+    # what went well (a Good / Loving it rating)
+    "quick_to_log", "understood_me", "reminders_helped", "helpful_answers", "kept_organised", "looks_good", "other_good",
 }
 
 
@@ -50,14 +54,25 @@ def _ago(days: int) -> str:
     return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
 
+def _asked_how_many_notes_ago(row: dict, total: int) -> int:
+    try:
+        return total - int((row.get("context") or {}).get("notes_at", 0))
+    except (TypeError, ValueError):
+        return total
+
+
 @router.get("/prompt")
 def prompt(user_id: str = Depends(get_current_user_id)):
     try:
-        if db.count_interactions(user_id) < MIN_NOTES_BEFORE_ASKING:
-            return {"ask": False}
-        rated = db.count_feedback_since(user_id, _ago(RATING_COOLDOWN_DAYS), ["rating"])
-        snoozed = db.count_feedback_since(user_id, _ago(SNOOZE_DAYS), ["snooze"])
-        return {"ask": rated == 0 and snoozed == 0}
+        total = db.count_interactions(user_id)
+        last = db.get_last_feedback(user_id, ["rating", "snooze"])
+        if last is None:
+            return {"ask": total >= MIN_NOTES_BEFORE_ASKING}
+        since = _asked_how_many_notes_ago(last, total)
+        if last["kind"] == "snooze":
+            return {"ask": since >= NOTES_AFTER_NOT_NOW}
+        old_enough = last["created_at"] <= _ago(DAYS_AFTER_RATING)
+        return {"ask": since >= NOTES_AFTER_RATING and old_enough}
     except Exception:
         return {"ask": False}  # table not created yet (schema.sql section 47): never nag
 
@@ -71,6 +86,14 @@ def _clean_context(ctx: dict) -> dict:
     return out
 
 
+def _notes_now(user_id: str) -> int:
+    """How many notes the person has saved right now - remembered so the next ask can be 'N notes later'."""
+    try:
+        return db.count_interactions(user_id)
+    except Exception:
+        return 0
+
+
 @router.post("")
 @limiter.limit("10/minute")
 def send(request: Request, body: FeedbackIn, user_id: str = Depends(get_current_user_id)):
@@ -81,6 +104,8 @@ def send(request: Request, body: FeedbackIn, user_id: str = Depends(get_current_
     message = (body.message or "").strip() or None
     if body.kind == "issue" and not message:
         raise HTTPException(400, "Please say what went wrong.")
+    if body.kind == "rating" and ("other" in body.tags or "other_good" in body.tags) and not message:
+        raise HTTPException(400, "You chose “Something else” - please tell us what.")
     try:
         if body.kind != "snooze" and db.count_feedback_since(user_id, _ago(1), ["rating", "issue"]) >= DAILY_CAP:
             raise HTTPException(429, "You've sent a lot of feedback today - thank you. Please try again tomorrow.")
@@ -91,7 +116,7 @@ def send(request: Request, body: FeedbackIn, user_id: str = Depends(get_current_
             "tags": [t for t in body.tags if t in TAGS],
             "message": message[:1500] if message else None,
             "screen": (body.screen or "")[:60] or None,
-            "context": _clean_context(body.context),
+            "context": {**_clean_context(body.context), "notes_at": _notes_now(user_id)},
         })
     except HTTPException:
         raise

@@ -94,6 +94,16 @@ On the Tasks tab each open task has a **flag** and a **bell**:
 
 `Start focusing on skipping. Make sure everyday you do 10 minutes of skipping.` gives **one** task, "Do 10 minutes of skipping daily" - not "Start focusing on skipping" plus the specific one. Genuinely different actions in one note (send the sheet, book the dentist) still become separate tasks.
 
+### Deadlines like EOD, reminders, and the morning summary
+
+- `Complete the UAT testing EOD` → a to-do due **today** (no time). Also "COB", "by tonight" (today), "EOW" (this Friday) and "EOM" (last day of the month).
+- `Create a new space IBM and add a task to it: Submit the onboarding document` → the space **and** the to-do inside it ("add a task to it:" is not part of the wording).
+- A to-do's card and bell show a reminder only while it is **still to come**: once it has gone off (e.g. an 11 Nov reminder viewed on the 13th) the date disappears and the bell is empty.
+- A reminder that is more than a day and a half late is **not** sent (switching notifications on two days later no longer delivers an old reminder).
+- In the reminder sheet's "At a date and time", the **Day** field (with a calendar icon) comes first, then **Time**, then a button that says what it will do ("Remind me Sat 14 Nov, 9:00 AM").
+- The morning/evening summary notification shows a coloured square and count per space, then one bullet per to-do.
+- Tapping a to-do in a chat receipt opens its space on the **To-dos** page (Lists for a list entry), not Notes. The space picker's search box no longer pops the keyboard up over the spaces on a phone.
+
 ### Instructions to the app, and pronouns
 
 - `Create a workspace named IBM and add this task: Send the onboarding document tomorrow.` → "Created the space **IBM**" **and** a to-do "Send the onboarding document" (due tomorrow) filed under IBM. "Workspace", "space", "category", "folder" and "area" all mean the same.
@@ -192,12 +202,29 @@ If an answer invents details that aren't in your notes, that is a bug — please
 - **Login / reset password:** the eye icon shows or hides what you typed.
 - **Settings → Notifications → Task reminders:** turn on (allow notifications) → **Send me a test now** → a notification listing your tasks grouped by category. The scheduled ones arrive at **9 AM and 5 PM**, once each, only if you have open tasks. (iPhone: add the app to the Home Screen first.)
 
+### Admin dashboard: test accounts and the Excel file
+
+- **Admin → Not using it** no longer lists test accounts (anything ending `.local`, `.test`, `example.com`, or listed in the `ADMIN_HIDE_EMAILS` setting); a line under the list says how many are left out. Each real account shows its join date and last sign-in with "N days ago".
+- **Download all users (Excel)** in that card gives `myconfia-users-<date>.xlsx` with two sheets (**All users**, **Not using it**): email, status (Active last 7 days / Quiet 8-30 days / Not using it 30+ days / Never signed in), joined, **days as a member** (joined on the 1st and today the 14th = 14), **last login** (a fresh sign-in - the app keeps you signed in, so your last use can be a day or more later than this) and days since, **last used the app** (any activity) and days since, **days used (all time)**, days a note was saved (all time), notes, to-dos, and notes logged / questions asked / AI tokens for the last 30 days, storage. Days used is kept for good in `user_activity_day` (needs `scripts/migration_49_activity_days.sql`; it also fills in the days we still know from before). An account that cannot be a real inbox (e.g. `sanketshah3@gmail.com`) is left out.
+- **Admin → Notes: sent and saved** card: how many notes were sent, how many were saved, how many did not go through and why ("AI busy or out of budget", "plan limit", "cancelled by the person", "error"), and the % that went through. Notes sent before this update have no recorded outcome and are listed as "result not known". The same three numbers are per person on the admin page ("12 sent (10 saved, 2 failed)") and in the Excel file ("Notes sent", "...of which saved", "...of which did not go through").
+- **Admin → Backup AI (NVIDIA)** card: how many notes went through NVIDIA in the chosen period (and what share of all notes logged), how many times Groq turned a note away, how many times NVIDIA failed too (with the last reason), when it was last used, and notes per NVIDIA model. "Not needed in this period" means Groq took every note. NVIDIA's model is no longer listed in the AI budget against Groq's 200,000 limit, and you get one email a day the first time notes go through the backup.
+- The "≈ N more captures today" tile is a **forecast** (the day's remaining AI budget ÷ the average cost of a capture); the budget restarts at midnight UTC (5:30 AM IST).
+
+### A space's Notes part: two tabs
+
+- Under **Notes** on a space's page there are two small tabs, **Key points** and **Source notes · N** (no pencil any more). Key points shows what was extracted, grouped by topic; Source notes lists the notes exactly as written - tap one to read, change or delete it. If a note has no key points, the Key points tab says so and offers "See the notes as written", which switches to Source notes.
+
+### Task sheet: Due and reminder
+
+- On a to-do's sheet the row reads just **"Due 16 Nov · reminder 1 day before"** once a due date or reminder is set, and **"Due and reminder"** when neither is.
+- In the Due and reminder sheet, turning **All day** off puts the **Time** field on its own line underneath (no squashed "All / day" label); turning it on removes it.
+
 ### Tour, Help & FAQ, feedback (feedback needs `scripts/migration_47_feedback.sql`)
 
-- **Settings → Help → Take the tour again:** *Log anything* types a sample note into a mock chat, then shows what the app makes of it (space, key points, a to-do with its date); *Ask anything* types a sample question and shows the answer with its source chip; then Today, Spaces and Settings are spotlighted. The sample follows the Work / Personal / Both choice. Nothing is saved and no AI is called. Back replays the animation.
+- **Settings → Help → Take the tour again:** five steps, each with a picture of what you are about to see. *Log anything* types a sample note ("Met Priya from Acme... budget capped at ₹5 lakh... book flights for the Mumbai trip tomorrow morning") and shows it filed into **two spaces** (Work and Travel) with its key points and dated to-dos; *Ask anything* types "What is Priya's budget?" and shows the answer with its source chip; *Today* shows a mock of the Overdue / Today / High priority lists; *Spaces* shows mock space cards; *Settings* shows what is behind your initial. The outline round each tab or the profile button is **fully inside the screen** (including Spaces at the right edge) and a tall example scrolls inside its card. Nothing is saved and no AI is called.
 - **Settings → Help → Help & FAQ:** collapsible questions in five groups; the last group answers privacy ("Groq and Cohere, and NVIDIA when Groq is busy").
-- **Rating card:** after you have saved about 5 notes, the next successful save shows "How is MyConfía working for you?" with four faces under the reply. Tap a face → a short form (Okay / Poor also ask what got in the way) → Send → "Thank you" and the card does not return for ~60 days. **Not now** hides it for ~30 days. It never appears after an error or an undone note. Settings → Help → **Rate MyConfía** opens the same form any time.
-- **Report a problem:** Settings → Help → **Report a problem**, or the **flag** under a reply (its category is pre-picked). Needs a category (optional) and a description. The box "Include this reply…" is **off** unless you tick it - nothing from your notes is attached otherwise.
+- **Rating card:** once you have saved 5 notes in total, the next successful save shows "How is MyConfía working for you?" with four faces under the reply. Tap a face → a short form (Okay / Poor also ask what got in the way) → Send → "Thank you" and it comes back only after **25 more notes and at least 30 days**. **Not now** brings it back after **5 more notes**. Choosing "Something else" as the reason makes the text box required. **Good / Loving it** asks **"What went well?"** (Quick to log things, Understood what I meant, Dates and reminders, Helpful answers, Kept me organised, Looks and feels good, Something else); **Okay / Poor** asks "What got in the way?". The admin Feedback card counts both kinds of reason. It never appears after an error or an undone note. Settings → Help → **Send feedback** asks "Rate MyConfía" or "Report a problem" (one entry, two clearly different things).
+- **Report a problem:** Settings → Help → **Send feedback → Report a problem**, or the **flag** under a reply (its category is pre-picked). Needs a category (optional) and a description. The box "Include this reply…" is **off** unless you tick it - nothing from your notes is attached otherwise.
 - **Admin → Feedback card:** average rating out of 4, a bar per face, the common reasons, and each reported problem with who sent it, where, and **New / Seen / Fixed** buttons. A Poor rating or a report also emails the admin (throttled). Before the migration, the card says to run it.
 
 ## 5. Things v1.0 deliberately does not do

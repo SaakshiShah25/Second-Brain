@@ -11,6 +11,8 @@ Who is an admin: the ADMIN_EMAILS list below (hardcoded, not an env var).
                                 (tokens by feature, storage), accounts that
                                 aren't using the app, a scaling estimate,
                                 where limits are being hit, recent errors
+  GET  /api/admin/users.xlsx    every real account in an Excel file: when they joined and last signed in, when they
+                                last used the app, how many days they used it, and how long they have been away
   GET  /api/admin/feedback      ratings (average, how many of each, week by week, common reasons) and
                                 reported problems, with a status the admin can change
   PATCH /api/admin/feedback/{id}  mark a report new / seen / fixed
@@ -25,6 +27,7 @@ import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from statistics import median
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 
@@ -32,6 +35,7 @@ import db
 import email_client
 import entitlements
 import llm_budget
+import nvidia_client
 import observability
 from api.auth import get_current_user_id, verified_email
 from llm_client import FAST_MODEL_NAME, MODEL_NAME
@@ -49,6 +53,7 @@ LIMIT_INFO = {
     "api_rate_limit": "Too many requests in a minute from one user (api/rate_limit.py).",
     "cohere_rate_limit": "Cohere trial key: 1,000 calls/month, rerank 10/minute. Search used keyword-only.",
     "cohere_rerank_daily_cap": "Our own daily rerank cap (COHERE_RERANK_DAILY_CAP) - search used hybrid order.",
+    "nvidia_fallback_failed": "Groq was out of budget and the NVIDIA backup could not take the note either (timeout, 401 = key wrong, 404 = model not available to the key, 429, or not valid JSON). The next model, then Gemini, was tried; the example shows what happened.",
     "not_invited": "Someone signed in who isn't in ALLOWED_EMAILS.",
 }
 
@@ -100,18 +105,53 @@ def me(user_id: str = Depends(get_current_user_id)):
     return {"admin": _is_admin(user_id)}
 
 
+# Model names that only ever appear in unit tests. They were once flushed into the live table by mistake (tests now cannot),
+# and are dropped here too, so a stray one can never show up as real usage.
+_FAKE_MODELS = {"m1", "m2", "m3"}
+
+
 def _events(since: datetime):
     """(events, persisted): stored events, or - until app_event exists -
     the ones this server process has seen since it started."""
     iso = since.isoformat()
     try:
-        return db.get_app_events(iso), True
+        events, persisted = db.get_app_events(iso), True
     except Exception:
-        return [e for e in observability.recent_events() if e["created_at"] >= iso], False
+        events, persisted = [e for e in observability.recent_events() if e["created_at"] >= iso], False
+    return [e for e in events if e.get("model") not in _FAKE_MODELS], persisted
 
 
 def _day(ts: str) -> str:
     return ts[:10]
+
+
+# Accounts made for testing (load tests, the "both@myconfia.local" logins...) say nothing about real people, so they
+# are left out of every list here. ".local" / ".test" / ".invalid" / example.com can never be a real inbox; ADMIN_HIDE_EMAILS
+# (comma-separated) hides any others by hand.
+_TEST_SUFFIXES = (".local", ".test", ".invalid", "@example.com", "@example.org")
+
+
+# Accounts that are not real people and are not worth hiding by a rule: an address that can never receive mail.
+_NOT_REAL = {"sanketshah3@gmail.com"}
+
+
+def is_test_account(email: str) -> bool:
+    e = (email or "").strip().lower()
+    if e in _NOT_REAL:
+        return True
+    hidden = {x.strip().lower() for x in os.environ.get("ADMIN_HIDE_EMAILS", "").split(",") if x.strip()}
+    return e.endswith(_TEST_SUFFIXES) or e in hidden
+
+
+def _days_ago(ts, now) -> Optional[int]:
+    """Calendar days (UTC dates) between an ISO timestamp and today, or None. Joined on the 1st and now the 14th is 13,
+    so "days used" (a count of calendar dates, at most this + 1 including the day joined) never exceeds it by more than one."""
+    if not ts:
+        return None
+    try:
+        return max(0, (now.date() - datetime.fromisoformat(str(ts).replace("Z", "+00:00")).date()).days)
+    except ValueError:
+        return None
 
 
 def _overview(days: int) -> dict:
@@ -124,6 +164,8 @@ def _overview(days: int) -> dict:
         accounts = db.get_all_users()
     except Exception:
         accounts = {}
+    hidden = {uid for uid, a in accounts.items() if is_test_account(a["email"])}
+    accounts = {uid: a for uid, a in accounts.items() if uid not in hidden}
     emails = {uid: a["email"] for uid, a in accounts.items()}
     label = lambda uid: emails.get(uid, uid or "(system)")
     try:
@@ -138,7 +180,7 @@ def _overview(days: int) -> dict:
     # Every model in use has its own daily budget (the safety check runs on a
     # third one) - list them all, the two main ones first.
     models = [MODEL_NAME, FAST_MODEL_NAME]
-    models += sorted(({e["model"] for e in events if e["kind"] == "llm" and e["model"]} | set(snap)) - set(models))
+    models += sorted(({e["model"] for e in events if e["kind"] == "llm" and e["model"] and not (e.get("detail") or {}).get("fallback")} | set(snap)) - set(models))
     for model in models:
         logged = sum(e["tokens"] or 0 for e in events if e["kind"] == "llm" and e["model"] == model and _day(e["created_at"]) == today)
         state = snap.get(model, {})
@@ -171,6 +213,34 @@ def _overview(days: int) -> dict:
         left_today = min((left.get(m, 0) // t for m, t in avg.items() if t), default=None)
         capacity.append({"action": action, "samples": len(reqs), "avg_tokens": avg, "left_today": left_today})
 
+    # ---- notes: how many were sent, how many went through, and why the others did not ----
+    sent = sum(1 for e in in_range if e["kind"] == "usage" and e["name"] == "interactions_logged")
+    saved = sum(1 for e in in_range if e["kind"] == "usage" and e["name"] == "capture_saved")
+    failed_notes = [e for e in in_range if e["kind"] == "usage" and e["name"] == "capture_failed"]
+    notes_outcome = {
+        "sent": sent, "saved": saved, "failed": len(failed_notes),
+        # sent before outcomes were recorded (or still being processed): neither saved nor failed is known
+        "unknown": max(0, sent - saved - len(failed_notes)),
+        "reasons": [{"reason": r, "count": c} for r, c in Counter((e.get("detail") or {}).get("reason") or "error" for e in failed_notes).most_common()],
+    }
+
+    # ---- the backup AI (NVIDIA): how often Groq could not take a note, and what happened to it instead ----
+    used = [e for e in in_range if e["kind"] == "llm" and (e.get("detail") or {}).get("fallback")]
+    failed = [e for e in in_range if e["kind"] == "limit" and e["name"] == "nvidia_fallback_failed"]
+    fallback = {
+        "enabled": nvidia_client.available(),
+        "notes": len(used),
+        "failed": len(failed),
+        "logged": sum(1 for e in in_range if e["kind"] == "usage" and e["name"] == "interactions_logged"),
+        "groq_refused": sum(1 for e in in_range if e["kind"] == "limit" and e["name"] in ("groq_tokens_per_minute", "groq_tokens_per_day")
+                            and (e.get("detail") or {}).get("feature") == "extraction"),
+        "tokens": sum(e["tokens"] or 0 for e in used),
+        "last_used": max((e["created_at"] for e in used), default=None),
+        "last_failed": max((e["created_at"] for e in failed), default=None),
+        "last_failure": next(((e.get("detail") or {}).get("message") or (e.get("detail") or {}).get("error") for e in reversed(failed)), None),
+        "models": [{"model": m, "notes": n} for m, n in Counter(e["model"] for e in used).most_common()],
+    }
+
     # ---- per feature ----
     feats = defaultdict(lambda: {"calls": 0, "tokens": 0, "ms": []})
     for e in in_range:
@@ -189,18 +259,19 @@ def _overview(days: int) -> dict:
     )
 
     # ---- per user ----
-    users = defaultdict(lambda: {"captures": 0, "questions": 0, "tokens": 0, "requests": 0, "errors": 0,
+    users = defaultdict(lambda: {"captures": 0, "captures_saved": 0, "captures_failed": 0, "questions": 0, "tokens": 0, "requests": 0, "errors": 0,
                                  "limits": 0, "last_seen": None, "by_feature": Counter()})
     user_days = set()   # (user, day) pairs with AI use - for the scaling estimate
     model_user_day = defaultdict(int)
     for e in in_range:
         uid = e.get("user_id")
-        if not uid:
+        if not uid or uid in hidden:
             continue
         u = users[uid]
         u["last_seen"] = max(u["last_seen"] or "", e["created_at"])
         if e["kind"] == "usage":
-            key = {"interactions_logged": "captures", "ai_questions_asked": "questions"}.get(e["name"])
+            key = {"interactions_logged": "captures", "capture_saved": "captures_saved", "capture_failed": "captures_failed",
+                   "ai_questions_asked": "questions"}.get(e["name"])
             if key:
                 u[key] += 1
         elif e["kind"] == "llm":
@@ -231,7 +302,8 @@ def _overview(days: int) -> dict:
     # ---- accounts that did nothing in this period ----
     inactive = sorted(
         ({"user_id": uid, "email": a["email"], "joined": a["created_at"][:10] or None,
-          "last_sign_in": a["last_sign_in_at"], "storage": storage.get(uid)}
+          "last_sign_in": a["last_sign_in_at"], "storage": storage.get(uid),
+          "days_since_joined": _days_ago(a["created_at"], now), "days_since_sign_in": _days_ago(a["last_sign_in_at"], now)}
          for uid, a in accounts.items() if uid not in users),
         key=lambda r: r["last_sign_in"] or "",
     )
@@ -250,7 +322,7 @@ def _overview(days: int) -> dict:
             l = lim[e["name"]]
             l["count"] += 1
             l["last"] = e["created_at"]
-            if e.get("user_id"):
+            if e.get("user_id") and e["user_id"] not in hidden:
                 l["users"][label(e["user_id"])] += 1
     limits = sorted(
         ({"name": n, "count": v["count"], "last": v["last"], "info": LIMIT_INFO.get(n, ""),
@@ -309,6 +381,8 @@ def _overview(days: int) -> dict:
         "persisted": persisted,
         "budget": budget,
         "capacity": capacity,
+        "fallback": fallback,
+        "notes_outcome": notes_outcome,
         "features": features,
         "users": user_rows,
         "inactive": inactive,
@@ -316,6 +390,7 @@ def _overview(days: int) -> dict:
         "storage": {"available": storage_ok, **{k: sum(r.get(k) or 0 for r in storage.values()) for k in (
             "notes", "note_bytes", "tasks", "task_bytes", "documents", "document_bytes", "index_chunks", "index_bytes")}},
         "accounts": len(accounts),
+        "hidden_accounts": len(hidden),
         "limits": limits,
         "errors": errors,
         "problems": problems,
@@ -332,6 +407,143 @@ def _overview(days: int) -> dict:
 @router.get("/overview")
 def overview(days: int = 7, _: str = Depends(require_admin)):
     return _overview(max(1, min(days, RETENTION_DAYS)))
+
+
+def _users_table(include_test: bool = False) -> list:
+    """One row per real account, for the Excel export."""
+    now = datetime.now(timezone.utc)
+    accounts = db.get_all_users()
+    try:
+        events = db.get_app_events((now - timedelta(days=RETENTION_DAYS)).isoformat())
+    except Exception:
+        events = [e for e in observability.recent_events()]
+    try:
+        notes = db.get_note_dates()
+    except Exception:
+        notes = []
+    try:
+        storage = {r["user_id"]: r for r in db.get_storage_by_user()}
+        storage_ok = True
+    except Exception:
+        storage, storage_ok = {}, False
+    seen_days, last_event, counts = defaultdict(set), {}, defaultdict(Counter)
+    for e in events:
+        uid = e.get("user_id")
+        if not uid or e["kind"] in ("refused", "client_error"):
+            continue
+        seen_days[uid].add(_day(e["created_at"]))
+        last_event[uid] = max(last_event.get(uid, ""), e["created_at"])
+        if e["kind"] == "usage" and e["name"] in ACTIONS:
+            counts[uid][ACTIONS[e["name"]]] += 1
+        elif e["kind"] == "usage" and e["name"] in ("capture_saved", "capture_failed"):
+            counts[uid][e["name"]] += 1
+        elif e["kind"] == "llm":
+            counts[uid]["tokens"] += e["tokens"] or 0
+    # Days they used the app, for good: the permanent per-day record (schema.sql section 49) plus what the 30 days of events
+    # and the saved notes still show - so history from before that table existed is not lost.
+    try:
+        ever = defaultdict(set)
+        for r in db.get_activity_days():
+            ever[r["user_id"]].add(str(r["day"])[:10])
+    except Exception:
+        ever = defaultdict(set)
+    note_days, last_note = defaultdict(set), {}
+    for n in notes:
+        uid, at = n.get("user_id"), n.get("created_at") or ""
+        if uid and at:
+            note_days[uid].add(_day(at))
+            last_note[uid] = max(last_note.get(uid, ""), at)
+    for uid, days_ in note_days.items():
+        ever[uid] |= days_
+    for uid, days_ in seen_days.items():
+        ever[uid] |= days_
+    rows = []
+    for uid, a in accounts.items():
+        if not include_test and is_test_account(a["email"]):
+            continue
+        used = [t for t in (last_event.get(uid), last_note.get(uid)) if t]
+        last_used = max(used) if used else None
+        idle = _days_ago(last_used or a["last_sign_in_at"], now)
+        signed_in = a["last_sign_in_at"]
+        if not signed_in:
+            status = "Never signed in"
+        elif idle is None or idle >= 30:
+            status = "Not using it (30+ days)"
+        elif idle >= 8:
+            status = "Quiet (8-30 days)"
+        else:
+            status = "Active (last 7 days)"
+        st = storage.get(uid) or {}
+        age = _days_ago(a["created_at"], now)
+        rows.append({
+            "email": a["email"], "status": status,
+            "joined": a["created_at"][:10] or None,
+            "days_as_member": age + 1 if age is not None else None,     # joined on the 1st, today the 14th: 14 days
+            "last_sign_in": (signed_in or "")[:10] or None, "days_since_sign_in": _days_ago(signed_in, now),
+            "last_used": (last_used or "")[:10] or None, "days_since_last_use": _days_ago(last_used, now) if last_used else None,
+            "days_used": len(ever.get(uid, ())), "days_with_a_note": len(note_days.get(uid, ())),
+            # No row at all means nothing is stored for them (they have none, or deleted them): 0, not blank.
+            "notes": st.get("notes", 0 if storage_ok else len(note_days.get(uid, ()))), "tasks": st.get("tasks", 0 if storage_ok else None),
+            "captures_30": counts[uid]["capture"], "saved_30": counts[uid]["capture_saved"], "failed_30": counts[uid]["capture_failed"],
+            "questions_30": counts[uid]["question"], "tokens_30": counts[uid]["tokens"],
+            "stored_kb": round(((st.get("note_bytes") or 0) + (st.get("task_bytes") or 0) + (st.get("document_bytes") or 0) + (st.get("index_bytes") or 0)) / 1024) if st else None,
+        })
+    order = {"Active (last 7 days)": 0, "Quiet (8-30 days)": 1, "Not using it (30+ days)": 2, "Never signed in": 3}
+    rows.sort(key=lambda r: (order[r["status"]], r["days_since_last_use"] if r["days_since_last_use"] is not None else 10**6))
+    return rows
+
+
+XLSX_COLUMNS = [
+    ("Email", "email", 34), ("Status", "status", 24),
+    ("Joined", "joined", 12), ("Days as a member (the day joined counts as day 1)", "days_as_member", 16),
+    ("Last login (a fresh sign-in; the app keeps you signed in, so this can be older than your last use)", "last_sign_in", 22), ("Days since last login", "days_since_sign_in", 12),
+    ("Last used the app (any activity)", "last_used", 16), ("Days since last use", "days_since_last_use", 12),
+    ("Days used (all time)", "days_used", 12), ("Days a note was saved (all time)", "days_with_a_note", 16),
+    ("Notes stored now", "notes", 10), ("To-dos stored now", "tasks", 10),
+    ("Notes sent (last 30 days)", "captures_30", 12), ("...of which saved", "saved_30", 12), ("...of which did not go through", "failed_30", 14),
+    ("Questions asked (last 30 days)", "questions_30", 13),
+    ("AI tokens (last 30 days)", "tokens_30", 12), ("Stored (KB)", "stored_kb", 10),
+]
+
+
+def users_workbook(rows: list) -> bytes:
+    from io import BytesIO
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    wb = Workbook()
+    def sheet(ws, title, data):
+        ws.title = title
+        ws.append([c[0] for c in XLSX_COLUMNS])
+        for r in data:
+            ws.append([r[c[1]] for c in XLSX_COLUMNS])
+        for i, (_, _, width) in enumerate(XLSX_COLUMNS, 1):
+            ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = width
+        for cell in ws[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="3B3A36")
+            cell.alignment = Alignment(wrap_text=True, vertical="center")
+        ws.row_dimensions[1].height = 42
+        ws.freeze_panes = "B2"
+        ws.auto_filter.ref = ws.dimensions
+    sheet(wb.active, "All users", rows)
+    sheet(wb.create_sheet(), "Not using it", [r for r in rows if r["status"].startswith(("Not using", "Never"))])
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+@router.get("/users.xlsx")
+def users_xlsx(include_test: bool = False, _: str = Depends(require_admin)):
+    from fastapi.responses import Response
+
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return Response(
+        users_workbook(_users_table(include_test)),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="myconfia-users-{stamp}.xlsx"'},
+    )
 
 
 def _feedback(days: int) -> dict:

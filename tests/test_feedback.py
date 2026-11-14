@@ -22,7 +22,12 @@ def store(monkeypatch):
         s.rows.append(row)
         return row
 
+    def last(uid, kinds):
+        rows = [r for r in s.rows if r["user_id"] == uid and r["kind"] in kinds]
+        return rows[-1] if rows else None
+
     monkeypatch.setattr(db, "count_feedback_since", count)
+    monkeypatch.setattr(db, "get_last_feedback", last)
     monkeypatch.setattr(db, "insert_feedback", insert)
     monkeypatch.setattr(db, "get_feedback", lambda since: [r for r in reversed(s.rows) if r["kind"] != "snooze"])
     monkeypatch.setattr(db, "get_all_users", lambda: {"u1": {"email": "a@x.com"}})
@@ -44,12 +49,30 @@ def test_not_asked_until_a_few_notes_are_saved(store):
     assert feedback.prompt("u1") == {"ask": True}
 
 
-def test_rating_or_not_now_stops_the_card_for_a_while(store):
+def test_not_now_asks_again_after_five_more_notes_not_thirty_days(store):
+    store.notes = 6
     send("snooze")
-    assert feedback.prompt("u1") == {"ask": False}
-    store.rows.clear()
+    store.notes = 10
+    assert feedback.prompt("u1") == {"ask": False}       # 4 more notes
+    store.notes = 11
+    assert feedback.prompt("u1") == {"ask": True}        # 5 more notes
+
+
+def test_after_a_rating_the_next_ask_is_25_notes_and_30_days_later(store):
+    store.notes = 6
     send("rating", rating=3)
-    assert feedback.prompt("u1") == {"ask": False}
+    store.notes = 40
+    assert feedback.prompt("u1") == {"ask": False}       # plenty of notes, but only just rated
+    store.rows[-1]["created_at"] = "2026-01-01T00:00:00+00:00"   # a month and more ago
+    assert feedback.prompt("u1") == {"ask": True}
+    store.notes = 20
+    assert feedback.prompt("u1") == {"ask": False}       # old enough, but only 14 notes since
+
+
+def test_choosing_something_else_needs_a_few_words(store):
+    with pytest.raises(HTTPException):
+        send("rating", rating=2, tags=["other"])
+    send("rating", rating=2, tags=["other"], message="The reminder never rang")
 
 
 def test_a_rating_needs_a_score_and_a_problem_needs_words(store):
@@ -65,7 +88,7 @@ def test_unknown_reasons_are_dropped_and_context_is_trimmed(store):
     send("issue", message="It lost my note", tags=["broke", "<script>"], context={"app_version": "1.2", "secret": "x", "included": "a reply"})
     row = store.rows[0]
     assert row["tags"] == ["broke"]
-    assert set(row["context"]) == {"app_version", "included"}
+    assert set(row["context"]) == {"app_version", "included", "notes_at"}
 
 
 def test_only_poor_ratings_and_problems_email_the_admin(store):
@@ -103,3 +126,12 @@ def test_admin_summary_before_the_table_exists(monkeypatch):
 
     monkeypatch.setattr(db, "get_feedback", boom)
     assert admin._feedback(30) == {"available": False, "days": 30}
+
+
+def test_a_good_rating_can_say_what_went_well_and_something_else_needs_words(store):
+    send("rating", rating=4, tags=["quick_to_log", "helpful_answers", "nonsense"])
+    assert store.rows[-1]["tags"] == ["quick_to_log", "helpful_answers"]
+    with pytest.raises(HTTPException):
+        send("rating", rating=3, tags=["other_good"])
+    send("rating", rating=3, tags=["other_good"], message="The voice notes")
+    assert store.alerts == []                       # good ratings never email the admin

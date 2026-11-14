@@ -8,7 +8,6 @@ import {
   CalendarCheck,
   type LucideIcon,
 } from 'lucide-react'
-import { useUsageMode } from '../lib/usageMode'
 import Button from './Button'
 import TourDemo, { type DemoKind } from './TourDemo'
 
@@ -62,26 +61,26 @@ const STEPS: Step[] = [
   {
     icon: CalendarCheck,
     title: 'Today',
-    description: 'What needs you, from every space — Today, Upcoming and Anytime (the to-dos with no date). Tap one to set a priority or a reminder, or add to the list from the box at the bottom — it saves whatever you type or say.',
+    description: 'What needs you, from every space: overdue, due today and high priority — then Upcoming, and Anytime for to-dos with no date. Tap one to set a priority or a reminder, or add to the list from the box at the bottom.',
     path: '/today',
+    demo: 'today',
   },
   {
     icon: LayoutGrid,
     title: 'Spaces',
     description: 'Your own spaces — Job, Fitness, Personal, anything. Each one gathers everything that belongs to it: notes, to-dos and things you collect, like movies or books. Say “add Dune to my reading list” and it lands in the right one.',
     path: '/notes',
+    demo: 'spaces',
   },
   {
     icon: SettingsIcon,
     title: 'Settings',
-    description: 'Tap your initial up here for theme, text size, app lock and privacy — and to take this tour again.',
+    description: 'Tap your initial up here for reminders, app lock, theme and privacy — plus Help & FAQ, this tour again, and a way to send us feedback.',
     path: '/notes',
     target: '/settings',
+    demo: 'settings',
   },
 ]
-
-// The first two steps' sample note and question follow what the account is used for (TourDemo.tsx); the rest is the same for everyone.
-const MODE_COPY: Record<'work' | 'personal' | 'both', Record<number, string>> = { work: {}, personal: {}, both: {} }
 
 // How far the spotlight hole extends past the icon's own edges, and how
 // far the arrow/card sit past the spotlight's edge.
@@ -107,8 +106,7 @@ export default function Tour({ onDone }: TourProps) {
   // the profile button sits at the top (card below, arrow pointing up).
   const [below, setBelow] = useState(false)
   const navigate = useNavigate()
-  const { mode } = useUsageMode()
-  const current = { ...STEPS[step], description: MODE_COPY[mode][step] ?? STEPS[step].description }
+  const current = STEPS[step]
   const Icon = current.icon
   const isLast = step === STEPS.length - 1
   const basePath = current.target ?? current.path.split('?')[0]
@@ -142,11 +140,17 @@ export default function Tour({ onDone }: TourProps) {
     return () => window.removeEventListener('resize', measure)
   }, [measure])
 
+  // A tall example must not run off the screen: the card scrolls inside whatever room the spotlight leaves it.
+  const cardMax = Math.max(
+    220,
+    rect ? (below ? window.innerHeight - (rect.top + rect.height + PAD + GAP) - 12 : rect.top - PAD - GAP - 12) : window.innerHeight - 140,
+  )
+
   const card = (
     <div
       key={step}
       className="w-full max-w-sm rounded-3xl border border-border bg-bg-card p-5 shadow-card"
-      style={{ animation: 'tour-card-in 0.25s ease-out' }}
+      style={{ animation: 'tour-card-in 0.25s ease-out', maxHeight: cardMax, overflowY: 'auto' }}
     >
       <div className="mb-3 flex items-center gap-2">
         <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-ink">
@@ -154,7 +158,7 @@ export default function Tour({ onDone }: TourProps) {
         </span>
         <h3 className="font-display tracking-[-0.025em] text-xl font-semibold">{current.title}</h3>
       </div>
-      {current.demo && <TourDemo key={`demo-${step}`} kind={current.demo} mode={mode} />}
+      {current.demo && <TourDemo key={`demo-${step}`} kind={current.demo} />}
       <p className="mb-4 text-[0.9375rem] leading-relaxed text-text-muted">{current.description}</p>
 
       <div className="mb-3 flex justify-center gap-1.5">
@@ -193,15 +197,21 @@ export default function Tour({ onDone }: TourProps) {
     )
   }
 
+  // The hole is kept fully on screen: a tab at the very edge (or under the phone's own bar) used to be cut off, leaving
+  // only half an outline.
+  const EDGE = 6
+  const left = Math.max(EDGE, rect.left - PAD)
+  const top = Math.max(EDGE, rect.top - PAD)
+  const right = Math.min(window.innerWidth - EDGE, rect.left + rect.width + PAD)
+  const bottom = Math.min(window.innerHeight - EDGE, rect.top + rect.height + PAD)
   const spotlightStyle = {
-    top: rect.top - PAD,
-    left: rect.left - PAD,
-    width: rect.width + PAD * 2,
-    height: rect.height + PAD * 2,
+    top,
+    left,
+    width: right - left,
+    height: bottom - top,
     borderRadius: 14,
-    // Comma-separated: the pulse loops forever, the fade-in plays once -
-    // see the index.css comment on tour-spotlight-pulse for why both
-    // live here inline instead of one being a class.
+    // Comma-separated: the pulse loops forever, the fade-in plays once - see the index.css comment on
+    // tour-spotlight-pulse for why both live here inline instead of one being a class.
     animation: 'tour-spotlight-pulse 2s ease-in-out infinite, fade-in 0.2s ease-out',
   }
 

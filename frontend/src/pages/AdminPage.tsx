@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from 'react'
-import { AlertTriangle, Bug, Database, Gauge, MessageSquareHeart, RefreshCw, TrendingUp, UserX, Users } from 'lucide-react'
+import { AlertTriangle, Bug, Database, Download, FileCheck2, Gauge, LifeBuoy, MessageSquareHeart, RefreshCw, TrendingUp, UserX, Users } from 'lucide-react'
+import { fetchBlob } from '../api/client'
+import { showError } from '../lib/errorDialog'
 import { useAdminFeedback, useAdminOverview, useSetFeedbackStatus, type AdminOverview, type UserStorage } from '../api/admin'
 import PageHeader from '../components/PageHeader'
 import Segmented from '../components/Segmented'
@@ -92,6 +94,86 @@ function Budget({ o }: { o: AdminOverview }) {
           </div>
         ))}
       </div>
+      <p className="mt-3 text-[0.75rem] leading-snug text-text-faint">
+        A forecast, not a count of what was logged: the day's remaining AI budget divided by what a capture or question has cost on average. The
+        day's budget starts over at midnight UTC (5:30 AM India time), so an unused day shows the whole day's room.
+      </p>
+    </Card>
+  )
+}
+
+// How many notes people sent, how many were really saved, and what stopped the rest (capture.py records each outcome).
+function NotesOutcome({ o }: { o: AdminOverview }) {
+  const n = o.notes_outcome
+  const known = n.saved + n.failed
+  const pct = known > 0 ? Math.round((n.saved / known) * 100) : null
+  return (
+    <Card icon={FileCheck2} title="Notes: sent and saved" aside={pct === null ? undefined : `${pct}% went through`}>
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: 'sent', value: n.sent, tone: '' },
+          { label: 'saved', value: n.saved, tone: 'text-success' },
+          { label: "didn't go through", value: n.failed, tone: n.failed ? 'text-danger' : '' },
+        ].map((x) => (
+          <div key={x.label} className="rounded-xl bg-bg-elevated p-3">
+            <p className={`text-[1.375rem] leading-tight font-semibold tabular-nums ${x.tone}`}>{num(x.value)}</p>
+            <p className="text-[0.75rem] text-text-muted">{x.label}</p>
+          </div>
+        ))}
+      </div>
+      {n.reasons.length > 0 && (
+        <ul className="mt-3 flex flex-col gap-1 text-[0.875rem] text-text-muted">
+          {n.reasons.map((r) => (
+            <li key={r.reason}>
+              {num(r.count)} × {r.reason}
+            </li>
+          ))}
+        </ul>
+      )}
+      {n.unknown > 0 && (
+        <p className="mt-3 text-[0.75rem] leading-snug text-text-faint">
+          {num(n.unknown)} more were sent before outcomes were recorded (or are still being processed), so their result is not known.
+        </p>
+      )}
+      {n.sent === 0 && <p className="text-[0.875rem] text-text-muted">No notes were sent in this period.</p>}
+    </Card>
+  )
+}
+
+// Did Groq run out, and did the NVIDIA backup take the notes instead? (nvidia_client.py, extraction.py)
+function Backup({ o }: { o: AdminOverview }) {
+  const f = o.fallback
+  const share = f.logged > 0 ? Math.round((f.notes / f.logged) * 100) : 0
+  const short = (m: string) => m.replace('nvidia/', '')
+  return (
+    <Card icon={LifeBuoy} title="Backup AI (NVIDIA)" aside={f.enabled ? 'on' : 'off'}>
+      {!f.enabled ? (
+        <Empty>Not set up: add NVIDIA_API_KEY on Render. Until then, a note Groq can't take fails with the "usage limit" message.</Empty>
+      ) : (
+        <>
+          <p className="text-[0.9375rem]">
+            <span className="text-2xl font-semibold tabular-nums">{num(f.notes)}</span>
+            <span className="text-text-muted">
+              {' '}
+              {f.notes === 1 ? 'note' : 'notes'} went through NVIDIA{f.logged > 0 ? ` of ${num(f.logged)} logged (${share}%)` : ''}
+            </span>
+          </p>
+          <ul className="mt-3 flex flex-col gap-1.5 text-[0.875rem] text-text-muted">
+            <li>Groq turned a note away {num(f.groq_refused)} {f.groq_refused === 1 ? 'time' : 'times'} (out of tokens for the minute or the day).</li>
+            <li className={f.failed ? 'text-danger' : ''}>
+              NVIDIA also failed {num(f.failed)} {f.failed === 1 ? 'time' : 'times'}
+              {f.failed && f.last_failure ? ` - last: ${f.last_failure}` : ''}.
+            </li>
+            {f.last_used && <li>Last used {when(f.last_used)}{f.tokens ? ` · ${num(f.tokens)} tokens in this period` : ''}.</li>}
+            {f.models.map((m) => (
+              <li key={m.model}>
+                {short(m.model)}: {num(m.notes)} {m.notes === 1 ? 'note' : 'notes'}
+              </li>
+            ))}
+          </ul>
+          {f.notes === 0 && f.failed === 0 && <p className="mt-3 text-[0.8125rem] text-text-faint">Not needed in this period: Groq took every note.</p>}
+        </>
+      )}
     </Card>
   )
 }
@@ -185,7 +267,7 @@ function UsersCard({ o }: { o: AdminOverview }) {
                 <span className="flex-shrink-0 text-[0.8125rem] text-text-faint">{when(u.last_seen)}</span>
               </p>
               <p className="mt-0.5 text-[0.8125rem] text-text-muted">
-                {u.captures} captures · {u.questions} questions · {num(u.tokens)} tokens
+                {u.captures} sent{u.captures_saved + u.captures_failed > 0 ? ` (${u.captures_saved} saved${u.captures_failed ? `, ${u.captures_failed} failed` : ''})` : ''} · {u.questions} questions · {num(u.tokens)} tokens
                 {u.errors > 0 && <span className="text-danger"> · {u.errors} errors</span>}
                 {u.limits > 0 && <span className="text-[#d9731f]"> · {u.limits} limit hits</span>}
               </p>
@@ -273,8 +355,34 @@ function Storage({ o }: { o: AdminOverview }) {
 }
 
 function Inactive({ o }: { o: AdminOverview }) {
+  const [busy, setBusy] = useState(false)
+  async function download() {
+    setBusy(true)
+    try {
+      const blob = await fetchBlob('/api/admin/users.xlsx')
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `myconfia-users-${new Date().toISOString().slice(0, 10)}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      showError(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const days = (n: number | null) => (n === null ? '-' : n === 0 ? 'today' : `${n} ${n === 1 ? 'day' : 'days'} ago`)
   return (
     <Card icon={UserX} title="Not using it" aside={o.inactive.length ? `${o.inactive.length}` : undefined}>
+      <button
+        type="button"
+        onClick={download}
+        disabled={busy}
+        className="pressable mb-3 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-border-strong bg-bg-elevated text-[0.875rem] font-medium disabled:opacity-50"
+      >
+        <Download size={16} strokeWidth={2} /> {busy ? 'Preparing…' : 'Download all users (Excel)'}
+      </button>
       {o.inactive.length === 0 ? (
         <Empty>Every account was active in this period.</Empty>
       ) : (
@@ -283,12 +391,17 @@ function Inactive({ o }: { o: AdminOverview }) {
             <li key={u.user_id} className="py-2.5 first:pt-0 last:pb-0">
               <p className="truncate text-[0.9375rem] font-medium">{u.email}</p>
               <p className="text-[0.8125rem] text-text-muted">
-                joined {u.joined ?? '-'} · last sign-in {when(u.last_sign_in)}
+                joined {u.joined ?? '-'} ({days(u.days_since_joined)}) · {u.last_sign_in ? `last sign-in ${days(u.days_since_sign_in)}` : 'never signed in'}
                 {u.storage ? ` · ${bytes(stored(u.storage))} stored` : ''}
               </p>
             </li>
           ))}
         </ul>
+      )}
+      {o.hidden_accounts > 0 && (
+        <p className="mt-3 text-[0.75rem] text-text-faint">
+          {o.hidden_accounts} test {o.hidden_accounts === 1 ? 'account is' : 'accounts are'} left out (…@myconfia.local, example.com). The Excel file leaves them out too.
+        </p>
       )}
     </Card>
   )
@@ -387,6 +500,8 @@ const FACE = { 4: '😍', 3: '🙂', 2: '😐', 1: '🙁' } as const
 const FACE_LABEL = { 4: 'Loving it', 3: 'Good', 2: 'Okay', 1: 'Poor' } as const
 const TAG_LABEL: Record<string, string> = {
   wrong_answers: 'Wrong answers', slow: 'Slow', confusing: 'Confusing', missing_feature: 'Missing something', other: 'Something else',
+  quick_to_log: 'Quick to log', understood_me: 'Understood me', reminders_helped: 'Dates and reminders', helpful_answers: 'Helpful answers',
+  kept_organised: 'Kept me organised', looks_good: 'Looks good', other_good: 'Something else (good)',
   wrong_answer: 'Wrong or odd answer', wrong_space: 'Filed in the wrong place', broke: 'Something broke', idea: 'Idea or request',
 }
 
@@ -535,6 +650,8 @@ export default function AdminPage() {
             </p>
           )}
           <Budget o={data} />
+          <NotesOutcome o={data} />
+          <Backup o={data} />
           <Feedback />
           <Totals o={data} />
           <Problems o={data} />
