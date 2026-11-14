@@ -45,10 +45,11 @@ export function SectionHeader({
   count: number
   // The + (a button, or AddToSpace's own); omit for none.
   add?: ReactNode
-  editing: boolean
+  // The pencil: omit all three for a part that has none (Notes shows two views instead).
+  editing?: boolean
   // Omit when there is nothing to edit yet.
   onEdit?: () => void
-  editLabel: string
+  editLabel?: string
   // While the space is being edited: move this part up or down the page.
   mover?: { canUp: boolean; canDown: boolean; onUp: () => void; onDown: () => void }
 }) {
@@ -74,7 +75,7 @@ export function SectionHeader({
         <button
           type="button"
           onClick={onEdit}
-          aria-label={editing ? `Done editing ${title.toLowerCase()}` : editLabel}
+          aria-label={editing ? `Done editing ${title.toLowerCase()}` : (editLabel ?? `Edit ${title.toLowerCase()}`)}
           aria-pressed={editing}
           className={`pressable flex h-9 w-9 items-center justify-center rounded-full ${editing ? 'bg-accent-soft text-accent' : 'text-text-muted'}`}
         >

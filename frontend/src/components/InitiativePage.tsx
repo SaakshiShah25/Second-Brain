@@ -5,6 +5,7 @@ import type { Interaction, ItemList as ListLabel, Task } from '../api/types'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
 import AddToSpace from './AddToSpace'
 import ExportInitiativeButton from './ExportInitiativeButton'
+import Segmented from './Segmented'
 import InteractionCard, { ItemList } from './InteractionCard'
 import InitiativeThings, { SectionHeader, thingCounts } from './InitiativeThings'
 import { noteCounts, noteItems, noteSections } from '../lib/noteSections'
@@ -82,7 +83,8 @@ export function InitiativeBlock({ initiative, notes, items = [], onOpen }: Props
 export function InitiativeView({ initiative, notes, items = [], labels = [], onCollapse }: Props & { onCollapse?: () => void }) {
   // Space-level edit: rename. Notes-level edit: the notes as written, each one openable to change or delete.
   const [editingSpace, setEditingSpace] = useState(false)
-  const [editingNotes, setEditingNotes] = useState(false)
+  // The Notes part has two views: the extracted key points, and the notes exactly as written (open one to change or delete it).
+  const [noteView, setNoteView] = useState<'points' | 'source'>('points')
   const updateInitiative = useUpdateInitiative()
   // Tapping a key point opens the note it came from.
   const [openNoteId, setOpenNoteId] = useState<number | null>(null)
@@ -99,12 +101,20 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
       title="Notes"
       count={notes.length}
       add={<AddToSpace spaceId={initiative?.id ?? null} spaceName={spaceName} kind="note" />}
-      editing={editingNotes}
-      onEdit={notes.length ? () => setEditingNotes((v) => !v) : undefined}
-      editLabel="Edit notes"
       mover={mover}
     />
-    {!editingNotes && (
+    {notes.length > 0 && (
+      <Segmented
+        className="mb-2.5"
+        value={noteView}
+        onChange={setNoteView}
+        options={[
+          { value: 'points', label: 'Key points' },
+          { value: 'source', label: `Source notes · ${notes.length}` },
+        ]}
+      />
+    )}
+    {noteView === 'points' && (
       <div className="rounded-2xl border border-border bg-bg-card p-4">
         {sections.map((s, n) => (
           <div key={s.key} className={n === 0 ? '' : 'mt-3'}>
@@ -141,14 +151,23 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
         ))}
         {sections.length === 0 && (
           <p className="text-[0.9375rem] text-text-muted">
-            {notes.length === 0 ? 'No notes here yet - tap + to write one.' : 'No key points were extracted - tap the pencil to see the notes as written.'}
+            {notes.length === 0 ? (
+              'No notes here yet - tap + to write one.'
+            ) : (
+              <>
+                No key points were extracted from {notes.length === 1 ? 'this note' : 'these notes'}.{' '}
+                <button type="button" onClick={() => setNoteView('source')} className="pressable font-medium text-accent">
+                  See the notes as written
+                </button>
+              </>
+            )}
           </p>
         )}
       </div>
     )}
-    {editingNotes && (
+    {noteView === 'source' && notes.length > 0 && (
       <>
-        <p className="mb-2 px-1 text-[0.8125rem] text-text-muted">Editing notes: tap a note to change or delete it. Tap ✓ when done.</p>
+        <p className="mb-2 px-1 text-[0.8125rem] text-text-muted">The notes exactly as you wrote them. Tap one to read, change or delete it.</p>
         <div className="flex flex-col gap-2.5">
           {[...notes]
             .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.id - a.id)

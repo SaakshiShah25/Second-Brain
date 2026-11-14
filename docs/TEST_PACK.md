@@ -210,6 +210,10 @@ If an answer invents details that aren't in your notes, that is a bug — please
 - **Admin → Backup AI (NVIDIA)** card: how many notes went through NVIDIA in the chosen period (and what share of all notes logged), how many times Groq turned a note away, how many times NVIDIA failed too (with the last reason), when it was last used, and notes per NVIDIA model. "Not needed in this period" means Groq took every note. NVIDIA's model is no longer listed in the AI budget against Groq's 200,000 limit, and you get one email a day the first time notes go through the backup.
 - The "≈ N more captures today" tile is a **forecast** (the day's remaining AI budget ÷ the average cost of a capture); the budget restarts at midnight UTC (5:30 AM IST).
 
+### A space's Notes part: two tabs
+
+- Under **Notes** on a space's page there are two small tabs, **Key points** and **Source notes · N** (no pencil any more). Key points shows what was extracted, grouped by topic; Source notes lists the notes exactly as written - tap one to read, change or delete it. If a note has no key points, the Key points tab says so and offers "See the notes as written", which switches to Source notes.
+
 ### Task sheet: Due and reminder
 
 - On a to-do's sheet the row reads just **"Due 16 Nov · reminder 1 day before"** once a due date or reminder is set, and **"Due and reminder"** when neither is.
