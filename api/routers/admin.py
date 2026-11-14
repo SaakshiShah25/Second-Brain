@@ -132,11 +132,12 @@ def is_test_account(email: str) -> bool:
 
 
 def _days_ago(ts, now) -> Optional[int]:
-    """Whole days between an ISO timestamp and now, or None."""
+    """Calendar days (UTC dates) between an ISO timestamp and today, or None. Joined on the 1st and now the 14th is 13,
+    so "days used" (a count of calendar dates, at most this + 1 including the day joined) never exceeds it by more than one."""
     if not ts:
         return None
     try:
-        return max(0, (now - datetime.fromisoformat(str(ts).replace("Z", "+00:00"))).days)
+        return max(0, (now.date() - datetime.fromisoformat(str(ts).replace("Z", "+00:00")).date()).days)
     except ValueError:
         return None
 

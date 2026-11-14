@@ -95,3 +95,12 @@ def test_the_backup_ai_card_counts_notes_that_went_through_nvidia(monkeypatch):
     assert fb["last_failure"] == "timed out"
     # the NVIDIA model is not listed against Groq's daily budget
     assert not any(b["model"].startswith("nvidia/") for b in out["budget"])
+
+
+def test_days_are_calendar_days_so_days_used_cannot_look_bigger_than_days_since_joining():
+    # joined late on the 1st, now early on the 14th: 12 days and a few hours have passed, but it is 13 calendar days
+    now = datetime(2026, 11, 14, 3, 0, tzinfo=timezone.utc)
+    assert admin._days_ago("2026-11-01T22:00:00+00:00", now) == 13
+    assert admin._days_ago("2026-11-14T00:30:00+00:00", now) == 0
+    assert admin._days_ago("2026-11-13T23:59:00+00:00", now) == 1
+    assert admin._days_ago(None, now) is None
