@@ -76,7 +76,13 @@ def generate_json(system_prompt: str, user_content: str, temperature: float = 0.
             json.loads(content)  # reject non-JSON here so the next model gets a turn
         except (requests.RequestException, KeyError, IndexError, ValueError) as e:
             last = f"{model}: {type(e).__name__}"
-            observability.record("limit", "nvidia_fallback_failed", model=model, detail={"feature": feature, "error": type(e).__name__})
+            response = getattr(e, "response", None)
+            # Which model, what went wrong (a timeout, 401 = bad key, 404 = model not available to the key, 429, not JSON...).
+            observability.record(
+                "limit", "nvidia_fallback_failed", model=model,
+                status=getattr(response, "status_code", None),
+                detail={"feature": feature, "error": type(e).__name__, "message": str(e)[:160]},
+            )
             continue
         usage = body.get("usage") or {}
         observability.record("llm", feature, model=model, tokens=usage.get("total_tokens"), duration_ms=(time.time() - started) * 1000,

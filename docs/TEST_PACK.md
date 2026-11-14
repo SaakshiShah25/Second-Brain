@@ -202,6 +202,12 @@ If an answer invents details that aren't in your notes, that is a bug — please
 - **Login / reset password:** the eye icon shows or hides what you typed.
 - **Settings → Notifications → Task reminders:** turn on (allow notifications) → **Send me a test now** → a notification listing your tasks grouped by category. The scheduled ones arrive at **9 AM and 5 PM**, once each, only if you have open tasks. (iPhone: add the app to the Home Screen first.)
 
+### Admin dashboard: test accounts and the Excel file
+
+- **Admin → Not using it** no longer lists test accounts (anything ending `.local`, `.test`, `example.com`, or listed in the `ADMIN_HIDE_EMAILS` setting); a line under the list says how many are left out. Each real account shows its join date and last sign-in with "N days ago".
+- **Download all users (Excel)** in that card gives `myconfia-users-<date>.xlsx` with two sheets (**All users**, **Not using it**): email, status (Active last 7 days / Quiet 8-30 days / Not using it 30+ days / Never signed in), joined and days since, last sign-in and days since, last used the app and days since, days used in the last 30 days, days a note was saved (all time), notes, to-dos, notes logged and questions asked in 30 days, AI tokens, storage.
+- The "≈ N more captures today" tile is a **forecast** (the day's remaining AI budget ÷ the average cost of a capture); the budget restarts at midnight UTC (5:30 AM IST).
+
 ### Tour, Help & FAQ, feedback (feedback needs `scripts/migration_47_feedback.sql`)
 
 - **Settings → Help → Take the tour again:** five steps, each with a picture of what you are about to see. *Log anything* types a sample note ("Met Priya from Acme... budget capped at ₹5 lakh... book flights for the Mumbai trip tomorrow morning") and shows it filed into **two spaces** (Work and Travel) with its key points and dated to-dos; *Ask anything* types "What is Priya's budget?" and shows the answer with its source chip; *Today* shows a mock of the Overdue / Today / High priority lists; *Spaces* shows mock space cards; *Settings* shows what is behind your initial. The outline round each tab or the profile button is **fully inside the screen** (including Spaces at the right edge) and a tall example scrolls inside its card. Nothing is saved and no AI is called.

@@ -961,6 +961,19 @@ def get_all_users() -> dict:
         page += 1
 
 
+def get_note_dates() -> list:
+    """[{user_id, created_at}] for every saved note - dates only, never content - for the admin's Excel export
+    (how many days each person has actually used the app)."""
+    out, start = [], 0
+    while True:
+        page = (get_client().table("interaction").select("user_id, created_at")
+                .order("created_at").range(start, start + 999).execute().data)
+        out += page
+        if len(page) < 1000:
+            return out
+        start += 1000
+
+
 def get_storage_by_user() -> list:
     """Per-user row counts and byte sizes (migration 43). Counts/sizes only, never content."""
     return get_client().rpc("admin_storage_by_user").execute().data or []

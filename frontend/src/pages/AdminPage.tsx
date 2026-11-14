@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from 'react'
-import { AlertTriangle, Bug, Database, Gauge, MessageSquareHeart, RefreshCw, TrendingUp, UserX, Users } from 'lucide-react'
+import { AlertTriangle, Bug, Database, Download, Gauge, MessageSquareHeart, RefreshCw, TrendingUp, UserX, Users } from 'lucide-react'
+import { fetchBlob } from '../api/client'
+import { showError } from '../lib/errorDialog'
 import { useAdminFeedback, useAdminOverview, useSetFeedbackStatus, type AdminOverview, type UserStorage } from '../api/admin'
 import PageHeader from '../components/PageHeader'
 import Segmented from '../components/Segmented'
@@ -92,6 +94,10 @@ function Budget({ o }: { o: AdminOverview }) {
           </div>
         ))}
       </div>
+      <p className="mt-3 text-[0.75rem] leading-snug text-text-faint">
+        A forecast, not a count of what was logged: the day's remaining AI budget divided by what a capture or question has cost on average. The
+        day's budget starts over at midnight UTC (5:30 AM India time), so an unused day shows the whole day's room.
+      </p>
     </Card>
   )
 }
@@ -273,8 +279,34 @@ function Storage({ o }: { o: AdminOverview }) {
 }
 
 function Inactive({ o }: { o: AdminOverview }) {
+  const [busy, setBusy] = useState(false)
+  async function download() {
+    setBusy(true)
+    try {
+      const blob = await fetchBlob('/api/admin/users.xlsx')
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `myconfia-users-${new Date().toISOString().slice(0, 10)}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      showError(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const days = (n: number | null) => (n === null ? '-' : n === 0 ? 'today' : `${n} ${n === 1 ? 'day' : 'days'} ago`)
   return (
     <Card icon={UserX} title="Not using it" aside={o.inactive.length ? `${o.inactive.length}` : undefined}>
+      <button
+        type="button"
+        onClick={download}
+        disabled={busy}
+        className="pressable mb-3 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-border-strong bg-bg-elevated text-[0.875rem] font-medium disabled:opacity-50"
+      >
+        <Download size={16} strokeWidth={2} /> {busy ? 'Preparing…' : 'Download all users (Excel)'}
+      </button>
       {o.inactive.length === 0 ? (
         <Empty>Every account was active in this period.</Empty>
       ) : (
@@ -283,12 +315,17 @@ function Inactive({ o }: { o: AdminOverview }) {
             <li key={u.user_id} className="py-2.5 first:pt-0 last:pb-0">
               <p className="truncate text-[0.9375rem] font-medium">{u.email}</p>
               <p className="text-[0.8125rem] text-text-muted">
-                joined {u.joined ?? '-'} · last sign-in {when(u.last_sign_in)}
+                joined {u.joined ?? '-'} ({days(u.days_since_joined)}) · {u.last_sign_in ? `last sign-in ${days(u.days_since_sign_in)}` : 'never signed in'}
                 {u.storage ? ` · ${bytes(stored(u.storage))} stored` : ''}
               </p>
             </li>
           ))}
         </ul>
+      )}
+      {o.hidden_accounts > 0 && (
+        <p className="mt-3 text-[0.75rem] text-text-faint">
+          {o.hidden_accounts} test {o.hidden_accounts === 1 ? 'account is' : 'accounts are'} left out (…@myconfia.local, example.com). The Excel file leaves them out too.
+        </p>
       )}
     </Card>
   )

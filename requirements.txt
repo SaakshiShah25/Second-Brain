@@ -10,3 +10,4 @@ slowapi
 sentry-sdk[fastapi]>=2,<3
 pywebpush
 tzdata
+openpyxl==3.1.5

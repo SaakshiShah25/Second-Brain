@@ -28,10 +28,12 @@ export interface AdminOverview {
     storage: UserStorage | null
     monthly: Record<'capture' | 'question', { used: number; cap: number | null } | null>
   }[]
-  inactive: { user_id: string; email: string; joined: string | null; last_sign_in: string | null; storage: UserStorage | null }[]
+  inactive: { user_id: string; email: string; joined: string | null; last_sign_in: string | null; storage: UserStorage | null; days_since_joined: number | null; days_since_sign_in: number | null }[]
   scale: { model: string; tokens_per_user_day: number; users_supported: number | null }[]
   storage: { available: boolean } & UserStorage
   accounts: number
+  // Test accounts (…@myconfia.local, example.com…) are left out of every list here.
+  hidden_accounts: number
   limits: { name: string; count: number; last: string | null; info: string; top_users: string[] }[]
   problems: { kind: 'error' | 'limit' | 'refused'; what: string; status: number | null; count: number; users: number; last: string | null; example: string | null; info: string }[]
   errors: { at: string; where: string; error_id: string; status: number | null; type: string | null; message: string | null; user: string | null }[]
