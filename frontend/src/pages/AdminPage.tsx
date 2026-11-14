@@ -500,6 +500,8 @@ const FACE = { 4: '😍', 3: '🙂', 2: '😐', 1: '🙁' } as const
 const FACE_LABEL = { 4: 'Loving it', 3: 'Good', 2: 'Okay', 1: 'Poor' } as const
 const TAG_LABEL: Record<string, string> = {
   wrong_answers: 'Wrong answers', slow: 'Slow', confusing: 'Confusing', missing_feature: 'Missing something', other: 'Something else',
+  quick_to_log: 'Quick to log', understood_me: 'Understood me', reminders_helped: 'Dates and reminders', helpful_answers: 'Helpful answers',
+  kept_organised: 'Kept me organised', looks_good: 'Looks good', other_good: 'Something else (good)',
   wrong_answer: 'Wrong or odd answer', wrong_space: 'Filed in the wrong place', broke: 'Something broke', idea: 'Idea or request',
 }
 

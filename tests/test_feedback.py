@@ -126,3 +126,12 @@ def test_admin_summary_before_the_table_exists(monkeypatch):
 
     monkeypatch.setattr(db, "get_feedback", boom)
     assert admin._feedback(30) == {"available": False, "days": 30}
+
+
+def test_a_good_rating_can_say_what_went_well_and_something_else_needs_words(store):
+    send("rating", rating=4, tags=["quick_to_log", "helpful_answers", "nonsense"])
+    assert store.rows[-1]["tags"] == ["quick_to_log", "helpful_answers"]
+    with pytest.raises(HTTPException):
+        send("rating", rating=3, tags=["other_good"])
+    send("rating", rating=3, tags=["other_good"], message="The voice notes")
+    assert store.alerts == []                       # good ratings never email the admin

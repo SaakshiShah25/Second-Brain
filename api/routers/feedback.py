@@ -35,6 +35,8 @@ RATING_WORDS = {1: "poor", 2: "okay", 3: "good", 4: "loving it"}
 TAGS = {
     "wrong_answers", "slow", "confusing", "missing_feature", "other",
     "wrong_answer", "wrong_space", "broke", "idea",
+    # what went well (a Good / Loving it rating)
+    "quick_to_log", "understood_me", "reminders_helped", "helpful_answers", "kept_organised", "looks_good", "other_good",
 }
 
 
@@ -102,7 +104,7 @@ def send(request: Request, body: FeedbackIn, user_id: str = Depends(get_current_
     message = (body.message or "").strip() or None
     if body.kind == "issue" and not message:
         raise HTTPException(400, "Please say what went wrong.")
-    if body.kind == "rating" and "other" in body.tags and not message:
+    if body.kind == "rating" and ("other" in body.tags or "other_good" in body.tags) and not message:
         raise HTTPException(400, "You chose “Something else” - please tell us what.")
     try:
         if body.kind != "snooze" and db.count_feedback_since(user_id, _ago(1), ["rating", "issue"]) >= DAILY_CAP:

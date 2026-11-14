@@ -198,3 +198,16 @@ def test_a_capture_records_how_it_ended(monkeypatch):
         asyncio.run(capture._capture_text_core("u", "t", None, None, None))
     assert [s[0] for s in seen] == ["capture_saved", "capture_failed", "capture_failed"]
     assert seen[1][2]["reason"] == "AI busy or out of budget" and seen[2][2]["reason"] == "error"
+
+
+def test_events_with_test_only_model_names_never_count_as_real_usage(monkeypatch):
+    blank = {"status": None, "duration_ms": None, "tokens": None, "error_id": None, "user_id": None, "created_at": NOW.isoformat()}
+    events = [
+        {**blank, "kind": "llm", "name": "extraction", "model": "m3", "tokens": 5300, "detail": {"fallback": True}},
+        {**blank, "kind": "limit", "name": "nvidia_fallback_failed", "model": "m1", "detail": {"error": "HTTPError"}},
+    ]
+    monkeypatch.setattr(db, "get_all_users", lambda: {})
+    monkeypatch.setattr(db, "get_app_events", lambda since: events)
+    monkeypatch.setattr(db, "get_storage_by_user", lambda: [])
+    fb = admin._overview(7)["fallback"]
+    assert fb["notes"] == 0 and fb["failed"] == 0 and fb["models"] == []

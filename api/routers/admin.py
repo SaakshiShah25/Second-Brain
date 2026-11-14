@@ -105,14 +105,20 @@ def me(user_id: str = Depends(get_current_user_id)):
     return {"admin": _is_admin(user_id)}
 
 
+# Model names that only ever appear in unit tests. They were once flushed into the live table by mistake (tests now cannot),
+# and are dropped here too, so a stray one can never show up as real usage.
+_FAKE_MODELS = {"m1", "m2", "m3"}
+
+
 def _events(since: datetime):
     """(events, persisted): stored events, or - until app_event exists -
     the ones this server process has seen since it started."""
     iso = since.isoformat()
     try:
-        return db.get_app_events(iso), True
+        events, persisted = db.get_app_events(iso), True
     except Exception:
-        return [e for e in observability.recent_events() if e["created_at"] >= iso], False
+        events, persisted = [e for e in observability.recent_events() if e["created_at"] >= iso], False
+    return [e for e in events if e.get("model") not in _FAKE_MODELS], persisted
 
 
 def _day(ts: str) -> str:

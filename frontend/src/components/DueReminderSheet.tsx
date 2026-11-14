@@ -155,30 +155,37 @@ export default function DueReminderSheet({ task, onClose }: { task: Task; onClos
             <Input type="date" aria-label="Due date" value={task.due_date ?? ''} onChange={(e) => setDue(e.target.value || null)} />
           </label>
           {hasDue && (
-            <div className="mt-3 flex items-center gap-3">
-              <span className="min-w-0 flex-1 text-[0.9375rem]">
-                All day
-                <span className="block text-[0.8125rem] text-text-muted">{timed ? `Due at ${timeLabel(dueTime)}` : 'No particular time'}</span>
-              </span>
-              {timed && (
-                <Input
-                  type="time"
-                  aria-label="Due time"
-                  value={dueTime ?? ''}
-                  onChange={(e) => e.target.value && save(afterDueChange({ due_date: task.due_date!, due_time: e.target.value }))}
-                  className="w-32"
+            <div className="mt-3">
+              <div className="flex items-center gap-3">
+                <span className="min-w-0 flex-1 text-[0.9375rem]">
+                  All day
+                  <span className="block text-[0.8125rem] text-text-muted">{timed ? `Due at ${timeLabel(dueTime)}` : 'No particular time'}</span>
+                </span>
+                <Toggle
+                  on={!timed}
+                  label="All day"
+                  onChange={() => {
+                    if (timed) {
+                      // To all day: a "before" counted from a time of day no longer makes sense.
+                      save({ due_time: null, ...(hasBefore && !PRESETS_ALL_DAY.includes(task.remind_before!) ? { remind_before: null } : {}) })
+                    } else save(afterDueChange({ due_date: task.due_date!, due_time: DEFAULT_ALL_DAY_HOUR }))
+                  }}
                 />
+              </div>
+              {/* On its own line, full width: next to the toggle it squeezed the label into a column of letters. */}
+              {timed && (
+                <label className="mt-2.5 block">
+                  <span className="mb-1 flex items-center gap-1.5 text-[0.8125rem] font-medium text-text-muted">
+                    <Clock size={13} strokeWidth={2} /> Time
+                  </span>
+                  <Input
+                    type="time"
+                    aria-label="Due time"
+                    value={dueTime ?? ''}
+                    onChange={(e) => e.target.value && save(afterDueChange({ due_date: task.due_date!, due_time: e.target.value }))}
+                  />
+                </label>
               )}
-              <Toggle
-                on={!timed}
-                label="All day"
-                onChange={() => {
-                  if (timed) {
-                    // To all day: a "before" counted from a time of day no longer makes sense.
-                    save({ due_time: null, ...(hasBefore && !PRESETS_ALL_DAY.includes(task.remind_before!) ? { remind_before: null } : {}) })
-                  } else save(afterDueChange({ due_date: task.due_date!, due_time: DEFAULT_ALL_DAY_HOUR }))
-                }}
-              />
             </div>
           )}
         </section>

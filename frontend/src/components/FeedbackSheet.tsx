@@ -23,6 +23,17 @@ const REASONS: { tag: string; label: string }[] = [
   { tag: 'other', label: 'Something else' },
 ]
 
+// What went well - offered after a Good or Loving it (the same way a low score is asked what got in the way).
+const GOOD_REASONS: { tag: string; label: string }[] = [
+  { tag: 'quick_to_log', label: 'Quick to log things' },
+  { tag: 'understood_me', label: 'Understood what I meant' },
+  { tag: 'reminders_helped', label: 'Dates and reminders' },
+  { tag: 'helpful_answers', label: 'Helpful answers' },
+  { tag: 'kept_organised', label: 'Kept me organised' },
+  { tag: 'looks_good', label: 'Looks and feels good' },
+  { tag: 'other_good', label: 'Something else' },
+]
+
 // "How is MyConfía working for you?" - four faces; a lower score also asks what got in the way (tap, no typing
 // needed), and there is an optional note. Opened from the rating card in the chat and from Settings.
 export default function FeedbackSheet({ initialRating, onClose }: { initialRating?: number; onClose: () => void }) {
@@ -34,7 +45,7 @@ export default function FeedbackSheet({ initialRating, onClose }: { initialRatin
   const { pathname } = useLocation()
 
   // Picking "Something else" without saying what is no use to anyone: the words are required then.
-  const needsWords = rating !== null && rating <= 2 && tags.includes('other') && !message.trim()
+  const needsWords = rating !== null && (tags.includes('other') || tags.includes('other_good')) && !message.trim()
 
   async function submit() {
     if (rating === null || needsWords) return
@@ -42,7 +53,7 @@ export default function FeedbackSheet({ initialRating, onClose }: { initialRatin
       await send.mutateAsync({
         kind: 'rating',
         rating,
-        tags: rating <= 2 ? tags : [],
+        tags,
         message: message.trim() || undefined,
         screen: screenName(pathname),
         context: feedbackContext(),
@@ -75,7 +86,10 @@ export default function FeedbackSheet({ initialRating, onClose }: { initialRatin
           <button
             key={f.rating}
             type="button"
-            onClick={() => setRating(f.rating)}
+            onClick={() => {
+              if ((f.rating >= 3) !== (rating !== null && rating >= 3)) setTags([]) // a different kind of reason
+              setRating(f.rating)
+            }}
             aria-pressed={rating === f.rating}
             className={`pressable flex flex-col items-center gap-1 rounded-2xl border px-1 py-3 ${
               rating === f.rating ? 'border-accent bg-accent-soft' : 'border-border bg-bg-card'
@@ -87,11 +101,11 @@ export default function FeedbackSheet({ initialRating, onClose }: { initialRatin
         ))}
       </div>
 
-      {rating !== null && rating <= 2 && (
+      {rating !== null && (
         <div className="mt-4">
-          <p className="mb-2 text-[0.8125rem] font-medium text-text-muted">What got in the way?</p>
+          <p className="mb-2 text-[0.8125rem] font-medium text-text-muted">{rating >= 3 ? 'What went well?' : 'What got in the way?'}</p>
           <div className="flex flex-wrap gap-2">
-            {REASONS.map((r) => {
+            {(rating >= 3 ? GOOD_REASONS : REASONS).map((r) => {
               const on = tags.includes(r.tag)
               return (
                 <button
@@ -116,7 +130,7 @@ export default function FeedbackSheet({ initialRating, onClose }: { initialRatin
             maxLength={1500}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder={rating <= 2 ? (tags.includes('other') ? 'What got in the way? (required)' : 'Tell us more (optional)') : 'Anything you’d like to add? (optional)'}
+            placeholder={tags.includes('other') || tags.includes('other_good') ? 'Tell us what (required)' : 'Tell us more (optional)'}
           />
           <p className="mt-1.5 text-[0.75rem] text-text-faint">Please don’t include private details from your notes.</p>
           <Button variant="primary" block className="mt-4" onClick={submit} disabled={send.isPending || needsWords}>
