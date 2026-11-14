@@ -137,6 +137,28 @@ def _flush_loop() -> None:
         flush()
 
 
+_active_seen: set = set()   # (user_id, day) already saved in user_activity_day
+_active_retry_at = 0.0
+
+
+def _save_active_days(batch: list) -> None:
+    """Remembers, for good, which days each person used the app (the events themselves are deleted after 30 days)."""
+    global _active_retry_at
+    if time.time() < _active_retry_at:
+        return
+    new = {(e["user_id"], e["created_at"][:10]) for e in batch
+           if e.get("user_id") and e["kind"] in ("request", "usage", "llm")} - _active_seen
+    if not new:
+        return
+    try:
+        import db
+
+        db.upsert_activity_days([{"user_id": u, "day": d} for u, d in sorted(new)])
+        _active_seen.update(new)
+    except Exception:
+        _active_retry_at = time.time() + 300   # table not created yet (schema.sql section 49): try again in a while
+
+
 def flush() -> None:
     global _table_ok, _table_retry_at
     with _lock:
@@ -150,6 +172,7 @@ def flush() -> None:
 
         db.insert_app_events(batch)
         _table_ok = True
+        _save_active_days(batch)
     except Exception as e:
         if _table_ok:
             print(f"[warn] app_event not writable (run schema.sql section 35?): {_clip(e, 160)}")

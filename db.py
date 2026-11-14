@@ -961,6 +961,22 @@ def get_all_users() -> dict:
         page += 1
 
 
+def upsert_activity_days(rows: list) -> None:
+    """[{user_id, day}] - a person used the app on that day (schema.sql section 49)."""
+    for start in range(0, len(rows), 500):
+        get_client().table("user_activity_day").upsert(rows[start:start + 500], on_conflict="user_id,day").execute()
+
+
+def get_activity_days() -> list:
+    out, start = [], 0
+    while True:
+        page = get_client().table("user_activity_day").select("user_id, day").range(start, start + 999).execute().data
+        out += page
+        if len(page) < 1000:
+            return out
+        start += 1000
+
+
 def get_note_dates() -> list:
     """[{user_id, created_at}] for every saved note - dates only, never content - for the admin's Excel export
     (how many days each person has actually used the app)."""
