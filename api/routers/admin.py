@@ -35,6 +35,7 @@ import db
 import email_client
 import entitlements
 import llm_budget
+import nvidia_client
 import observability
 from api.auth import get_current_user_id, verified_email
 from llm_client import FAST_MODEL_NAME, MODEL_NAME
@@ -166,7 +167,7 @@ def _overview(days: int) -> dict:
     # Every model in use has its own daily budget (the safety check runs on a
     # third one) - list them all, the two main ones first.
     models = [MODEL_NAME, FAST_MODEL_NAME]
-    models += sorted(({e["model"] for e in events if e["kind"] == "llm" and e["model"]} | set(snap)) - set(models))
+    models += sorted(({e["model"] for e in events if e["kind"] == "llm" and e["model"] and not (e.get("detail") or {}).get("fallback")} | set(snap)) - set(models))
     for model in models:
         logged = sum(e["tokens"] or 0 for e in events if e["kind"] == "llm" and e["model"] == model and _day(e["created_at"]) == today)
         state = snap.get(model, {})
@@ -198,6 +199,23 @@ def _overview(days: int) -> dict:
         avg = {m: round(sum(r[m] for r in reqs) / len(reqs)) for m in {m for r in reqs for m in r}}
         left_today = min((left.get(m, 0) // t for m, t in avg.items() if t), default=None)
         capacity.append({"action": action, "samples": len(reqs), "avg_tokens": avg, "left_today": left_today})
+
+    # ---- the backup AI (NVIDIA): how often Groq could not take a note, and what happened to it instead ----
+    used = [e for e in in_range if e["kind"] == "llm" and (e.get("detail") or {}).get("fallback")]
+    failed = [e for e in in_range if e["kind"] == "limit" and e["name"] == "nvidia_fallback_failed"]
+    fallback = {
+        "enabled": nvidia_client.available(),
+        "notes": len(used),
+        "failed": len(failed),
+        "logged": sum(1 for e in in_range if e["kind"] == "usage" and e["name"] == "interactions_logged"),
+        "groq_refused": sum(1 for e in in_range if e["kind"] == "limit" and e["name"] in ("groq_tokens_per_minute", "groq_tokens_per_day")
+                            and (e.get("detail") or {}).get("feature") == "extraction"),
+        "tokens": sum(e["tokens"] or 0 for e in used),
+        "last_used": max((e["created_at"] for e in used), default=None),
+        "last_failed": max((e["created_at"] for e in failed), default=None),
+        "last_failure": next(((e.get("detail") or {}).get("message") or (e.get("detail") or {}).get("error") for e in reversed(failed)), None),
+        "models": [{"model": m, "notes": n} for m, n in Counter(e["model"] for e in used).most_common()],
+    }
 
     # ---- per feature ----
     feats = defaultdict(lambda: {"calls": 0, "tokens": 0, "ms": []})
@@ -338,6 +356,7 @@ def _overview(days: int) -> dict:
         "persisted": persisted,
         "budget": budget,
         "capacity": capacity,
+        "fallback": fallback,
         "features": features,
         "users": user_rows,
         "inactive": inactive,

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { AlertTriangle, Bug, Database, Download, Gauge, MessageSquareHeart, RefreshCw, TrendingUp, UserX, Users } from 'lucide-react'
+import { AlertTriangle, Bug, Database, Download, Gauge, LifeBuoy, MessageSquareHeart, RefreshCw, TrendingUp, UserX, Users } from 'lucide-react'
 import { fetchBlob } from '../api/client'
 import { showError } from '../lib/errorDialog'
 import { useAdminFeedback, useAdminOverview, useSetFeedbackStatus, type AdminOverview, type UserStorage } from '../api/admin'
@@ -98,6 +98,44 @@ function Budget({ o }: { o: AdminOverview }) {
         A forecast, not a count of what was logged: the day's remaining AI budget divided by what a capture or question has cost on average. The
         day's budget starts over at midnight UTC (5:30 AM India time), so an unused day shows the whole day's room.
       </p>
+    </Card>
+  )
+}
+
+// Did Groq run out, and did the NVIDIA backup take the notes instead? (nvidia_client.py, extraction.py)
+function Backup({ o }: { o: AdminOverview }) {
+  const f = o.fallback
+  const share = f.logged > 0 ? Math.round((f.notes / f.logged) * 100) : 0
+  const short = (m: string) => m.replace('nvidia/', '')
+  return (
+    <Card icon={LifeBuoy} title="Backup AI (NVIDIA)" aside={f.enabled ? 'on' : 'off'}>
+      {!f.enabled ? (
+        <Empty>Not set up: add NVIDIA_API_KEY on Render. Until then, a note Groq can't take fails with the "usage limit" message.</Empty>
+      ) : (
+        <>
+          <p className="text-[0.9375rem]">
+            <span className="text-2xl font-semibold tabular-nums">{num(f.notes)}</span>
+            <span className="text-text-muted">
+              {' '}
+              {f.notes === 1 ? 'note' : 'notes'} went through NVIDIA{f.logged > 0 ? ` of ${num(f.logged)} logged (${share}%)` : ''}
+            </span>
+          </p>
+          <ul className="mt-3 flex flex-col gap-1.5 text-[0.875rem] text-text-muted">
+            <li>Groq turned a note away {num(f.groq_refused)} {f.groq_refused === 1 ? 'time' : 'times'} (out of tokens for the minute or the day).</li>
+            <li className={f.failed ? 'text-danger' : ''}>
+              NVIDIA also failed {num(f.failed)} {f.failed === 1 ? 'time' : 'times'}
+              {f.failed && f.last_failure ? ` - last: ${f.last_failure}` : ''}.
+            </li>
+            {f.last_used && <li>Last used {when(f.last_used)}{f.tokens ? ` · ${num(f.tokens)} tokens in this period` : ''}.</li>}
+            {f.models.map((m) => (
+              <li key={m.model}>
+                {short(m.model)}: {num(m.notes)} {m.notes === 1 ? 'note' : 'notes'}
+              </li>
+            ))}
+          </ul>
+          {f.notes === 0 && f.failed === 0 && <p className="mt-3 text-[0.8125rem] text-text-faint">Not needed in this period: Groq took every note.</p>}
+        </>
+      )}
     </Card>
   )
 }
@@ -572,6 +610,7 @@ export default function AdminPage() {
             </p>
           )}
           <Budget o={data} />
+          <Backup o={data} />
           <Feedback />
           <Totals o={data} />
           <Problems o={data} />

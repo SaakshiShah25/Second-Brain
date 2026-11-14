@@ -12,6 +12,11 @@ export interface AdminOverview {
   generated_at: string
   persisted: boolean
   budget: { model: string; used: number; limit: number; left: number; blocked: boolean; minute_left: number | null }[]
+  // The backup AI (NVIDIA): notes it took when Groq could not.
+  fallback: {
+    enabled: boolean; notes: number; failed: number; logged: number; groq_refused: number; tokens: number
+    last_used: string | null; last_failed: string | null; last_failure: string | null; models: { model: string; notes: number }[]
+  }
   capacity: { action: 'capture' | 'question'; samples: number; avg_tokens: Record<string, number>; left_today: number | null }[]
   features: { kind: string; feature: string; model: string; calls: number; tokens: number; avg_tokens: number; median_ms: number | null }[]
   users: {

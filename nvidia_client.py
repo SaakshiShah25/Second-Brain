@@ -87,5 +87,12 @@ def generate_json(system_prompt: str, user_content: str, temperature: float = 0.
         usage = body.get("usage") or {}
         observability.record("llm", feature, model=model, tokens=usage.get("total_tokens"), duration_ms=(time.time() - started) * 1000,
                              detail={"prompt": usage.get("prompt_tokens"), "completion": usage.get("completion_tokens"), "fallback": True})
+        # Tell the admin once a day that notes are going through the backup (the admin page has the running count).
+        observability.alert(
+            f"nvidia_used:{time.strftime('%Y-%m-%d', time.gmtime())}",
+            "Notes are going through the NVIDIA backup",
+            f"Groq could not take a note, so {model} did (about {usage.get('total_tokens') or '?'} tokens). "
+            "The admin page's 'Backup AI' card shows how many notes so far today.",
+        )
         return content
     raise RuntimeError(f"NVIDIA fallback failed ({last})")

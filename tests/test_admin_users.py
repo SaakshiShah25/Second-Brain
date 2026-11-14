@@ -68,3 +68,30 @@ def test_the_excel_file_has_both_sheets_and_the_right_columns(world):
     assert wb["All users"].max_row == 5                      # header + 4 real people
     not_using = [r[0].value for r in wb["Not using it"].iter_rows(min_row=2)]
     assert sorted(not_using) == ["never.came@gmail.com", "real.gone@gmail.com"]
+
+
+def test_the_backup_ai_card_counts_notes_that_went_through_nvidia(monkeypatch):
+    nowiso = NOW.isoformat()
+    events = [
+        {"user_id": "a", "kind": "llm", "name": "extraction", "model": "nvidia/nemotron-3-ultra-550b-a55b", "tokens": 5300, "created_at": nowiso, "detail": {"fallback": True}},
+        {"user_id": "a", "kind": "llm", "name": "extraction", "model": "nvidia/nemotron-3-ultra-550b-a55b", "tokens": 5200, "created_at": nowiso, "detail": {"fallback": True}},
+        {"user_id": "a", "kind": "llm", "name": "extraction", "model": "openai/gpt-oss-120b", "tokens": 5700, "created_at": nowiso, "detail": {}},
+        {"user_id": "a", "kind": "limit", "name": "groq_tokens_per_minute", "created_at": nowiso, "detail": {"feature": "extraction"}},
+        {"user_id": "a", "kind": "limit", "name": "groq_tokens_per_minute", "created_at": nowiso, "detail": {"feature": "intent"}},
+        {"user_id": "a", "kind": "limit", "name": "nvidia_fallback_failed", "model": "nvidia/nemotron-3-ultra-550b-a55b", "created_at": nowiso, "detail": {"message": "timed out"}},
+        *[{"user_id": "a", "kind": "usage", "name": "interactions_logged", "created_at": nowiso, "detail": {}} for _ in range(4)],
+    ]
+    blank = {"status": None, "duration_ms": None, "model": None, "tokens": None, "error_id": None}   # real events always have these
+    events = [{**blank, **e} for e in events]
+    monkeypatch.setattr(db, "get_all_users", lambda: {"a": {"email": "real@gmail.com", "created_at": iso(5), "last_sign_in_at": iso(0)}})
+    monkeypatch.setattr(db, "get_app_events", lambda since: events)
+    monkeypatch.setattr(db, "get_storage_by_user", lambda: [])
+    monkeypatch.setenv("NVIDIA_API_KEY", "x")
+    out = admin._overview(1)
+    fb = out["fallback"]
+    assert fb["enabled"] and fb["notes"] == 2 and fb["failed"] == 1 and fb["logged"] == 4
+    assert fb["groq_refused"] == 1                      # only the extraction refusal, not the intent one
+    assert fb["tokens"] == 10500 and fb["models"] == [{"model": "nvidia/nemotron-3-ultra-550b-a55b", "notes": 2}]
+    assert fb["last_failure"] == "timed out"
+    # the NVIDIA model is not listed against Groq's daily budget
+    assert not any(b["model"].startswith("nvidia/") for b in out["budget"])
