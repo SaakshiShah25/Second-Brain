@@ -135,3 +135,15 @@ def test_activity_days_are_written_once_and_survive_a_missing_table(monkeypatch)
     monkeypatch.setattr(db, "upsert_activity_days", boom)
     observability._save_active_days([{"user_id": "b", "kind": "request", "created_at": "2026-11-14T08:00:00+00:00"}])   # no crash
     assert observability._active_retry_at > 0
+
+
+def test_a_person_with_no_stored_data_shows_zero_not_blank_and_sent_notes_are_not_stored_notes(monkeypatch):
+    # nine notes were sent and processed, then deleted: logged in the events, nothing stored now
+    events = [{"user_id": "a", "kind": "usage", "name": "interactions_logged", "created_at": iso(20), "tokens": None} for _ in range(9)]
+    monkeypatch.setattr(db, "get_all_users", lambda: {"a": {"email": "p@gmail.com", "created_at": iso(40), "last_sign_in_at": iso(20)}})
+    monkeypatch.setattr(db, "get_app_events", lambda since: events)
+    monkeypatch.setattr(db, "get_note_dates", lambda: [])
+    monkeypatch.setattr(db, "get_activity_days", lambda: [])
+    monkeypatch.setattr(db, "get_storage_by_user", lambda: [{"user_id": "someone-else", "notes": 3, "tasks": 1}])   # the function works, they have no row
+    row = admin._users_table()[0]
+    assert row["captures_30"] == 9 and row["notes"] == 0 and row["tasks"] == 0 and row["days_with_a_note"] == 0

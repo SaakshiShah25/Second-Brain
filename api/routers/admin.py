@@ -404,8 +404,9 @@ def _users_table(include_test: bool = False) -> list:
         notes = []
     try:
         storage = {r["user_id"]: r for r in db.get_storage_by_user()}
+        storage_ok = True
     except Exception:
-        storage = {}
+        storage, storage_ok = {}, False
     seen_days, last_event, counts = defaultdict(set), {}, defaultdict(Counter)
     for e in events:
         uid = e.get("user_id")
@@ -460,7 +461,8 @@ def _users_table(include_test: bool = False) -> list:
             "last_sign_in": (signed_in or "")[:10] or None, "days_since_sign_in": _days_ago(signed_in, now),
             "last_used": (last_used or "")[:10] or None, "days_since_last_use": _days_ago(last_used, now) if last_used else None,
             "days_used": len(ever.get(uid, ())), "days_with_a_note": len(note_days.get(uid, ())),
-            "notes": st.get("notes", len(note_days.get(uid, ()))), "tasks": st.get("tasks"),
+            # No row at all means nothing is stored for them (they have none, or deleted them): 0, not blank.
+            "notes": st.get("notes", 0 if storage_ok else len(note_days.get(uid, ()))), "tasks": st.get("tasks", 0 if storage_ok else None),
             "captures_30": counts[uid]["capture"], "questions_30": counts[uid]["question"], "tokens_30": counts[uid]["tokens"],
             "stored_kb": round(((st.get("note_bytes") or 0) + (st.get("task_bytes") or 0) + (st.get("document_bytes") or 0) + (st.get("index_bytes") or 0)) / 1024) if st else None,
         })
@@ -475,8 +477,8 @@ XLSX_COLUMNS = [
     ("Last login (a fresh sign-in; the app keeps you signed in, so this can be older than your last use)", "last_sign_in", 22), ("Days since last login", "days_since_sign_in", 12),
     ("Last used the app (any activity)", "last_used", 16), ("Days since last use", "days_since_last_use", 12),
     ("Days used (all time)", "days_used", 12), ("Days a note was saved (all time)", "days_with_a_note", 16),
-    ("Notes saved", "notes", 10), ("To-dos", "tasks", 9),
-    ("Notes logged (last 30 days)", "captures_30", 12), ("Questions asked (last 30 days)", "questions_30", 13),
+    ("Notes stored now", "notes", 10), ("To-dos stored now", "tasks", 10),
+    ("Notes sent in the last 30 days (counted when sent, even if deleted since)", "captures_30", 20), ("Questions asked (last 30 days)", "questions_30", 13),
     ("AI tokens (last 30 days)", "tokens_30", 12), ("Stored (KB)", "stored_kb", 10),
 ]
 
