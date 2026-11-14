@@ -434,12 +434,16 @@ def _users_table(include_test: bool = False) -> list:
         else:
             status = "Active (last 7 days)"
         st = storage.get(uid) or {}
+        # The dates they could have used it on, within the 30 days we keep: the day they joined and today both count.
+        age = _days_ago(a["created_at"], now)
+        possible = min(RETENTION_DAYS, age + 1) if age is not None else None
         rows.append({
             "email": a["email"], "status": status,
             "joined": a["created_at"][:10] or None, "days_since_joined": _days_ago(a["created_at"], now),
             "last_sign_in": (signed_in or "")[:10] or None, "days_since_sign_in": _days_ago(signed_in, now),
             "last_used": (last_used or "")[:10] or None, "days_since_last_use": _days_ago(last_used, now) if last_used else None,
             "days_used_30": len(seen_days.get(uid, ())), "days_with_a_note": len(note_days.get(uid, ())),
+            "days_possible_30": possible, "share_used": round(100 * len(seen_days.get(uid, ())) / possible) if possible else None,
             "notes": st.get("notes", len(note_days.get(uid, ()))), "tasks": st.get("tasks"),
             "captures_30": counts[uid]["capture"], "questions_30": counts[uid]["question"], "tokens_30": counts[uid]["tokens"],
             "stored_kb": round(((st.get("note_bytes") or 0) + (st.get("task_bytes") or 0) + (st.get("document_bytes") or 0) + (st.get("index_bytes") or 0)) / 1024) if st else None,
@@ -454,7 +458,8 @@ XLSX_COLUMNS = [
     ("Joined", "joined", 12), ("Days since joined", "days_since_joined", 12),
     ("Last sign-in", "last_sign_in", 13), ("Days since sign-in", "days_since_sign_in", 12),
     ("Last used the app", "last_used", 14), ("Days since last use", "days_since_last_use", 12),
-    ("Days used (last 30 days)", "days_used_30", 14), ("Days a note was saved (all time)", "days_with_a_note", 16),
+    ("Days used (last 30 days)", "days_used_30", 14), ("Days it could have been used (last 30 days)", "days_possible_30", 16),
+    ("Used on % of those days", "share_used", 12), ("Days a note was saved (all time)", "days_with_a_note", 16),
     ("Notes saved", "notes", 10), ("To-dos", "tasks", 9),
     ("Notes logged (30 days)", "captures_30", 12), ("Questions asked (30 days)", "questions_30", 13),
     ("AI tokens (30 days)", "tokens_30", 12), ("Stored (KB)", "stored_kb", 10),

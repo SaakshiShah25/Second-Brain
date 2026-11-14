@@ -52,9 +52,11 @@ def test_the_table_has_only_real_people_with_a_status_and_day_counts(world):
     assert set(rows) == {"real.active@gmail.com", "real.quiet@gmail.com", "real.gone@gmail.com", "never.came@gmail.com"}
     a = rows["real.active@gmail.com"]
     assert a["status"] == "Active (last 7 days)" and a["days_since_joined"] == 20
+    assert a["days_possible_30"] == 21 and a["share_used"] == round(100 * 2 / 21)   # joined 20 days ago: 21 dates, both ends counted
     assert a["days_used_30"] == 2 and a["days_with_a_note"] == 2          # two distinct days of activity / of notes
     assert a["captures_30"] == 1 and a["tokens_30"] == 5000 and a["days_since_last_use"] == 1
     assert rows["real.quiet@gmail.com"]["status"] == "Quiet (8-30 days)" and rows["real.quiet@gmail.com"]["days_used_30"] == 0
+    assert rows["real.gone@gmail.com"]["days_possible_30"] == 30        # joined 60 days ago: capped at the 30 days we keep
     assert rows["real.gone@gmail.com"]["status"] == "Not using it (30+ days)" and rows["real.gone@gmail.com"]["days_with_a_note"] == 1
     assert rows["never.came@gmail.com"]["status"] == "Never signed in" and rows["never.came@gmail.com"]["last_used"] is None
     assert len(admin._users_table(include_test=True)) == 6
