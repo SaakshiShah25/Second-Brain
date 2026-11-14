@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { AlertTriangle, Bug, Database, Download, Gauge, LifeBuoy, MessageSquareHeart, RefreshCw, TrendingUp, UserX, Users } from 'lucide-react'
+import { AlertTriangle, Bug, Database, Download, FileCheck2, Gauge, LifeBuoy, MessageSquareHeart, RefreshCw, TrendingUp, UserX, Users } from 'lucide-react'
 import { fetchBlob } from '../api/client'
 import { showError } from '../lib/errorDialog'
 import { useAdminFeedback, useAdminOverview, useSetFeedbackStatus, type AdminOverview, type UserStorage } from '../api/admin'
@@ -98,6 +98,44 @@ function Budget({ o }: { o: AdminOverview }) {
         A forecast, not a count of what was logged: the day's remaining AI budget divided by what a capture or question has cost on average. The
         day's budget starts over at midnight UTC (5:30 AM India time), so an unused day shows the whole day's room.
       </p>
+    </Card>
+  )
+}
+
+// How many notes people sent, how many were really saved, and what stopped the rest (capture.py records each outcome).
+function NotesOutcome({ o }: { o: AdminOverview }) {
+  const n = o.notes_outcome
+  const known = n.saved + n.failed
+  const pct = known > 0 ? Math.round((n.saved / known) * 100) : null
+  return (
+    <Card icon={FileCheck2} title="Notes: sent and saved" aside={pct === null ? undefined : `${pct}% went through`}>
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: 'sent', value: n.sent, tone: '' },
+          { label: 'saved', value: n.saved, tone: 'text-success' },
+          { label: "didn't go through", value: n.failed, tone: n.failed ? 'text-danger' : '' },
+        ].map((x) => (
+          <div key={x.label} className="rounded-xl bg-bg-elevated p-3">
+            <p className={`text-[1.375rem] leading-tight font-semibold tabular-nums ${x.tone}`}>{num(x.value)}</p>
+            <p className="text-[0.75rem] text-text-muted">{x.label}</p>
+          </div>
+        ))}
+      </div>
+      {n.reasons.length > 0 && (
+        <ul className="mt-3 flex flex-col gap-1 text-[0.875rem] text-text-muted">
+          {n.reasons.map((r) => (
+            <li key={r.reason}>
+              {num(r.count)} × {r.reason}
+            </li>
+          ))}
+        </ul>
+      )}
+      {n.unknown > 0 && (
+        <p className="mt-3 text-[0.75rem] leading-snug text-text-faint">
+          {num(n.unknown)} more were sent before outcomes were recorded (or are still being processed), so their result is not known.
+        </p>
+      )}
+      {n.sent === 0 && <p className="text-[0.875rem] text-text-muted">No notes were sent in this period.</p>}
     </Card>
   )
 }
@@ -229,7 +267,7 @@ function UsersCard({ o }: { o: AdminOverview }) {
                 <span className="flex-shrink-0 text-[0.8125rem] text-text-faint">{when(u.last_seen)}</span>
               </p>
               <p className="mt-0.5 text-[0.8125rem] text-text-muted">
-                {u.captures} captures · {u.questions} questions · {num(u.tokens)} tokens
+                {u.captures} sent{u.captures_saved + u.captures_failed > 0 ? ` (${u.captures_saved} saved${u.captures_failed ? `, ${u.captures_failed} failed` : ''})` : ''} · {u.questions} questions · {num(u.tokens)} tokens
                 {u.errors > 0 && <span className="text-danger"> · {u.errors} errors</span>}
                 {u.limits > 0 && <span className="text-[#d9731f]"> · {u.limits} limit hits</span>}
               </p>
@@ -610,6 +648,7 @@ export default function AdminPage() {
             </p>
           )}
           <Budget o={data} />
+          <NotesOutcome o={data} />
           <Backup o={data} />
           <Feedback />
           <Totals o={data} />

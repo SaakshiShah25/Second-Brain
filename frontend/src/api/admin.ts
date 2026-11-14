@@ -12,6 +12,8 @@ export interface AdminOverview {
   generated_at: string
   persisted: boolean
   budget: { model: string; used: number; limit: number; left: number; blocked: boolean; minute_left: number | null }[]
+  // Notes sent vs. notes that went through (and why the others did not).
+  notes_outcome: { sent: number; saved: number; failed: number; unknown: number; reasons: { reason: string; count: number }[] }
   // The backup AI (NVIDIA): notes it took when Groq could not.
   fallback: {
     enabled: boolean; notes: number; failed: number; logged: number; groq_refused: number; tokens: number
@@ -23,6 +25,8 @@ export interface AdminOverview {
     user_id: string
     email: string
     captures: number
+    captures_saved: number
+    captures_failed: number
     questions: number
     tokens: number
     requests: number

@@ -207,6 +207,17 @@ def _overview(days: int) -> dict:
         left_today = min((left.get(m, 0) // t for m, t in avg.items() if t), default=None)
         capacity.append({"action": action, "samples": len(reqs), "avg_tokens": avg, "left_today": left_today})
 
+    # ---- notes: how many were sent, how many went through, and why the others did not ----
+    sent = sum(1 for e in in_range if e["kind"] == "usage" and e["name"] == "interactions_logged")
+    saved = sum(1 for e in in_range if e["kind"] == "usage" and e["name"] == "capture_saved")
+    failed_notes = [e for e in in_range if e["kind"] == "usage" and e["name"] == "capture_failed"]
+    notes_outcome = {
+        "sent": sent, "saved": saved, "failed": len(failed_notes),
+        # sent before outcomes were recorded (or still being processed): neither saved nor failed is known
+        "unknown": max(0, sent - saved - len(failed_notes)),
+        "reasons": [{"reason": r, "count": c} for r, c in Counter((e.get("detail") or {}).get("reason") or "error" for e in failed_notes).most_common()],
+    }
+
     # ---- the backup AI (NVIDIA): how often Groq could not take a note, and what happened to it instead ----
     used = [e for e in in_range if e["kind"] == "llm" and (e.get("detail") or {}).get("fallback")]
     failed = [e for e in in_range if e["kind"] == "limit" and e["name"] == "nvidia_fallback_failed"]
@@ -242,7 +253,7 @@ def _overview(days: int) -> dict:
     )
 
     # ---- per user ----
-    users = defaultdict(lambda: {"captures": 0, "questions": 0, "tokens": 0, "requests": 0, "errors": 0,
+    users = defaultdict(lambda: {"captures": 0, "captures_saved": 0, "captures_failed": 0, "questions": 0, "tokens": 0, "requests": 0, "errors": 0,
                                  "limits": 0, "last_seen": None, "by_feature": Counter()})
     user_days = set()   # (user, day) pairs with AI use - for the scaling estimate
     model_user_day = defaultdict(int)
@@ -253,7 +264,8 @@ def _overview(days: int) -> dict:
         u = users[uid]
         u["last_seen"] = max(u["last_seen"] or "", e["created_at"])
         if e["kind"] == "usage":
-            key = {"interactions_logged": "captures", "ai_questions_asked": "questions"}.get(e["name"])
+            key = {"interactions_logged": "captures", "capture_saved": "captures_saved", "capture_failed": "captures_failed",
+                   "ai_questions_asked": "questions"}.get(e["name"])
             if key:
                 u[key] += 1
         elif e["kind"] == "llm":
@@ -364,6 +376,7 @@ def _overview(days: int) -> dict:
         "budget": budget,
         "capacity": capacity,
         "fallback": fallback,
+        "notes_outcome": notes_outcome,
         "features": features,
         "users": user_rows,
         "inactive": inactive,
@@ -416,6 +429,8 @@ def _users_table(include_test: bool = False) -> list:
         last_event[uid] = max(last_event.get(uid, ""), e["created_at"])
         if e["kind"] == "usage" and e["name"] in ACTIONS:
             counts[uid][ACTIONS[e["name"]]] += 1
+        elif e["kind"] == "usage" and e["name"] in ("capture_saved", "capture_failed"):
+            counts[uid][e["name"]] += 1
         elif e["kind"] == "llm":
             counts[uid]["tokens"] += e["tokens"] or 0
     # Days they used the app, for good: the permanent per-day record (schema.sql section 49) plus what the 30 days of events
@@ -463,7 +478,8 @@ def _users_table(include_test: bool = False) -> list:
             "days_used": len(ever.get(uid, ())), "days_with_a_note": len(note_days.get(uid, ())),
             # No row at all means nothing is stored for them (they have none, or deleted them): 0, not blank.
             "notes": st.get("notes", 0 if storage_ok else len(note_days.get(uid, ()))), "tasks": st.get("tasks", 0 if storage_ok else None),
-            "captures_30": counts[uid]["capture"], "questions_30": counts[uid]["question"], "tokens_30": counts[uid]["tokens"],
+            "captures_30": counts[uid]["capture"], "saved_30": counts[uid]["capture_saved"], "failed_30": counts[uid]["capture_failed"],
+            "questions_30": counts[uid]["question"], "tokens_30": counts[uid]["tokens"],
             "stored_kb": round(((st.get("note_bytes") or 0) + (st.get("task_bytes") or 0) + (st.get("document_bytes") or 0) + (st.get("index_bytes") or 0)) / 1024) if st else None,
         })
     order = {"Active (last 7 days)": 0, "Quiet (8-30 days)": 1, "Not using it (30+ days)": 2, "Never signed in": 3}
@@ -478,7 +494,8 @@ XLSX_COLUMNS = [
     ("Last used the app (any activity)", "last_used", 16), ("Days since last use", "days_since_last_use", 12),
     ("Days used (all time)", "days_used", 12), ("Days a note was saved (all time)", "days_with_a_note", 16),
     ("Notes stored now", "notes", 10), ("To-dos stored now", "tasks", 10),
-    ("Notes sent in the last 30 days (counted when sent, even if deleted since)", "captures_30", 20), ("Questions asked (last 30 days)", "questions_30", 13),
+    ("Notes sent (last 30 days)", "captures_30", 12), ("...of which saved", "saved_30", 12), ("...of which did not go through", "failed_30", 14),
+    ("Questions asked (last 30 days)", "questions_30", 13),
     ("AI tokens (last 30 days)", "tokens_30", 12), ("Stored (KB)", "stored_kb", 10),
 ]
 

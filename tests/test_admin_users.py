@@ -147,3 +147,54 @@ def test_a_person_with_no_stored_data_shows_zero_not_blank_and_sent_notes_are_no
     monkeypatch.setattr(db, "get_storage_by_user", lambda: [{"user_id": "someone-else", "notes": 3, "tasks": 1}])   # the function works, they have no row
     row = admin._users_table()[0]
     assert row["captures_30"] == 9 and row["notes"] == 0 and row["tasks"] == 0 and row["days_with_a_note"] == 0
+
+
+def test_sent_saved_and_failed_notes_are_counted_with_reasons_and_in_the_excel(monkeypatch):
+    nowiso = NOW.isoformat()
+    blank = {"status": None, "duration_ms": None, "model": None, "tokens": None, "error_id": None, "detail": {}}
+    def ev(name, **kw):
+        return {**blank, "user_id": "a", "kind": "usage", "name": name, "created_at": nowiso, **kw}
+    events = [ev("interactions_logged") for _ in range(6)] + [ev("capture_saved") for _ in range(3)] + [
+        ev("capture_failed", detail={"reason": "AI busy or out of budget"}), ev("capture_failed", detail={"reason": "AI busy or out of budget"}),
+        ev("capture_failed", detail={"reason": "error"}),
+    ]
+    events = [{**blank, **e} for e in events]
+    monkeypatch.setattr(db, "get_all_users", lambda: {"a": {"email": "real@gmail.com", "created_at": iso(5), "last_sign_in_at": iso(0)}})
+    monkeypatch.setattr(db, "get_app_events", lambda since: events)
+    monkeypatch.setattr(db, "get_note_dates", lambda: [])
+    monkeypatch.setattr(db, "get_activity_days", lambda: [])
+    monkeypatch.setattr(db, "get_storage_by_user", lambda: [])
+    out = admin._overview(7)["notes_outcome"]
+    assert out["sent"] == 6 and out["saved"] == 3 and out["failed"] == 3 and out["unknown"] == 0
+    assert out["reasons"][0] == {"reason": "AI busy or out of budget", "count": 2}
+    row = admin._users_table()[0]
+    assert (row["captures_30"], row["saved_30"], row["failed_30"]) == (6, 3, 3)
+
+
+def test_a_capture_records_how_it_ended(monkeypatch):
+    import asyncio
+    from fastapi import HTTPException
+    from api.routers import capture
+
+    seen = []
+    monkeypatch.setattr(capture.observability, "record", lambda kind, name, **kw: seen.append((name, kw.get("status"), kw.get("detail"))))
+
+    async def ok(*a, **k):
+        return {"status": "saved"}
+
+    async def busy(*a, **k):
+        raise HTTPException(429, "busy")
+
+    async def boom(*a, **k):
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(capture, "_capture_text_attempt", ok)
+    assert asyncio.run(capture._capture_text_core("u", "t", None, None, None)) == {"status": "saved"}
+    monkeypatch.setattr(capture, "_capture_text_attempt", busy)
+    with pytest.raises(HTTPException):
+        asyncio.run(capture._capture_text_core("u", "t", None, None, None))
+    monkeypatch.setattr(capture, "_capture_text_attempt", boom)
+    with pytest.raises(RuntimeError):
+        asyncio.run(capture._capture_text_core("u", "t", None, None, None))
+    assert [s[0] for s in seen] == ["capture_saved", "capture_failed", "capture_failed"]
+    assert seen[1][2]["reason"] == "AI busy or out of budget" and seen[2][2]["reason"] == "error"
