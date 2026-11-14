@@ -23,7 +23,7 @@ export default function Receipt({ items, spaceId }: { items: CreatedItem[]; spac
             key={item.id}
             type="button"
             // Inside a space's reply a tap goes to that space's tools; elsewhere it opens the item itself.
-            onClick={() => (spaceId !== undefined ? openSpace(spaceId) : navigate(itemPath(item.id)))}
+            onClick={() => (spaceId !== undefined ? openSpace(spaceId, item.list_emoji || item.list_name ? 'lists' : 'todos') : navigate(itemPath(item.id)))}
             className="pressable flex w-full items-center gap-3 px-3.5 py-2.5 text-left"
           >
             {/* A to-do is marked with the same round ring as on the Today page; a list entry keeps its list's emoji. */}

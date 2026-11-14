@@ -986,6 +986,13 @@ def count_feedback_since(user_id: str, since_iso: str, kinds: list) -> int:
     return resp.count or 0
 
 
+def get_last_feedback(user_id: str, kinds: list):
+    """The newest feedback row of these kinds for this person, or None."""
+    rows = (get_client().table("feedback").select("kind, created_at, context").eq("user_id", user_id)
+            .in_("kind", kinds).order("created_at", desc=True).limit(1).execute().data)
+    return rows[0] if rows else None
+
+
 def count_interactions(user_id: str) -> int:
     resp = get_client().table("interaction").select("id", count="exact").eq("user_id", user_id).limit(1).execute()
     return resp.count or 0

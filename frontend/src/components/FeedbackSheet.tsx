@@ -33,8 +33,11 @@ export default function FeedbackSheet({ initialRating, onClose }: { initialRatin
   const send = useSendFeedback()
   const { pathname } = useLocation()
 
+  // Picking "Something else" without saying what is no use to anyone: the words are required then.
+  const needsWords = rating !== null && rating <= 2 && tags.includes('other') && !message.trim()
+
   async function submit() {
-    if (rating === null) return
+    if (rating === null || needsWords) return
     try {
       await send.mutateAsync({
         kind: 'rating',
@@ -113,10 +116,10 @@ export default function FeedbackSheet({ initialRating, onClose }: { initialRatin
             maxLength={1500}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder={rating <= 2 ? 'Tell us more (optional)' : 'Anything you’d like to add? (optional)'}
+            placeholder={rating <= 2 ? (tags.includes('other') ? 'What got in the way? (required)' : 'Tell us more (optional)') : 'Anything you’d like to add? (optional)'}
           />
           <p className="mt-1.5 text-[0.75rem] text-text-faint">Please don’t include private details from your notes.</p>
-          <Button variant="primary" block className="mt-4" onClick={submit} disabled={send.isPending}>
+          <Button variant="primary" block className="mt-4" onClick={submit} disabled={send.isPending || needsWords}>
             {send.isPending ? 'Sending…' : 'Send'}
           </Button>
         </div>

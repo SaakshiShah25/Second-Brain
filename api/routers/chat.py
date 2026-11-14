@@ -91,7 +91,11 @@ def _find_space(spaces: list, said: str):
 
 
 # "add this task: Send the deck" -> "Send the deck": the words that only introduce what to add.
-_WRAPPER = re.compile(r"^(?:also\s+)?(?:add|put|create)\s+(?:this|the|a|an|another|these)?\s*(?:task|to-?do|reminder|note)s?\s*[:,\-]?\s*", re.I)
+_WRAPPER = re.compile(
+    r"^(?:also\s+)?(?:add|put|create)\s+(?:this|the|a|an|another|these)?\s*(?:task|to-?do|reminder|note)s?"
+    r"(?:\s+(?:to|in|into|for|under)\s+(?:it|that|this|there|the\s+(?:new\s+)?(?:space|workspace)|(?:my\s+)?\w+\s+(?:space|workspace)))?\s*[:,\-]?\s*",
+    re.I,
+)
 
 
 def _run_command(user_id: str, cmd: dict, picked_space_id) -> dict:

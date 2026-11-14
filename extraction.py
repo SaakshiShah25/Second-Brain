@@ -96,6 +96,11 @@ using the weekday name/qualifier exactly as the note implies (e.g. "he'll get ba
 to us by next Monday" -> "next Monday"; "met him last Thursday" -> "last Thursday";
 "starting next month" -> "next month").
 
+Office shorthand is a deadline too, not decoration: "EOD", "end of day", "COB" or "by tonight" ->
+"today"; "EOW" or "end of the week" -> "end of the week"; "EOM" or "end of the month" -> "end of the
+month". "Complete the UAT testing EOD" is a task due "today" - never leave it with no date. ("EOD" gives
+a date only: no due_time.)
+
 For anything else - an explicit date the note states outright (e.g. "August 20th"),
 or a loose/vague timeframe with no clean normalized form above (e.g. "in a couple
 weeks", "sometime this quarter") - resolve it yourself into an absolute YYYY-MM-DD

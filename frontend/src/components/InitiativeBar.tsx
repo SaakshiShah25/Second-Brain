@@ -115,7 +115,8 @@ export default function InitiativeBar({ counts, search, hideChips = false, scope
             <div className="mb-3 flex min-h-11 items-center rounded-2xl border border-border-strong bg-bg-card focus-within:border-accent">
               <Search size={17} strokeWidth={2} className="ml-3.5 flex-shrink-0 text-text-faint" />
               <input
-                autoFocus
+                // Not on a phone: the keyboard would cover the very list the person came to look at.
+                autoFocus={window.matchMedia('(min-width: 1024px)').matches}
                 value={pickQuery}
                 onChange={(e) => setPickQuery(e.target.value)}
                 placeholder="Find a space"

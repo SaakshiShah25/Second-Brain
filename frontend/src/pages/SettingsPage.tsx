@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Activity, Check, CircleHelp, Compass, Flag, Smile, Download, LogOut, Moon, ShieldCheck, Sun, Trash2, Type, UserRound } from 'lucide-react'
+import { Activity, Check, CircleHelp, Compass, Smile, Download, LogOut, Moon, ShieldCheck, Sun, Trash2, Type, UserRound } from 'lucide-react'
 import { useIsAdmin } from '../api/admin'
 import { fetchBlob } from '../api/client'
 import { useDeleteAccount, useSettings, useUpdateSettings } from '../api/settings'
@@ -15,8 +15,7 @@ import { ListGroup, ListRow } from '../components/ListGroup'
 import NameSheet from '../components/NameSheet'
 import PageHeader from '../components/PageHeader'
 import Segmented from '../components/Segmented'
-import FeedbackSheet from '../components/FeedbackSheet'
-import ReportSheet from '../components/ReportSheet'
+import FeedbackMenu from '../components/FeedbackMenu'
 import { useTour } from '../components/TourGate'
 import { savedName } from '../lib/displayName'
 
@@ -59,8 +58,7 @@ export default function SettingsPage() {
   const navigate = useNavigate()
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [editingName, setEditingName] = useState(false)
-  const [rating, setRating] = useState(false)
-  const [reporting, setReporting] = useState(false)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
   const name = savedName(user)
   const initial = (name[0] ?? user?.email?.[0] ?? '?').toUpperCase()
 
@@ -181,11 +179,9 @@ export default function SettingsPage() {
       <ListGroup title="Help">
         <ListRow icon={CircleHelp} iconColor="var(--sb-text-muted)" soft label="Help & FAQ" detail="Answers to common questions" chevron onClick={() => navigate('/help')} />
         <ListRow icon={Compass} iconColor="var(--sb-text-muted)" soft label="Take the tour again" chevron onClick={() => startTour()} />
-        <ListRow icon={Smile} iconColor="var(--sb-text-muted)" soft label="Rate MyConfía" detail="Tell us how it's going" chevron onClick={() => setRating(true)} />
-        <ListRow icon={Flag} iconColor="var(--sb-text-muted)" soft label="Report a problem" detail="Something not working or helping?" chevron onClick={() => setReporting(true)} />
+        <ListRow icon={Smile} iconColor="var(--sb-text-muted)" soft label="Send feedback" detail="Rate the app or report a problem" chevron onClick={() => setFeedbackOpen(true)} />
       </ListGroup>
-      {rating && <FeedbackSheet onClose={() => setRating(false)} />}
-      {reporting && <ReportSheet onClose={() => setReporting(false)} />}
+      {feedbackOpen && <FeedbackMenu onClose={() => setFeedbackOpen(false)} />}
 
       <ListGroup>
         <ListRow icon={LogOut} iconColor="var(--sb-text-muted)" soft label="Sign out" onClick={() => signOut()} />

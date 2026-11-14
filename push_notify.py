@@ -48,7 +48,7 @@ WINDOW_MINUTES = 90
 
 MAX_GROUPS = 6            # categories shown
 MAX_TASKS_PER_GROUP = 3   # task names shown under each
-MAX_BODY_CHARS = 480
+MAX_BODY_CHARS = 800
 TASK_NAME_CHARS = 60
 
 TASKS_URL = "/today"
@@ -56,7 +56,12 @@ PRIORITY_RANK = {"high": 0, "normal": 1, "low": 2}
 
 # A task reminder (the bell on a task) goes out in the 9 AM window of the day it was set for. A run that was missed
 # still delivers it for a few days afterwards.
+CATEGORY_MARKS = ["🟦", "🟧", "🟩", "🟪", "🟥", "🟨", "🟫", "⬜"]
+
 REMINDER_GRACE_DAYS = 3
+# ...but never more than a day and a half late: a reminder for 9 AM on the 11th arriving on the 13th (say, because
+# notifications were only switched on then) is noise, not help.
+REMINDER_MAX_LATE = timedelta(hours=36)
 DEFAULT_REMIND_TIME = "09:00"   # a reminder with no time of its own
 MAX_REMINDER_LINES = 5
 
@@ -176,10 +181,14 @@ def build_message(groups: list, slot: str) -> Optional[dict]:
     if total == 0:
         return None
     lines = []
-    for name, tasks in groups[:MAX_GROUPS]:
+    for n, (name, tasks) in enumerate(groups[:MAX_GROUPS]):
         shown = tasks[:MAX_TASKS_PER_GROUP]
         more = len(tasks) - len(shown)
-        lines.append(f"{name} ({len(tasks)}): " + " · ".join(shown) + (f" +{more} more" if more else ""))
+        # A coloured square per category (a notification can't be coloured any other way) and a bullet per task.
+        lines.append(f"{CATEGORY_MARKS[n % len(CATEGORY_MARKS)]} {name} · {len(tasks)}")
+        lines += [f"   • {t}" for t in shown]
+        if more:
+            lines.append(f"   + {more} more")
     hidden = len(groups) - MAX_GROUPS
     if hidden > 0:
         lines.append(f"+{hidden} more categories")
@@ -325,8 +334,9 @@ def send_task_reminders(now_utc: Optional[datetime] = None, sender: Optional[Cal
         local_date = local.date().isoformat()
         since = (local.date() - timedelta(days=REMINDER_GRACE_DAYS)).isoformat()
         try:
+            now_local = local.replace(tzinfo=None)
             tasks = [t for t in db.get_tasks_to_remind(user_id, local_date, since)
-                     if reminder_moment(t) <= local.replace(tzinfo=None)]
+                     if reminder_moment(t) <= now_local and now_local - reminder_moment(t) <= REMINDER_MAX_LATE]
         except Exception as e:
             print(f"[warn] couldn't read task reminders for {user_id}: {e}")
             continue

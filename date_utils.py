@@ -91,6 +91,14 @@ def resolve_relative_phrase(phrase, reference_date: date = None) -> Optional[str
         return None
 
     p = phrase.strip().lower()
+    p = re.sub(r"^(?:by|before|till|until)\s+", "", p)
+
+    if p in ("eod", "end of day", "end of the day", "cob", "close of business", "close of play", "tonight", "this evening"):
+        return reference_date.isoformat()  # "by EOD" is due today
+    if p in ("eow", "end of week", "end of the week"):
+        return (reference_date + timedelta(days=max(0, 4 - reference_date.weekday()))).isoformat()
+    if p in ("eom", "end of month", "end of the month"):
+        return (_add_months(reference_date.replace(day=1), 1) - timedelta(days=1)).isoformat()
 
     if p == "today":
         return reference_date.isoformat()

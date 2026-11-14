@@ -94,6 +94,16 @@ On the Tasks tab each open task has a **flag** and a **bell**:
 
 `Start focusing on skipping. Make sure everyday you do 10 minutes of skipping.` gives **one** task, "Do 10 minutes of skipping daily" - not "Start focusing on skipping" plus the specific one. Genuinely different actions in one note (send the sheet, book the dentist) still become separate tasks.
 
+### Deadlines like EOD, reminders, and the morning summary
+
+- `Complete the UAT testing EOD` → a to-do due **today** (no time). Also "COB", "by tonight" (today), "EOW" (this Friday) and "EOM" (last day of the month).
+- `Create a new space IBM and add a task to it: Submit the onboarding document` → the space **and** the to-do inside it ("add a task to it:" is not part of the wording).
+- A to-do's card and bell show a reminder only while it is **still to come**: once it has gone off (e.g. an 11 Nov reminder viewed on the 13th) the date disappears and the bell is empty.
+- A reminder that is more than a day and a half late is **not** sent (switching notifications on two days later no longer delivers an old reminder).
+- In the reminder sheet's "At a date and time", the **Day** field (with a calendar icon) comes first, then **Time**, then a button that says what it will do ("Remind me Sat 14 Nov, 9:00 AM").
+- The morning/evening summary notification shows a coloured square and count per space, then one bullet per to-do.
+- Tapping a to-do in a chat receipt opens its space on the **To-dos** page (Lists for a list entry), not Notes. The space picker's search box no longer pops the keyboard up over the spaces on a phone.
+
 ### Instructions to the app, and pronouns
 
 - `Create a workspace named IBM and add this task: Send the onboarding document tomorrow.` → "Created the space **IBM**" **and** a to-do "Send the onboarding document" (due tomorrow) filed under IBM. "Workspace", "space", "category", "folder" and "area" all mean the same.
@@ -194,10 +204,10 @@ If an answer invents details that aren't in your notes, that is a bug — please
 
 ### Tour, Help & FAQ, feedback (feedback needs `scripts/migration_47_feedback.sql`)
 
-- **Settings → Help → Take the tour again:** *Log anything* types a sample note into a mock chat, then shows what the app makes of it (space, key points, a to-do with its date); *Ask anything* types a sample question and shows the answer with its source chip; then Today, Spaces and Settings are spotlighted. The sample follows the Work / Personal / Both choice. Nothing is saved and no AI is called. Back replays the animation.
+- **Settings → Help → Take the tour again:** five steps, each with a picture of what you are about to see. *Log anything* types a sample note ("Met Priya from Acme... budget capped at ₹5 lakh... book flights for the Mumbai trip tomorrow morning") and shows it filed into **two spaces** (Work and Travel) with its key points and dated to-dos; *Ask anything* types "What is Priya's budget?" and shows the answer with its source chip; *Today* shows a mock of the Overdue / Today / High priority lists; *Spaces* shows mock space cards; *Settings* shows what is behind your initial. The outline round each tab or the profile button is **fully inside the screen** (including Spaces at the right edge) and a tall example scrolls inside its card. Nothing is saved and no AI is called.
 - **Settings → Help → Help & FAQ:** collapsible questions in five groups; the last group answers privacy ("Groq and Cohere, and NVIDIA when Groq is busy").
-- **Rating card:** after you have saved about 5 notes, the next successful save shows "How is MyConfía working for you?" with four faces under the reply. Tap a face → a short form (Okay / Poor also ask what got in the way) → Send → "Thank you" and the card does not return for ~60 days. **Not now** hides it for ~30 days. It never appears after an error or an undone note. Settings → Help → **Rate MyConfía** opens the same form any time.
-- **Report a problem:** Settings → Help → **Report a problem**, or the **flag** under a reply (its category is pre-picked). Needs a category (optional) and a description. The box "Include this reply…" is **off** unless you tick it - nothing from your notes is attached otherwise.
+- **Rating card:** once you have saved 5 notes in total, the next successful save shows "How is MyConfía working for you?" with four faces under the reply. Tap a face → a short form (Okay / Poor also ask what got in the way) → Send → "Thank you" and it comes back only after **25 more notes and at least 30 days**. **Not now** brings it back after **5 more notes**. Choosing "Something else" as the reason makes the text box required. It never appears after an error or an undone note. Settings → Help → **Send feedback** asks "Rate MyConfía" or "Report a problem" (one entry, two clearly different things).
+- **Report a problem:** Settings → Help → **Send feedback → Report a problem**, or the **flag** under a reply (its category is pre-picked). Needs a category (optional) and a description. The box "Include this reply…" is **off** unless you tick it - nothing from your notes is attached otherwise.
 - **Admin → Feedback card:** average rating out of 4, a bar per face, the common reasons, and each reported problem with who sent it, where, and **New / Seen / Fixed** buttons. A Poor rating or a report also emails the admin (throttled). Before the migration, the card says to run it.
 
 ## 5. Things v1.0 deliberately does not do

@@ -5,6 +5,7 @@ import { useDeleteItem, useUpdateTaskStatus } from '../api/tasks'
 import type { ItemList, Task } from '../api/types'
 import { byDue } from '../lib/items'
 import type { SpaceSection } from '../lib/useSectionOrder'
+import { takeSpaceSection } from '../lib/useOpenSpace'
 import ConfirmDialog from './ConfirmDialog'
 import DragToSpace, { Draggable } from './DragToSpace'
 import ItemRow from './ItemRow'
@@ -182,6 +183,15 @@ function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record
   const paneRefs = useRef<(HTMLDivElement | null)[]>([])
   const [active, setActive] = useState(0)
   const [height, setHeight] = useState<number | undefined>(undefined)
+
+  // Arriving from a chat receipt: open on the part that was tapped (To-dos / Lists), not always the first.
+  useLayoutEffect(() => {
+    const wanted = takeSpaceSection()
+    const el = strip.current
+    const i = wanted ? order.indexOf(wanted as SpaceSection) : -1
+    if (el && i > 0 && el.clientWidth > 0) el.scrollLeft = i * el.clientWidth
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const onScroll = useCallback(() => {
     const el = strip.current
