@@ -11,6 +11,18 @@ import Segmented from '../components/Segmented'
 // are being hit, and every recent error with the reference code the user
 // was shown. Admins only - the list is hardcoded in api/routers/admin.py.
 
+// What each AI feature does, in plain words (the names are the code's own).
+const FEATURE_LABEL: Record<string, string> = {
+  extraction: 'reading notes',
+  moderation: 'safety check',
+  intent: 'note or question?',
+  agent: 'answering questions',
+  morning_brief: 'morning summary',
+  parse_query: 'understanding questions',
+  retrieval: 'answering questions',
+}
+const featureLabel = (f: string) => FEATURE_LABEL[f] ?? f
+
 const shortModel = (m: string) => m.replace('openai/gpt-oss-', '').replace('cohere', 'Cohere')
 const num = (n: number) => n.toLocaleString()
 
@@ -273,12 +285,12 @@ function UsersCard({ o }: { o: AdminOverview }) {
               </p>
               {Object.keys(u.by_feature).length > 0 && (
                 <p className="mt-0.5 text-[0.75rem] text-text-faint">
-                  {Object.entries(u.by_feature).map(([f, t]) => `${f} ${num(t)}`).join(' · ')}
+                  {Object.entries(u.by_feature).map(([f, t]) => `${featureLabel(f)} ${num(t)}`).join(' · ')}
                 </p>
               )}
               {u.storage && (
                 <p className="mt-0.5 text-[0.75rem] text-text-faint">
-                  {bytes(stored(u.storage))} stored · {u.storage.notes} notes · {u.storage.documents} docs
+                  {bytes(stored(u.storage))} stored · {u.storage.notes} notes stored now · {u.storage.tasks} to-dos stored now
                 </p>
               )}
               <div className="mt-2 grid grid-cols-2 gap-3">

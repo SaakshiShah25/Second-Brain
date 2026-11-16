@@ -203,8 +203,8 @@ export default function InitiativesManager() {
 
       {confirmDeleteId !== null && (
         <ConfirmDialog
-          title="Delete initiative"
-          message="Notes tagged with this initiative will become Others, not deleted."
+          title="Delete this space?"
+          message="Its notes, to-dos and lists are not deleted - they move to Others. The space itself can’t be brought back."
           confirmLabel="Delete"
           busy={deleteInitiative.isPending}
           busyLabel="Deleting…"
