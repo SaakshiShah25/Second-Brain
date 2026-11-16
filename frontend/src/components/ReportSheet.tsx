@@ -48,7 +48,7 @@ export default function ReportSheet({
         context: { ...feedbackContext(), about, included: include && reply ? reply.slice(0, 2000) : undefined },
       })
       setSent(true)
-      setTimeout(onClose, 1500)
+      setTimeout(onClose, 4000)
     } catch (err) {
       showError(err)
     }
@@ -61,8 +61,11 @@ export default function ReportSheet({
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft text-accent">
             <Check size={24} strokeWidth={2.4} />
           </span>
-          <p className="text-lg font-semibold">Thanks - we’ve got it</p>
-          <p className="text-[0.9375rem] text-text-muted">We read every report.</p>
+          <p className="text-lg font-semibold">Thanks for your feedback</p>
+          <p className="text-[0.9375rem] text-text-muted">We’ve got your report and read every one.</p>
+          <Button variant="primary" onClick={onClose} className="mt-2 min-w-32">
+            Done
+          </Button>
         </div>
       </Sheet>
     )

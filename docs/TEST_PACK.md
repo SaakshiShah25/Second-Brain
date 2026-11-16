@@ -210,6 +210,14 @@ If an answer invents details that aren't in your notes, that is a bug — please
 - **Admin → Backup AI (NVIDIA)** card: how many notes went through NVIDIA in the chosen period (and what share of all notes logged), how many times Groq turned a note away, how many times NVIDIA failed too (with the last reason), when it was last used, and notes per NVIDIA model. "Not needed in this period" means Groq took every note. NVIDIA's model is no longer listed in the AI budget against Groq's 200,000 limit, and you get one email a day the first time notes go through the backup.
 - The "≈ N more captures today" tile is a **forecast** (the day's remaining AI budget ÷ the average cost of a capture); the budget restarts at midnight UTC (5:30 AM IST).
 
+### Voice, kinship words, thanks, and the Excel result columns
+
+- **Silence:** tap the mic, say nothing for ~5 seconds, tap stop → the box stays **empty** and a message says "We didn't hear anything - tap the mic and try again, or type your note." Nothing is typed for you (before, the transcriber could make up "I'm sorry" / "Thank you"). Real speech - including a recording that says "I'm sorry I missed your call…" - is transcribed as normal; Cancel (bin) still throws a recording away.
+- **`Apply for 4th and 5th January leave since mama is coming to my home from Canada`** keeps **"Mama is coming to my home from Canada"** (not "Mother…"). Kinship words (mama, mami, mausi, chacha, bua, nana, dada…) stay exactly as written.
+- After sending a rating or a report the sheet says **"Thanks for your feedback"** with a Done button (it closes by itself after a few seconds). The admin rating line reads "4.0 average out of 4 · 1 rating" with a line saying 4 = Loving it … 1 = Poor.
+- **Excel, notes columns:** "Notes sent (last 30 days)" is split into **sent before result tracking began** (result unknown), **sent since** that, and of those **saved / did not go through / no result**. An extra sheet, **About these columns**, says when tracking began and what each column means. "Days since last use" is never blank for someone who used the app.
+- A ticked to-do stays in place, struck through, until you swipe it away or leave/reload the page; then it is listed under **Completed**.
+
 ### A space's Notes part: two tabs
 
 - Under **Notes** on a space's page there are two small tabs, **Key points** and **Source notes · N** (no pencil any more). Key points shows what was extracted, grouped by topic; Source notes lists the notes exactly as written - tap one to read, change or delete it. If a note has no key points, the Key points tab says so and offers "See the notes as written", which switches to Source notes.

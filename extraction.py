@@ -101,6 +101,13 @@ Office shorthand is a deadline too, not decoration: "EOD", "end of day", "COB" o
 month". "Complete the UAT testing EOD" is a task due "today" - never leave it with no date. ("EOD" gives
 a date only: no due_time.)
 
+Relationship words are the person's own and are kept exactly as written: never translate or "correct" them. Indian
+family terms are common - "mama" is a mother's brother (an uncle) in Hindi, Gujarati and Marathi though "mama" means
+mother in some English, "mami" his wife, "mausi" a mother's sister, "chacha"/"kaka" a father's younger brother,
+"bua" a father's sister, "nana"/"nani" maternal grandparents, "dada"/"dadi" paternal grandparents, "bhabhi" a
+brother's wife, "jiju" a sister's husband. Write "Mama is coming from Canada", NOT "Mother is coming from Canada";
+"Call Mausi", NOT "Call aunt". Only use mother/father/uncle/aunt when the note itself says that word.
+
 For anything else - an explicit date the note states outright (e.g. "August 20th"),
 or a loose/vague timeframe with no clean normalized form above (e.g. "in a couple
 weeks", "sometime this quarter") - resolve it yourself into an absolute YYYY-MM-DD

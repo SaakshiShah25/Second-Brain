@@ -59,7 +59,7 @@ export default function FeedbackSheet({ initialRating, onClose }: { initialRatin
         context: feedbackContext(),
       })
       setSent(true)
-      setTimeout(onClose, 1400)
+      setTimeout(onClose, 4000)
     } catch (err) {
       showError(err)
     }
@@ -72,8 +72,11 @@ export default function FeedbackSheet({ initialRating, onClose }: { initialRatin
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft text-accent">
             <Check size={24} strokeWidth={2.4} />
           </span>
-          <p className="text-lg font-semibold">Thank you</p>
+          <p className="text-lg font-semibold">Thanks for your feedback</p>
           <p className="text-[0.9375rem] text-text-muted">It helps us make MyConfía better.</p>
+          <Button variant="primary" onClick={onClose} className="mt-2 min-w-32">
+            Done
+          </Button>
         </div>
       </Sheet>
     )

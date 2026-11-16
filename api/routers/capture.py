@@ -485,7 +485,7 @@ async def capture_voice(
     except Exception as e:
         raise HTTPException(500, f"Transcription failed: {e}")
     if not text or not text.strip():
-        raise HTTPException(422, "Didn't catch anything in that recording - try again.")
+        raise HTTPException(422, "We didn't hear anything in that recording - tap the mic and try again, or type your note.")
     # This endpoint has no chat.py in front of it at all (the frontend's
     # own mic flow goes through the separate /api/transcribe -> /api/chat
     # path instead - see ChatPage.tsx) - moderation has never run on

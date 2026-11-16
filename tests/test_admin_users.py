@@ -67,7 +67,7 @@ def test_the_table_has_only_real_people_with_a_status_and_day_counts(world):
 
 def test_the_excel_file_has_both_sheets_and_the_right_columns(world):
     wb = load_workbook(io.BytesIO(admin.users_workbook(admin._users_table())))
-    assert wb.sheetnames == ["All users", "Not using it"]
+    assert wb.sheetnames == ["All users", "Not using it", "About these columns"]
     header = [c.value for c in wb["All users"][1]]
     assert header[:2] == ["Email", "Status"] and "Days used (all time)" in header and "Days since last use" in header
     assert not any("could have been used" in h or "% of those" in h for h in header)
@@ -169,6 +169,7 @@ def test_sent_saved_and_failed_notes_are_counted_with_reasons_and_in_the_excel(m
     assert out["reasons"][0] == {"reason": "AI busy or out of budget", "count": 2}
     row = admin._users_table()[0]
     assert (row["captures_30"], row["saved_30"], row["failed_30"]) == (6, 3, 3)
+    assert row["sent_tracked"] == 6 and row["sent_before_tracking"] == 0 and row["in_progress"] == 0
 
 
 def test_a_capture_records_how_it_ended(monkeypatch):
@@ -211,3 +212,28 @@ def test_events_with_test_only_model_names_never_count_as_real_usage(monkeypatch
     monkeypatch.setattr(db, "get_storage_by_user", lambda: [])
     fb = admin._overview(7)["fallback"]
     assert fb["notes"] == 0 and fb["failed"] == 0 and fb["models"] == []
+
+
+def test_notes_sent_before_result_tracking_began_are_split_from_the_ones_that_can_be_compared(monkeypatch):
+    blank = {"status": None, "duration_ms": None, "model": None, "tokens": None, "error_id": None, "detail": {}, "user_id": "a", "kind": "usage"}
+    ev = lambda name, days: {**blank, "name": name, "created_at": iso(days)}
+    # 5 sent over the last 20 days; outcomes only exist from 2 days ago: 3 sent since, of which 2 saved and 1 still unaccounted for
+    events = [ev("interactions_logged", d) for d in (20, 15, 10)] + [ev("interactions_logged", d) for d in (2, 1, 0)] \
+        + [ev("capture_saved", 2), ev("capture_saved", 1)]
+    monkeypatch.setattr(db, "get_all_users", lambda: {"a": {"email": "real@gmail.com", "created_at": iso(30), "last_sign_in_at": iso(0)}})
+    monkeypatch.setattr(db, "get_app_events", lambda since: events)
+    monkeypatch.setattr(db, "get_note_dates", lambda: [])
+    monkeypatch.setattr(db, "get_activity_days", lambda: [])
+    monkeypatch.setattr(db, "get_storage_by_user", lambda: [])
+    row = admin._users_table()[0]
+    assert row["captures_30"] == 6 and row["sent_before_tracking"] == 3 and row["sent_tracked"] == 3
+    assert row["saved_30"] == 2 and row["failed_30"] == 0 and row["in_progress"] == 1
+    wb = load_workbook(io.BytesIO(admin.users_workbook([row])))
+    assert wb.sheetnames[-1] == "About these columns" and "tracking began" in wb["About these columns"]["A2"].value
+
+
+def test_timestamps_with_odd_fraction_digits_still_give_days_since(monkeypatch):
+    now = datetime(2026, 11, 16, 9, 0, tzinfo=timezone.utc)
+    for ts in ("2026-11-16T04:50:12.12345+00:00", "2026-11-15T04:50:12.1+00:00", "2026-11-15T04:50:12.123456Z", "2026-11-15"):
+        assert admin._days_ago(ts, now) in (0, 1), ts
+    assert admin._days_ago("2026-11-16T04:50:12.12345+00:00", now) == 0

@@ -532,10 +532,11 @@ function Feedback() {
         <Empty>No ratings yet. The card appears after someone has saved a few notes.</Empty>
       ) : (
         <>
-          <p className="mb-3 text-[0.9375rem]">
+          <p className="text-[0.9375rem]">
             <span className="text-2xl font-semibold tabular-nums">{r.average?.toFixed(1)}</span>
-            <span className="text-text-muted"> / 4 from {r.count} {r.count === 1 ? 'rating' : 'ratings'}</span>
+            <span className="text-text-muted"> average out of 4 · {r.count} {r.count === 1 ? 'rating' : 'ratings'}</span>
           </p>
+          <p className="mb-3 text-[0.75rem] text-text-faint">Each rating is 4 (Loving it), 3 (Good), 2 (Okay) or 1 (Poor); this is their average. 4.0 means everyone chose Loving it.</p>
           <div className="flex flex-col gap-2">
             {([4, 3, 2, 1] as const).map((n) => (
               <div key={n} className="flex items-center gap-2.5 text-[0.8125rem]">

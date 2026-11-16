@@ -310,5 +310,5 @@ async def transcribe(file: UploadFile, user_id: str = Depends(get_current_user_i
     except Exception as e:
         raise HTTPException(500, f"Transcription failed: {e}")
     if not text or not text.strip():
-        raise HTTPException(422, "Didn't catch anything in that recording - try again.")
+        raise HTTPException(422, "We didn't hear anything in that recording - tap the mic and try again, or type your note.")
     return {"transcript": text}

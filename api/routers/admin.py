@@ -23,6 +23,7 @@ Who is an admin: the ADMIN_EMAILS list below (hardcoded, not an env var).
 
 import logging
 import os
+import re
 import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
@@ -143,13 +144,21 @@ def is_test_account(email: str) -> bool:
     return e.endswith(_TEST_SUFFIXES) or e in hidden
 
 
+def parse_ts(ts) -> datetime:
+    """ISO timestamp -> datetime. Python 3.9's fromisoformat only accepts 3 or 6 fractional-second digits, and Postgres drops
+    trailing zeros ('...12.12345+00:00'), so a person's last-use day came back empty. Pad the fraction to 6 digits first."""
+    text = str(ts).replace("Z", "+00:00")
+    text = re.sub(r"\.(\d+)", lambda m: "." + (m.group(1) + "000000")[:6], text, count=1)
+    return datetime.fromisoformat(text)
+
+
 def _days_ago(ts, now) -> Optional[int]:
     """Calendar days (UTC dates) between an ISO timestamp and today, or None. Joined on the 1st and now the 14th is 13,
     so "days used" (a count of calendar dates, at most this + 1 including the day joined) never exceeds it by more than one."""
     if not ts:
         return None
     try:
-        return max(0, (now.date() - datetime.fromisoformat(str(ts).replace("Z", "+00:00")).date()).days)
+        return max(0, (now.date() - parse_ts(ts).date()).days)
     except ValueError:
         return None
 
@@ -426,6 +435,9 @@ def _users_table(include_test: bool = False) -> list:
         storage_ok = True
     except Exception:
         storage, storage_ok = {}, False
+    # Outcomes (saved / didn't go through) are recorded only since they were introduced; "sent" goes back 30 days. So the
+    # sent notes are split at the moment tracking began, and only the later ones can be compared with saved / failed.
+    tracking_since = min((e["created_at"] for e in events if e["kind"] == "usage" and e["name"] in ("capture_saved", "capture_failed")), default=None)
     seen_days, last_event, counts = defaultdict(set), {}, defaultdict(Counter)
     for e in events:
         uid = e.get("user_id")
@@ -437,6 +449,8 @@ def _users_table(include_test: bool = False) -> list:
             counts[uid][ACTIONS[e["name"]]] += 1
         elif e["kind"] == "usage" and e["name"] in ("capture_saved", "capture_failed"):
             counts[uid][e["name"]] += 1
+        if e["kind"] == "usage" and e["name"] == "interactions_logged" and tracking_since and e["created_at"] >= tracking_since:
+            counts[uid]["sent_tracked"] += 1
         elif e["kind"] == "llm":
             counts[uid]["tokens"] += e["tokens"] or 0
     # Days they used the app, for good: the permanent per-day record (schema.sql section 49) plus what the 30 days of events
@@ -484,7 +498,11 @@ def _users_table(include_test: bool = False) -> list:
             "days_used": len(ever.get(uid, ())), "days_with_a_note": len(note_days.get(uid, ())),
             # No row at all means nothing is stored for them (they have none, or deleted them): 0, not blank.
             "notes": st.get("notes", 0 if storage_ok else len(note_days.get(uid, ()))), "tasks": st.get("tasks", 0 if storage_ok else None),
-            "captures_30": counts[uid]["capture"], "saved_30": counts[uid]["capture_saved"], "failed_30": counts[uid]["capture_failed"],
+            "captures_30": counts[uid]["capture"],
+            "tracking_since": (tracking_since or "")[:10] or None,
+            "sent_before_tracking": counts[uid]["capture"] - counts[uid]["sent_tracked"], "sent_tracked": counts[uid]["sent_tracked"],
+            "saved_30": counts[uid]["capture_saved"], "failed_30": counts[uid]["capture_failed"],
+            "in_progress": max(0, counts[uid]["sent_tracked"] - counts[uid]["capture_saved"] - counts[uid]["capture_failed"]),
             "questions_30": counts[uid]["question"], "tokens_30": counts[uid]["tokens"],
             "stored_kb": round(((st.get("note_bytes") or 0) + (st.get("task_bytes") or 0) + (st.get("document_bytes") or 0) + (st.get("index_bytes") or 0)) / 1024) if st else None,
         })
@@ -500,7 +518,9 @@ XLSX_COLUMNS = [
     ("Last used the app (any activity)", "last_used", 16), ("Days since last use", "days_since_last_use", 12),
     ("Days used (all time)", "days_used", 12), ("Days a note was saved (all time)", "days_with_a_note", 16),
     ("Notes stored now", "notes", 10), ("To-dos stored now", "tasks", 10),
-    ("Notes sent (last 30 days)", "captures_30", 12), ("...of which saved", "saved_30", 12), ("...of which did not go through", "failed_30", 14),
+    ("Notes sent (last 30 days)", "captures_30", 12),
+    ("...sent before result tracking began (result unknown)", "sent_before_tracking", 18), ("...sent since result tracking began", "sent_tracked", 16),
+    ("...of those: saved", "saved_30", 12), ("...of those: did not go through", "failed_30", 14), ("...of those: no result (cancelled / in progress)", "in_progress", 16),
     ("Questions asked (last 30 days)", "questions_30", 13),
     ("AI tokens (last 30 days)", "tokens_30", 12), ("Stored (KB)", "stored_kb", 10),
 ]
@@ -529,6 +549,20 @@ def users_workbook(rows: list) -> bytes:
         ws.auto_filter.ref = ws.dimensions
     sheet(wb.active, "All users", rows)
     sheet(wb.create_sheet(), "Not using it", [r for r in rows if r["status"].startswith(("Not using", "Never"))])
+    since = next((r["tracking_since"] for r in rows if r.get("tracking_since")), None)
+    about = wb.create_sheet("About these columns")
+    about.column_dimensions["A"].width = 120
+    for line in [
+        "Notes sent: every time a note was sent in the last 30 days, counted when it was sent - even if it was deleted later.",
+        f"Result tracking began {since}: from then on each note also records whether it was saved or did not go through (and why)." if since
+        else "Result tracking has not recorded anything yet.",
+        "So only the notes sent since tracking began can be compared with saved / did not go through; earlier ones have no recorded result.",
+        "No result (cancelled / in progress): sent since tracking began but neither saved nor failed - e.g. the person pressed Stop.",
+        "Notes stored now / To-dos stored now: what exists in the database today (deleted notes are not counted).",
+        "Last login is a fresh sign-in; Last used the app is any activity. The app keeps people signed in, so use can be later than login.",
+        "Days used (all time): days with any activity, kept permanently (and rebuilt from older records and saved notes where possible).",
+    ]:
+        about.append([line])
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -560,7 +594,7 @@ def _feedback(days: int) -> dict:
     counts = Counter(r["rating"] for r in ratings)
     weeks: dict = defaultdict(list)
     for r in ratings:
-        d = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")).date()
+        d = parse_ts(r["created_at"]).date()
         weeks[(d - timedelta(days=d.weekday())).isoformat()].append(r["rating"])
     reasons = Counter(t for r in rows for t in (r.get("tags") or []))
     return {
