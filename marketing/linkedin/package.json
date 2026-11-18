@@ -1,0 +1,12 @@
+{
+  "name": "myconfia-linkedin-campaign",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "node serve.mjs",
+    "render": "node render.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.56.1"
+  }
+}

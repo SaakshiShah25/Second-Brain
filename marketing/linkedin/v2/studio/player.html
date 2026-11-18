@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyConfía Video Player v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root { --paper:#fdfbf7; --ink:#1c1917; --muted:#6b645a; --accent:#ea580c; --amber:#f5a524; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #e9e4da; font-family: 'Geist', -apple-system, sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
+  body.render { background: var(--paper); overflow: hidden; }
+  #wrap { position: relative; width: 1080px; height: 1350px; transform-origin: top left; }
+  #stage { position: absolute; inset: 0; overflow: hidden; background: #141210; }
+  body:not(.render) #wrap { box-shadow: 0 30px 80px rgba(0,0,0,.18); border-radius: 18px; overflow: hidden; }
+
+  .scene { overflow: hidden; }
+  .scene.light { --bg:#fdfbf7; --bg2:#f4f1eb; --card:#ffffff; --hover:#ece8e0; --border:rgba(40,30,20,.07); --border-strong:rgba(40,30,20,.14); --ink:#1c1917; --muted:#6b645a; --faint:#a39d92; --accent:#ea580c; --amber:#f5a524; --shadow:0 1px 2px rgba(40,30,20,.04),0 14px 40px rgba(40,30,20,.09); background:var(--bg); color:var(--ink); }
+  .scene.dark { --bg:#141210; --bg2:#1d1b18; --card:#221f1c; --hover:#2d2a26; --border:rgba(245,240,230,.07); --border-strong:rgba(245,240,230,.14); --ink:#f5f2eb; --muted:#b0aa9e; --faint:#736e65; --accent:#ff7a33; --amber:#f7b23b; --shadow:0 1px 2px rgba(0,0,0,.3),0 14px 40px rgba(0,0,0,.35); background:var(--bg); color:var(--ink); }
+  .scene.light::before, .scene.dark::before { content:''; position:absolute; inset:0; pointer-events:none;
+    background: radial-gradient(900px 700px at 50% 0%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%); }
+  .w { display:inline-block; white-space:nowrap; }
+  .acc { color: var(--accent); }
+
+  .group { background:var(--card); border-radius:30px; box-shadow:var(--shadow); border:1px solid var(--border); overflow:hidden; }
+  .row { display:flex; align-items:center; gap:24px; padding:24px 30px; border-top:1px solid var(--border); }
+  .row:first-child { border-top:0; }
+  .rt { font-weight:550; letter-spacing:-0.02em; position:relative; display:inline-block; color:var(--ink); }
+  .rt::after { content:''; position:absolute; left:0; top:55%; height:2px; width:100%; background:var(--faint); transform-origin:left; transform:scaleX(var(--strike,0)); }
+  .rm { font-size:.72em; color:var(--muted); margin-top:4px; display:flex; align-items:center; gap:6px; white-space:nowrap; }
+  .rm svg { display:inline-block !important; }
+  .ring { width:1.15em; height:1.15em; border-radius:50%; border:3px solid var(--faint); flex:none; display:flex; align-items:center; justify-content:center; }
+  .ring svg { opacity:0; } .ring.on { background:#16a34a; border-color:#16a34a; } .ring.on svg { opacity:1; }
+  .pill { font-size:.66em; font-weight:650; padding:6px 14px; border-radius:99px; white-space:nowrap; }
+  .chipx { display:inline-flex; align-items:center; gap:12px; padding:14px 26px; border-radius:99px; border:2px solid; font-weight:600; white-space:nowrap; box-shadow:var(--shadow); }
+
+  .device.phone { background:#0b0a09; border-radius:64px; box-shadow: 0 50px 100px rgba(0,0,0,.28), inset 0 0 0 2px #2b2724; }
+  .device.laptop { background:#0b0a09; border-radius:26px 26px 6px 6px; box-shadow: inset 0 0 0 2px #2b2724; }
+  .banner { display:flex; gap:24px; align-items:center; padding:24px 28px; border-radius:40px; background:color-mix(in srgb, var(--card) 88%, transparent);
+    backdrop-filter: blur(24px); box-shadow: 0 30px 80px rgba(0,0,0,.25); border:1px solid var(--border); }
+  .cta { display:flex; align-items:center; gap:16px; padding:28px 56px; border-radius:99px; background:var(--accent); color:#fff; font-size:42px; font-weight:700; letter-spacing:-0.02em; white-space:nowrap; box-shadow:0 20px 50px color-mix(in srgb, var(--accent) 40%, transparent); }
+  .card2 { background:var(--card); border-radius:30px; box-shadow:var(--shadow); border:1px solid var(--border); }
+  .mono { font-family: 'Geist Mono', ui-monospace, monospace; }
+  /* preview UI */
+  #ui { position: fixed; left: 0; right: 0; bottom: 0; display:flex; gap:14px; align-items:center; padding:14px 20px; background:rgba(28,25,23,.92); color:#fff; font-size:15px; z-index:10; }
+  #ui button { background:#ea580c; color:#fff; border:0; border-radius:99px; padding:9px 18px; font:600 15px 'Geist', sans-serif; cursor:pointer; }
+  #ui input[type=range] { flex:1; accent-color:#ea580c; }
+  #ui a { color:#f5c08a; }
+  body.render #ui { display:none; }
+</style>
+</head>
+<body>
+<div id="wrap"><div id="stage"></div></div>
+<div id="ui">
+  <button id="play">▶ Play with sound</button>
+  <input id="seek" type="range" min="0" max="1000" value="0">
+  <span id="time" class="mono">0.0s</span>
+  <a href="../index.html">← Campaign v2</a>
+</div>
+<script type="module">
+  import { buildAudio, encodeWav } from './audio.js';
+  import { makeCues } from './engine.js';
+  import { preload } from './components.js';
+
+  const params = new URLSearchParams(location.search);
+  const name = params.get('v') || 'intro';
+  const render = params.has('render');
+  if (render) document.body.classList.add('render');
+
+  const mod = await import(`./videos/${name}.js`);
+  const def = mod.default;
+  const stage = document.getElementById('stage');
+  const { list, cue } = makeCues();
+  const update = def.build(stage, cue);
+  // PACE: the whole video is stretched by this factor (1 = the original, faster cut). Scenes, captions, recorded
+  // takes, sound effects and music all slow down together so everything stays in sync and stays readable.
+  const SLOW = def.pace ?? 1.35;
+  const DUR = def.duration * SLOW;
+  const m0 = def.music;
+  const spec = {
+    duration: DUR, seed: def.seed ?? 11,
+    music: m0 && { ...m0, bpm: (m0.bpm ?? 104) / SLOW, drumsFrom: (m0.drumsFrom ?? 0) * SLOW, arpFrom: (m0.arpFrom ?? 0) * SLOW,
+      dips: (m0.dips ?? []).map(([a, b, c]) => [a * SLOW, b * SLOW, c]) },
+    cues: list.map(c => ({ ...c, t: c.t * SLOW, ...(c.len !== undefined ? { len: c.len * SLOW } : {}) })),
+  };
+
+  await document.fonts.ready;
+  await Promise.all([...new Set(preload)].map(u => new Promise(r => { const i = new Image(); i.onload = () => i.decode().then(r, r); i.onerror = () => { console.error('missing frame ' + u); r(); }; i.src = u; })));
+  update(0);
+
+  window.__video = {
+    duration: DUR,
+    poster: (def.poster ?? def.duration - 1.5) * SLOW,
+    seek: t => update(t / SLOW),
+    async renderAudio() {
+      const sr = 48000;
+      const ctx = new OfflineAudioContext(2, Math.ceil(sr * DUR), sr);
+      buildAudio(ctx, spec, 0);
+      const buf = await ctx.startRendering();
+      const bytes = encodeWav(buf);
+      let s = ''; const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) s += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      return btoa(s);
+    },
+  };
+  window.__ready = true;
+
+  if (!render) {
+    const wrap = document.getElementById('wrap');
+    const fit = () => {
+      const s = Math.min((innerWidth - 40) / 1080, (innerHeight - 100) / 1350);
+      wrap.style.transform = `scale(${s})`;
+      wrap.style.margin = `20px auto 0`;
+      wrap.style.left = `${(innerWidth - 1080 * s) / 2 - 0}px`;
+      wrap.style.position = 'absolute';
+      wrap.style.margin = '0'; wrap.style.top = '20px';
+    };
+    fit(); addEventListener('resize', fit);
+    const seekEl = document.getElementById('seek'), timeEl = document.getElementById('time'), btn = document.getElementById('play');
+    let playing = false, t0 = 0, actx = null;
+    const tick = () => {
+      if (!playing) return;
+      const t = actx.currentTime - t0;
+      if (t >= DUR) { playing = false; btn.textContent = '↻ Replay'; update(def.duration); return; }
+      update(t / SLOW); seekEl.value = t / DUR * 1000; timeEl.textContent = t.toFixed(1) + 's';
+      requestAnimationFrame(tick);
+    };
+    btn.onclick = async () => {
+      if (actx) await actx.close();
+      actx = new AudioContext();
+      t0 = actx.currentTime + 0.08;
+      buildAudio(actx, spec, t0);
+      playing = true; btn.textContent = '■ Playing…';
+      requestAnimationFrame(tick);
+    };
+    seekEl.oninput = () => {
+      playing = false; if (actx) { actx.close(); actx = null; } btn.textContent = '▶ Play with sound';
+      const t = seekEl.value / 1000 * DUR; update(t / SLOW); timeEl.textContent = t.toFixed(1) + 's';
+    };
+  }
+</script>
+</body>
+</html>

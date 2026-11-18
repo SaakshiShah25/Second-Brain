@@ -1,0 +1,14 @@
+{
+ "frames": 22,
+ "marks": {
+  "home": 1,
+  "recording": 2,
+  "spoken": 16,
+  "finished": 18,
+  "sent": 19,
+  "reply": 21,
+  "replyEnd": 22
+ },
+ "width": 804,
+ "height": 1748
+}

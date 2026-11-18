@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MyConfía graphics</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800;900&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { background: #888; font-family: 'Geist', -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+  body.pdf { background: none; }
+  .art { position: relative; overflow: hidden; break-after: page; }
+  .light { --bg:#fdfbf7; --bg2:#f4efe6; --card:#fff; --ink:#1c1917; --muted:#6b645a; --faint:#a39d92; --line:rgba(40,30,20,.09); --accent:#ea580c; --soft:#fde6d6;
+    background: var(--bg); color: var(--ink); }
+  .dark { --bg:#141210; --bg2:#1d1b18; --card:#221f1c; --ink:#f5f2eb; --muted:#b0aa9e; --faint:#736e65; --line:rgba(245,240,230,.09); --accent:#ff7a33; --soft:#3a2418;
+    background: var(--bg); color: var(--ink); }
+  .navy { --bg:#211f38; --ink:#f6f1e7; --muted:#c8c2d8; --faint:#8a85a3; --accent:#e8a93a; --line:rgba(246,241,231,.12); --card:#2c2a47; --soft:#3a3656;
+    background: var(--bg); color: var(--ink); }
+  .glow::before { content:''; position:absolute; inset:0; pointer-events:none;
+    background: radial-gradient(1000px 760px at 50% -6%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 70%); }
+  .acc { color: var(--accent); }
+  .brand { position:absolute; display:flex; align-items:center; gap:16px; font-weight:700; font-size:34px; letter-spacing:-0.02em; z-index:5; }
+  .brand img { width:52px; height:52px; border-radius:13px; }
+  .tag { position:absolute; z-index:5; font-family:'Geist Mono', monospace; font-weight:600; font-size:22px; letter-spacing:.12em; text-transform:uppercase;
+    color: var(--accent); padding:12px 22px; border-radius:99px; border:2px solid color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--bg) 80%, transparent); }
+  .title { position:absolute; z-index:4; font-weight:800; letter-spacing:-0.05em; line-height:.96; }
+  .sub { position:absolute; z-index:4; font-weight:500; letter-spacing:-0.02em; color: var(--muted); line-height:1.25; }
+  .watch { position:absolute; z-index:6; display:flex; align-items:center; gap:14px; padding:18px 30px 18px 22px; border-radius:99px;
+    background: var(--accent); color:#fff; font-weight:700; font-size:30px; letter-spacing:-0.01em; box-shadow: 0 18px 44px color-mix(in srgb, var(--accent) 45%, transparent); }
+  .watch i { width:44px; height:44px; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; }
+  .watch i::after { content:''; border-left:15px solid var(--accent); border-top:10px solid transparent; border-bottom:10px solid transparent; margin-left:4px; }
+  .phone { position:absolute; background:#0b0a09; padding:14px; border-radius:72px; box-shadow: 0 50px 110px rgba(0,0,0,.30), inset 0 0 0 2px #2b2724; z-index:2; }
+  .phone img { display:block; width:100%; border-radius:58px; }
+  .laptop { position:absolute; z-index:2; }
+  .laptop .scr { background:#0b0a09; padding:16px 16px 18px; border-radius:26px 26px 0 0; box-shadow: inset 0 0 0 2px #2b2724, 0 40px 90px rgba(0,0,0,.25); }
+  .laptop .scr img { display:block; width:100%; border-radius:10px; }
+  .laptop .base { height:26px; margin:0 -6%; background: linear-gradient(#d9d4cb, #b9b3a8); border-radius: 0 0 22px 22px; }
+  .dark .laptop .base { background: linear-gradient(#4a4540, #2c2926); }
+  .shot { position:absolute; z-index:2; border-radius:28px; overflow:hidden; box-shadow: 0 40px 90px rgba(0,0,0,.28); border:1px solid var(--line); }
+  .shot img { display:block; width:100%; }
+  .chip { display:inline-flex; align-items:center; gap:12px; padding:14px 26px; border-radius:99px; font-weight:650; font-size:32px; white-space:nowrap;
+    background: var(--card); border:2px solid var(--c); color: var(--c); box-shadow: 0 10px 30px rgba(40,30,20,.08); }
+  .chip b { width:14px; height:14px; border-radius:50%; background: var(--c); }
+  .card { background: var(--card); border:1px solid var(--line); border-radius:32px; box-shadow: 0 1px 2px rgba(40,30,20,.04), 0 18px 50px rgba(40,30,20,.08); }
+  .bubble { position:absolute; z-index:5; display:flex; gap:22px; align-items:flex-start; padding:28px 34px; border-radius:36px; background: var(--card);
+    border:2px solid color-mix(in srgb, var(--accent) 30%, transparent); box-shadow: 0 30px 80px rgba(0,0,0,.18); font-weight:600; letter-spacing:-0.02em; line-height:1.25; }
+  .mic { flex:none; width:64px; height:64px; border-radius:50%; background: var(--accent); display:flex; align-items:center; justify-content:center; }
+  .mono { font-family:'Geist Mono', monospace; }
+  .dots { position:absolute; display:flex; gap:12px; z-index:6; }
+  .dots span { width:14px; height:14px; border-radius:99px; background: var(--faint); opacity:.5; }
+  .dots span.on { width:44px; background: var(--accent); opacity:1; }
+  .swipe { position:absolute; z-index:6; font-weight:700; font-size:28px; color: var(--accent); display:flex; gap:10px; align-items:center; }
+  .num { font-family:'Geist Mono', monospace; font-weight:600; color: var(--accent); }
+  ul.clean { list-style:none; padding:0; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module">
+  import { graphics } from './defs.js';
+  const q = new URLSearchParams(location.search);
+  const g = graphics.find(x => x.id === q.get('g'));
+  const root = document.getElementById('root');
+  const pages = q.has('all') ? g.pages.map((_, i) => i) : [Number(q.get('p') || 0)];
+  if (q.has('all')) document.body.classList.add('pdf');
+  root.innerHTML = pages.map(i => `<div class="art ${Array.isArray(g.theme) ? g.theme[i] : (g.theme || 'light')}" style="width:${g.w}px;height:${g.h}px">${g.pages[i]()}</div>`).join('');
+  await document.fonts.ready;
+  await Promise.all([...document.images].map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; })));
+  window.__count = g.pages.length; window.__size = [g.w, g.h]; window.__ready = true;
+</script>
+</body>
+</html>

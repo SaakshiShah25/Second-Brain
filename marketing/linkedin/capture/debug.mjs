@@ -1,0 +1,10 @@
+import { launch, openApp } from './shoot.mjs';
+const b = await launch();
+const { page } = await openApp(b, { theme: 'light', viewport: { width: 402, height: 874 }, dpr: 1 });
+page.on('console', m => console.log('console', m.type(), m.text().slice(0, 300)));
+page.on('requestfailed', r => console.log('failed', r.url().slice(0, 120)));
+page.on('response', r => { if (!r.url().includes('5199')) console.log('resp', r.status(), r.url().slice(0, 120)); });
+await page.goto('http://localhost:5199/today');
+await page.waitForTimeout(4000);
+console.log((await page.content()).slice(0, 1500));
+await b.close();

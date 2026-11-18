@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyConfía LinkedIn Campaign</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#fdfbf7; --bg2:#f4f1eb; --card:#fff; --ink:#1c1917; --muted:#6b645a; --faint:#a39d92; --accent:#ea580c; --accent-soft:rgba(234,88,12,.1); --border:rgba(40,30,20,.08); --navy:#211f36; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#141210; --bg2:#1d1b18; --card:#221f1c; --ink:#f5f2eb; --muted:#b0aa9e; --faint:#736e65; --accent:#ff7a33; --accent-soft:rgba(255,122,51,.16); --border:rgba(245,240,230,.08); } }
+  :root[data-theme="dark"] { --bg:#141210; --bg2:#1d1b18; --card:#221f1c; --ink:#f5f2eb; --muted:#b0aa9e; --faint:#736e65; --accent:#ff7a33; --accent-soft:rgba(255,122,51,.16); --border:rgba(245,240,230,.08); }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:'Geist',-apple-system,sans-serif; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1180px; margin:0 auto; padding:40px 16px 80px; }
+  header { display:flex; gap:18px; align-items:center; }
+  header h1 { margin:0; font-size:clamp(28px,4vw,44px); letter-spacing:-0.04em; line-height:1.05; }
+  header p { margin:6px 0 0; color:var(--muted); font-size:16px; }
+  .plan { margin:28px 0 36px; display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+  .plan div { background:var(--card); border:1px solid var(--border); border-radius:18px; padding:16px 18px; }
+  .plan b { display:block; font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint); margin-bottom:4px; }
+  .plan span { font-size:15px; font-weight:550; }
+  nav { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:28px; }
+  nav a { text-decoration:none; color:var(--ink); background:var(--bg2); padding:8px 14px; border-radius:99px; font-size:14px; font-weight:550; }
+  nav a:hover { background:var(--accent-soft); color:var(--accent); }
+  .post { display:grid; grid-template-columns:minmax(0,420px) minmax(0,1fr); gap:28px; background:var(--card); border:1px solid var(--border); border-radius:28px; padding:22px; margin-bottom:24px; scroll-margin-top:16px; }
+  .vid { position:relative; }
+  video { width:100%; aspect-ratio:4/5; border-radius:18px; background:#000; display:block; }
+  .vlinks { display:flex; gap:10px; margin-top:10px; flex-wrap:wrap; }
+  .vlinks a, button { font:600 14px 'Geist',sans-serif; border:0; border-radius:99px; padding:9px 16px; cursor:pointer; text-decoration:none; background:var(--bg2); color:var(--ink); }
+  button.primary { background:var(--accent); color:#fff; }
+  .meta { display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:13px; font-weight:600; color:var(--muted); }
+  .meta .pill { background:var(--accent-soft); color:var(--accent); padding:5px 12px; border-radius:99px; }
+  h2 { font-size:clamp(22px,2.4vw,28px); letter-spacing:-0.03em; line-height:1.15; margin:12px 0 14px; }
+  .body { white-space:pre-wrap; font-size:15.5px; line-height:1.55; background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:16px 18px; max-height:420px; overflow:auto; }
+  .tags { color:var(--accent); font-weight:600; font-size:14px; margin:10px 0 0; }
+  .comment { margin-top:14px; font-size:14px; color:var(--muted); background:var(--bg2); border-radius:14px; padding:12px 14px; }
+  .comment b { color:var(--ink); }
+  .actions { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+  .count { font-size:12px; color:var(--faint); margin-left:auto; align-self:center; }
+  .missing { aspect-ratio:4/5; border-radius:18px; background:var(--bg2); display:flex; align-items:center; justify-content:center; text-align:center; color:var(--muted); padding:20px; font-size:14px; }
+  @media (max-width: 820px) { .post { grid-template-columns:1fr; padding:16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg width="64" height="64" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#211f36"/><path d="M348 158 A135 135 0 1 0 291 372" fill="none" stroke="#f5efe3" stroke-width="46" stroke-linecap="round"/><circle cx="358" cy="342" r="47" fill="#e9a93b"/></svg>
+    <div><h1>MyConfía on LinkedIn</h1><p>12 posts, 12 videos with sound · 1080×1350 (4:5), made for the feed</p></div>
+  </header>
+  <div class="plan" id="plan"></div>
+  <nav id="nav"></nav>
+  <main id="posts"></main>
+</div>
+<script type="module">
+  import { posts, schedule } from './posts.js';
+  const $ = s => document.querySelector(s);
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  $('#plan').innerHTML = `
+    <div><b>Cadence</b><span>${schedule.cadence}</span></div>
+    <div><b>Video</b><span>Upload the MP4 natively (not a link). Use the matching .jpg as the thumbnail.</span></div>
+    <div><b>Links</b><span>Waitlist link goes in the first comment. Replace [WAITLIST LINK].</span></div>
+    <div><b>Sound</b><span>The videos work on mute: every beat is on screen. Sound is a bonus.</span></div>`;
+  $('#nav').innerHTML = posts.map((p, i) => `<a href="#${p.id}">${String(i + 1).padStart(2, '0')} · ${p.series.replace('Where it lives · ', '').replace('Persona · ', '')}</a>`).join('');
+  $('#posts').innerHTML = posts.map((p, i) => {
+    const full = `${p.body}\n\n${p.hashtags.join(' ')}`;
+    return `<article class="post" id="${p.id}">
+      <div class="vid">
+        <video src="out/${p.id}.mp4" poster="out/${p.id}.jpg" controls playsinline preload="metadata" onerror="this.outerHTML='<div class=missing>Video not rendered yet.<br>Run: node render.mjs ${p.id}</div>'"></video>
+        <div class="vlinks"><a href="out/${p.id}.mp4" download>⬇ MP4</a><a href="out/${p.id}.jpg" download>⬇ Thumbnail</a><a href="studio/player.html?v=${p.id}">Live animation ↗</a></div>
+      </div>
+      <div>
+        <div class="meta"><span class="pill">${String(i + 1).padStart(2, '0')} · ${esc(p.series)}</span><span>${p.week}</span></div>
+        <h2>${esc(p.headline)}</h2>
+        <div class="body">${esc(p.body)}</div>
+        <p class="tags">${p.hashtags.join(' ')}</p>
+        <div class="comment"><b>First comment:</b> ${esc(p.comment)}</div>
+        <div class="actions">
+          <button class="primary" data-copy="${encodeURIComponent(full)}">Copy post</button>
+          <button data-copy="${encodeURIComponent(p.comment)}">Copy first comment</button>
+          <span class="count">${full.length} / 3000 characters</span>
+        </div>
+      </div>
+    </article>`;
+  }).join('');
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('[data-copy]'); if (!b) return;
+    const old = b.textContent;
+    try { await navigator.clipboard.writeText(decodeURIComponent(b.dataset.copy)); b.textContent = 'Copied ✓'; }
+    catch { b.textContent = 'Copy failed'; }
+    setTimeout(() => (b.textContent = old), 1400);
+  });
+</script>
+</body>
+</html>
