@@ -370,3 +370,19 @@ def test_task_priority_reminder_and_category_are_validated_and_need_the_migratio
     # without the migration the usual edits still work
     call(description="Call the bank")
     assert saved[-1] == {"description": "Call the bank"}
+
+
+def test_capture_options_priority_and_reminders_are_kept_only_when_valid():
+    import api.routers.capture as cap
+    today = date.today().isoformat()
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    opts = cap._task_options
+    assert opts({"priority": "high"}, today, "17:00", False) == ("high", None, None, None)
+    assert opts({"priority": "urgent"}, today, None, False)[0] is None            # only high / low are stored
+    assert opts({"remind_before_minutes": 30}, today, "17:00", False) == (None, 30, None, None)
+    assert opts({"remind_before_minutes": 30}, today, None, False)[1] is None      # needs a due time to count back from
+    assert opts({"remind_before_minutes": 2}, today, "17:00", False)[1] is None    # under the 5 minute floor
+    assert opts({"remind_on": "tomorrow", "remind_time": "16:00"}, tomorrow, "18:00", False) == (None, None, tomorrow, "16:00")
+    assert opts({"remind_time": "19:00"}, today, "17:00", False)[2:] == (None, None)  # after the due time: dropped
+    assert opts({"remind_on": "tomorrow"}, today, None, False)[2:] == (None, None)    # after the due day: dropped
+    assert opts({"priority": "high", "remind_before_minutes": 30}, today, "17:00", True) == (None, None, None, None)  # list entry

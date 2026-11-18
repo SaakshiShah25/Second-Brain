@@ -137,6 +137,10 @@ Return ONLY valid JSON (no markdown fences, no preamble) matching this exact sch
           "due_time": "string - 24-hour HH:MM, ONLY when the note states a clock time for the deadline ('by 7pm' -> '19:00', 'at 10:30 in the morning' -> '10:30', 'by noon' -> '12:00'). Null when no time of day was given - never guess one from words like 'evening' or 'end of day'.",
           "owner": "string - who owns this action item: 'me' if the user (the note-taker) needs to do it (e.g. 'I need to send...', 'Send Vikas a...'), 'them' if someone else owes it to the user (e.g. 'Rohan to get back to us...', 'He's going to send over...'). Default to 'me' if genuinely unclear from phrasing. 'me' for a list entry.",
           "list": "string - per LISTS above, or null for a to-do. 'Oppenheimer looks amazing, must watch' -> description 'Oppenheimer', list 'Movies', detail 'Looks amazing'.",
+          "priority": "'high', 'low' or null. 'high' ONLY when the note says this one matters more: urgent, ASAP, important, high priority, top priority, critical, must/have to do first. 'low' only for low priority, whenever, no rush, nice to have. Null otherwise - never guess it from the topic.",
+          "remind_before_minutes": "integer - ONLY when the note asks to be reminded a set time BEFORE the deadline ('remind me 30 minutes before' -> 30, 'an hour before' -> 60, 'a day before' -> 1440). Needs a due_time. Null otherwise.",
+          "remind_on": "string - ONLY when the note names a day to be reminded that is NOT the deadline itself ('due Friday, remind me Thursday' -> 'Thursday'). Same phrase rules as due_date (a normalized phrase like 'tomorrow'/'next Monday', never a computed date); must be before the deadline. Null otherwise.",
+          "remind_time": "string - 24-hour HH:MM, ONLY when the note names a clock time for the reminder itself ('remind me at 4pm' -> '16:00'). Null otherwise.",
           "repeat": "'daily', 'weekdays', 'weekly', 'monthly', 'yearly' or 'every N hours' - only if the note says it repeats, else null.",
           "detail": "short context to keep with the item (why, the gist, who recommended it), else null."
         }}

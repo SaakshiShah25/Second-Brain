@@ -1,5 +1,5 @@
 import type { Repeat, Task } from '../api/types'
-import { isoLocal, timeLabel } from './dates'
+import { dueLabel, isoLocal, timeLabel } from './dates'
 import { taskInitiativeId } from './taskOptions'
 
 export const REPEAT_OPTIONS: { value: Repeat; label: string }[] = [
@@ -71,4 +71,14 @@ export function openCountsByInitiative(tasks: Task[]): Map<number, number> {
     map.set(key, (map.get(key) ?? 0) + 1)
   }
   return map
+}
+
+/** "reminder 30 min before" / "reminder Thu 4:00 PM" for an item a capture just saved; '' when it has none. */
+export function reminderText(t: { remind_before?: number | null; remind_on?: string | null; remind_time?: string | null }): string {
+  if (t.remind_before) {
+    const m = t.remind_before
+    return `reminder ${m % 1440 === 0 ? `${m / 1440} day${m === 1440 ? '' : 's'}` : m % 60 === 0 ? `${m / 60} hr` : `${m} min`} before`
+  }
+  if (t.remind_on) return `reminder ${dueLabel(t.remind_on, t.remind_time)}`
+  return ''
 }

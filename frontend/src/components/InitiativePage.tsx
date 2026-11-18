@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, ChevronRight, ChevronUp, FileText, NotebookText, Pencil } from 'lucide-react'
+import { Check, ChevronUp, FileText, NotebookText, Pencil } from 'lucide-react'
 import { useUpdateInitiative } from '../api/initiatives'
 import type { Interaction, ItemList as ListLabel, Task } from '../api/types'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
@@ -8,7 +8,7 @@ import ExportInitiativeButton from './ExportInitiativeButton'
 import Segmented from './Segmented'
 import InteractionCard, { ItemList } from './InteractionCard'
 import InitiativeThings, { SectionHeader, thingCounts } from './InitiativeThings'
-import { noteCounts, noteItems, noteSections } from '../lib/noteSections'
+import { noteCounts, noteSections } from '../lib/noteSections'
 import { shortDate } from '../lib/dates'
 import { useSectionOrder } from '../lib/useSectionOrder'
 
@@ -40,36 +40,6 @@ function Heading({ initiative, size = 'md' }: { initiative: Ini; size?: 'md' | '
         {initiative?.name ?? 'Others'}
       </span>
     </span>
-  )
-}
-
-const PREVIEW_POINTS = 4
-
-// One initiative on the Notes overview: how many notes it holds and a glimpse of its latest points. Tapping opens the full page.
-export function InitiativeBlock({ initiative, notes, items = [], onOpen }: Props & { onOpen: () => void }) {
-  // The newest notes' key points first, a handful in all - all of it extracted when the notes were logged.
-  const latest = [...notes]
-    .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || b.id - a.id)
-    .flatMap((n) => noteItems(n))
-    .slice(0, PREVIEW_POINTS)
-
-  return (
-    <section className="rounded-2xl border border-border bg-bg-card lg:h-full">
-      <button type="button" onClick={onOpen} className="pressable block w-full px-4 pt-3.5 pb-3.5 text-left lg:h-full lg:min-h-40">
-        <span className="flex items-center gap-2">
-          <Heading initiative={initiative} />
-          <ChevronRight size={18} strokeWidth={2} className="ml-auto flex-shrink-0 text-text-faint" />
-        </span>
-        <span className="mt-1.5 block pl-[2.625rem] text-[0.8125rem] text-text-faint">
-          {[notes.length ? noteCounts(notes) : '', thingCounts(items)].filter(Boolean).join(' · ') || 'Nothing yet'}
-        </span>
-        {latest.length > 0 && (
-          <span className="mt-3 block">
-            <ItemList items={latest} max={PREVIEW_POINTS} />
-          </span>
-        )}
-      </button>
-    </section>
   )
 }
 

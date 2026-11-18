@@ -273,7 +273,8 @@ def reminder_time_supported() -> bool:
 
 
 def create_task(user_id: str, interaction_id, description, due_date=None, owner="me", due_time=None, initiative_id=None,
-                list_id=None, repeat=None, detail=None):
+                list_id=None, repeat=None, detail=None, priority=None, remind_before=None, remind_on=None,
+                remind_time=None):
     """One item. `interaction_id` is the note it came from, or None for an item captured on its own
     ("add Dune to my reading list"); `list_id` None means the main Tasks list."""
     row = {
@@ -291,6 +292,15 @@ def create_task(user_id: str, interaction_id, description, due_date=None, owner=
     for key, value in (("list_id", list_id), ("repeat", repeat), ("detail", detail)):
         if value:
             row[key] = value
+    # Priority and reminders need their migrations (38, 41, 45); without them the item still saves, minus these.
+    if priority in ("high", "low") and task_extras_supported():
+        row["priority"] = priority
+    if remind_before and remind_before_supported():
+        row["remind_before"] = remind_before
+    elif remind_on and task_extras_supported():
+        row["remind_on"] = remind_on
+        if remind_time and reminder_time_supported():
+            row["remind_time"] = remind_time
     try:
         resp = get_client().table("task").insert(_encrypt_fields("task", row)).execute()
     except Exception as e:

@@ -9,7 +9,8 @@ import type { Interaction, ItemList, Task } from '../api/types'
 import Button from '../components/Button'
 import EmptyState from '../components/EmptyState'
 import InitiativeBar from '../components/InitiativeBar'
-import { InitiativeBlock, InitiativeView } from '../components/InitiativePage'
+import { InitiativeView } from '../components/InitiativePage'
+import SpaceTile from '../components/SpaceTile'
 import ItemRow from '../components/ItemRow'
 import ItemSheet from '../components/ItemSheet'
 import InteractionCard from '../components/InteractionCard'
@@ -258,11 +259,10 @@ export default function NotesPage() {
           labels={labelGroups.get(focusId) ?? []}
         />
       ) : (
-        <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:items-stretch">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
           {blocks.map((b) => (
-            <InitiativeBlock
+            <SpaceTile
               key={b.id}
-              id={b.id}
               initiative={b.initiative}
               notes={groups.get(b.id)?.notes ?? []}
               items={itemGroups.get(b.id) ?? []}

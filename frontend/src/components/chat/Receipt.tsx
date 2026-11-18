@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronRight, Repeat as RepeatIcon, Undo2 } from 'lucide-react'
 import type { CreatedItem } from '../../api/types'
 import { datedLabel, timeLabel } from '../../lib/dates'
-import { itemPath, repeatLabel } from '../../lib/items'
+import { itemPath, reminderText, repeatLabel } from '../../lib/items'
 import { useOpenSpace } from '../../lib/useOpenSpace'
 import ConfirmDialog from '../ConfirmDialog'
 
@@ -39,6 +39,12 @@ export default function Receipt({ items, spaceId }: { items: CreatedItem[]; spac
               <span className="flex items-center gap-1.5 text-[0.8125rem] text-text-muted">
                 <span className="truncate">{item.list_name ?? 'Tasks'}</span>
                 {when && <span className="flex-shrink-0">· {when}</span>}
+                {item.priority && item.priority !== 'normal' && (
+                  <span className="flex-shrink-0" style={{ color: item.priority === 'high' ? 'var(--sb-prio-high)' : 'var(--sb-prio-low)' }}>
+                    · {item.priority === 'high' ? 'Urgent' : 'Low'}
+                  </span>
+                )}
+                {reminderText(item) && <span className="flex-shrink-0">· {reminderText(item)}</span>}
                 {item.repeat && (
                   <span className="flex flex-shrink-0 items-center gap-1">
                     · <RepeatIcon size={11} strokeWidth={2.2} /> {repeatLabel(item.repeat)}
