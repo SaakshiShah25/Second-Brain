@@ -6,7 +6,7 @@ import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle
 import AddToSpace from './AddToSpace'
 import ExportInitiativeButton from './ExportInitiativeButton'
 import Segmented from './Segmented'
-import InteractionCard, { ItemList } from './InteractionCard'
+import InteractionCard from './InteractionCard'
 import InitiativeThings, { SectionHeader, thingCounts } from './InitiativeThings'
 import { noteCounts, noteSections } from '../lib/noteSections'
 import { shortDate } from '../lib/dates'
