@@ -10,7 +10,7 @@ import AlarmOverlay from './AlarmOverlay'
 import Sheet from './Sheet'
 import { useInitiatives } from '../api/initiatives'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
-import { useInitiativeFilter } from '../lib/initiativeFilter'
+import { setInitiativeFilter, useInitiativeFilter } from '../lib/initiativeFilter'
 import { useOpenSpace } from '../lib/useOpenSpace'
 
 // Each tab has its own hue (index.css --sb-fun-*), shown when it's the
@@ -188,9 +188,17 @@ function SidebarSpaces() {
 
 export default function Layout() {
   useHoverLabels()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
+  const navigate = useNavigate()
   const [help, setHelp] = useState(false)
   useShortcuts(() => setHelp(true))
+  // Every time the app opens it starts on Home with Spaces showing all its tiles - never wherever it was left. Only a
+  // bare tab address is sent Home; a link that opens something specific (a notification, ?open=<id>) is left alone.
+  useEffect(() => {
+    setInitiativeFilter(null, 'spaces')
+    if ((pathname === '/today' || pathname === '/notes') && !search) navigate('/', { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   // If task reminders are on, tell the server this device's current time zone each time the app opens.
   useEffect(() => {
     syncReminders()
@@ -222,6 +230,7 @@ export default function Layout() {
                 to={tab.to}
                 end={tab.end}
                 data-tour-nav={tab.to}
+                onClick={() => tab.to === '/notes' && setInitiativeFilter(null, 'spaces')}
                 className={({ isActive }) =>
                   `pressable flex h-11 items-center gap-3 rounded-xl px-3 text-[0.9375rem] ${isActive ? `${tab.pill} font-semibold` : 'text-text-muted hover:bg-bg-hover'}`
                 }
@@ -283,6 +292,7 @@ export default function Layout() {
                   // Read by Tour.tsx to spotlight this exact tab while it's
                   // describing this section.
                   data-tour-nav={tab.to}
+                  onClick={() => tab.to === '/notes' && setInitiativeFilter(null, 'spaces')}
                   className="pressable flex flex-1 flex-col items-center justify-center gap-1"
                 >
                   {({ isActive }) => (

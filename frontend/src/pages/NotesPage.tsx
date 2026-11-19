@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ChevronRight, Search, X } from 'lucide-react'
+import { ChevronRight, LayoutGrid, Search, X } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { useNotes } from '../api/notes'
 import { useLists } from '../api/lists'
@@ -277,12 +277,28 @@ export default function NotesPage() {
 
       <InitiativeBar
         counts={counts}
-        hideChips={!!q}
+        hideChips
         search={
           notes && (notes.length > 0 || (initiatives?.length ?? 0) > 0 || (taskData?.tasks.length ?? 0) > 0) ? (
           // The same field as the composer on Home and Today (height, outline, rounding, shadow), so every page's box at the
           // foot of the screen looks alike.
-          <div className="flex min-h-11 items-center rounded-[1.4rem] border border-border-strong bg-bg-card shadow-card focus-within:border-accent">
+          <div className="flex items-center gap-2">
+            {/* One way back to all the tiles, shown once a space is open (or a search is under way). */}
+            {(focusId !== null || q) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilter(null)
+                  setQuery('')
+                  document.getElementById('app-scroll')?.scrollTo({ top: 0 })
+                }}
+                className="pressable flex min-h-11 flex-shrink-0 items-center gap-1.5 rounded-[1.4rem] border border-border-strong bg-bg-card px-3.5 text-[0.9375rem] font-semibold shadow-card"
+              >
+                <LayoutGrid size={16} strokeWidth={2.1} />
+                All
+              </button>
+            )}
+          <div className="flex min-h-11 min-w-0 flex-1 items-center rounded-[1.4rem] border border-border-strong bg-bg-card shadow-card focus-within:border-accent">
             <Search size={18} strokeWidth={2} className="pointer-events-none ml-4 flex-shrink-0 text-text-faint" />
             <input
               type="search"
@@ -301,6 +317,7 @@ export default function NotesPage() {
                 <X size={16} strokeWidth={2} />
               </button>
             )}
+          </div>
           </div>
           ) : null
         }
