@@ -185,11 +185,11 @@ function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record
   const [active, setActive] = useState(0)
   const [height, setHeight] = useState<number | undefined>(undefined)
 
-  // Arriving from a chat receipt: open on the part that was tapped (To-dos / Lists), not always the first.
+  // A space opens on To-dos by default. Arriving from a chat receipt, open on the part that was tapped instead.
   useLayoutEffect(() => {
     const wanted = takeSpaceSection()
     const el = strip.current
-    const i = wanted ? order.indexOf(wanted as SpaceSection) : -1
+    const i = order.indexOf(((wanted as SpaceSection | null) ?? 'todos') as SpaceSection)
     if (el && i > 0 && el.clientWidth > 0) el.scrollLeft = i * el.clientWidth
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
