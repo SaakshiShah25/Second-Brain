@@ -40,7 +40,7 @@ import observability
 FREE_LIMITS = {
     # "interactions_logged" (notes captured) is deliberately uncapped for everyone - still counted for the admin page.
     "ai_questions_asked": 50,    # chat "ask" queries per month
-    "voice_transcriptions": 30,  # voice notes per month (Whisper minutes)
+    # "voice_transcriptions" (voice notes) is uncapped too - still counted for the admin page.
 }
 
 
