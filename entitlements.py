@@ -39,7 +39,7 @@ import observability
 # once that's measured, not guessed here.
 FREE_LIMITS = {
     # "interactions_logged" (notes captured) is deliberately uncapped for everyone - still counted for the admin page.
-    "ai_questions_asked": 50,    # chat "ask" queries per month
+    # Nothing is capped: notes, voice notes and questions are all unlimited. Add a "resource": N line to cap one.
     # "voice_transcriptions" (voice notes) is uncapped too - still counted for the admin page.
 }
 

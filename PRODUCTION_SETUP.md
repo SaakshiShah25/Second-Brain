@@ -157,5 +157,5 @@ The same alert is sent at most once an hour, and at most 40 alerts a day (Resend
 These are measured numbers. The admin page shows the live figures.
 
 - About **5.1k AI tokens per capture** and **4.7k per question**. Each model allows 200k tokens a day, so expect roughly **35–50 captures plus 25–40 questions a day** across everyone.
-- Captures are **unlimited**; each user is capped at **50 questions a month**. Change this in `entitlements.py` (`FREE_LIMITS`).
+- There is **no per-user cap** on captures, voice notes or questions (and no per-minute cap on them). To add one, put a line in `entitlements.py` (`FREE_LIMITS`).
 - Cohere's trial key allows **1,000 calls a month**. Search reranking is capped at 25 a day.

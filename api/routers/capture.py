@@ -28,7 +28,6 @@ import text_utils
 import voice
 from timing import step
 from api.auth import get_current_user_id
-from api.rate_limit import limiter
 
 from api.schemas import CaptureRequest
 from date_utils import first_occurrence, normalize_repeat, resolve_relative_phrase, to_valid_time
@@ -501,7 +500,6 @@ async def capture_text(body: CaptureRequest, request: Request, user_id: str = De
 
 
 @router.post("/voice")
-@limiter.limit("20/minute")
 async def capture_voice(
     request: Request,
     file: UploadFile,
