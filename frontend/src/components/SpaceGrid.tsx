@@ -53,10 +53,13 @@ export default function SpaceGrid<T extends { id: number }>({
   blocks,
   all,
   renderTile,
+  trailing,
 }: {
   blocks: T[]
   all: Initiative[]
   renderTile: (block: T) => ReactNode
+  // After the last tile, never draggable (the "New space" tile).
+  trailing?: ReactNode
 }) {
   const reorder = useReorderInitiatives()
   const [draggingId, setDraggingId] = useState<number | null>(null)
@@ -97,6 +100,7 @@ export default function SpaceGrid<T extends { id: number }>({
             {renderTile(b)}
           </Slot>
         ))}
+        {trailing}
       </div>
       {blocks.filter((b) => b.id !== 0).length > 1 && (
         <p className="mt-3 px-1 text-center text-[0.8125rem] text-text-faint">Press and hold a space, then drop it on another to put it where you want.</p>

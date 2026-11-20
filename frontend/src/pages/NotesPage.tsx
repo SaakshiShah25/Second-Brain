@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ChevronRight, LayoutGrid, Search, X } from 'lucide-react'
+import { ChevronRight, LayoutGrid, Plus, Search, X } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { useNotes } from '../api/notes'
 import { useLists } from '../api/lists'
@@ -10,6 +10,7 @@ import Button from '../components/Button'
 import EmptyState from '../components/EmptyState'
 import InitiativeBar from '../components/InitiativeBar'
 import { InitiativeView } from '../components/InitiativePage'
+import NewSpaceSheet from '../components/NewSpaceSheet'
 import SpaceGrid from '../components/SpaceGrid'
 import SpaceTile from '../components/SpaceTile'
 import ItemRow from '../components/ItemRow'
@@ -32,6 +33,7 @@ export default function NotesPage() {
   const connection = useConnection()
   const offline = connection.offline || connection.unreachable
   const { data: initiatives } = useInitiatives()
+  const [newSpace, setNewSpace] = useState(false)
   const { data: taskData } = useTasks('all')
   const { data: allLists } = useLists()
   const [filter, setFilter] = useInitiativeFilter()
@@ -130,7 +132,7 @@ export default function NotesPage() {
   const has = (id: number) =>
     !!groups.get(id)?.notes.length || !!itemGroups.get(id)?.some((t) => t.status === 'open' || t.list_id) || !!labelGroups.get(id)?.length
   const blocks = [
-    ...(initiatives ?? []).filter((i) => has(i.id)).map((i) => ({ id: i.id, initiative: i })),
+    ...(initiatives ?? []).map((i) => ({ id: i.id, initiative: i })),
     ...(has(0) ? [{ id: 0, initiative: null }] : []),
   ]
 
@@ -262,6 +264,16 @@ export default function NotesPage() {
       ) : (
         <SpaceGrid
           blocks={blocks}
+          trailing={
+            <button
+              type="button"
+              onClick={() => setNewSpace(true)}
+              className="pressable flex aspect-square w-full flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-border-strong p-3.5 text-text-muted"
+            >
+              <Plus size={26} strokeWidth={2} />
+              <span className="text-[0.9375rem] font-semibold">New space</span>
+            </button>
+          }
           all={initiatives ?? []}
           renderTile={(b) => (
             <SpaceTile
@@ -276,6 +288,8 @@ export default function NotesPage() {
           )}
         />
       )}
+
+      {newSpace && <NewSpaceSheet onClose={() => setNewSpace(false)} />}
 
       <InitiativeBar
         counts={counts}
