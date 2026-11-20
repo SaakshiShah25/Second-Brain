@@ -10,6 +10,7 @@ import Button from '../components/Button'
 import EmptyState from '../components/EmptyState'
 import InitiativeBar from '../components/InitiativeBar'
 import { InitiativeView } from '../components/InitiativePage'
+import SpaceGrid from '../components/SpaceGrid'
 import SpaceTile from '../components/SpaceTile'
 import ItemRow from '../components/ItemRow'
 import ItemSheet from '../components/ItemSheet'
@@ -259,10 +260,11 @@ export default function NotesPage() {
           labels={labelGroups.get(focusId) ?? []}
         />
       ) : (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
-          {blocks.map((b) => (
+        <SpaceGrid
+          blocks={blocks}
+          all={initiatives ?? []}
+          renderTile={(b) => (
             <SpaceTile
-              key={b.id}
               initiative={b.initiative}
               notes={groups.get(b.id)?.notes ?? []}
               items={itemGroups.get(b.id) ?? []}
@@ -271,8 +273,8 @@ export default function NotesPage() {
                 document.getElementById('app-scroll')?.scrollTo({ top: 0 })
               }}
             />
-          ))}
-        </div>
+          )}
+        />
       )}
 
       <InitiativeBar
