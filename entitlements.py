@@ -38,9 +38,9 @@ import observability
 # pick real ones based on actual per-user Groq/Cohere free-tier cost
 # once that's measured, not guessed here.
 FREE_LIMITS = {
-    "interactions_logged": 50,   # notes/interactions captured per month
-    "ai_questions_asked": 50,    # chat "ask" queries per month
-    "voice_transcriptions": 30,  # voice notes per month (Whisper minutes)
+    # "interactions_logged" (notes captured) is deliberately uncapped for everyone - still counted for the admin page.
+    # Nothing is capped: notes, voice notes and questions are all unlimited. Add a "resource": N line to cap one.
+    # "voice_transcriptions" (voice notes) is uncapped too - still counted for the admin page.
 }
 
 

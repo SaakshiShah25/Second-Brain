@@ -17,7 +17,7 @@ import { Input } from './fields'
 // itself derives (see getInitiativeStyle), for anyone who picked a color
 // and changed their mind rather than making them guess which swatch
 // matches the default.
-function ColorPicker({ value, onChange }: { value: string | null; onChange: (color: string | null) => void }) {
+export function ColorPicker({ value, onChange }: { value: string | null; onChange: (color: string | null) => void }) {
   return (
     <div className="flex flex-wrap items-center gap-2.5 py-1">
       <button

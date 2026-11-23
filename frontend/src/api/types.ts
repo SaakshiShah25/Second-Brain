@@ -106,6 +106,10 @@ export interface CreatedItem {
   description: string
   due_date: string | null
   due_time?: string | null
+  priority?: 'high' | 'normal' | 'low'
+  remind_before?: number | null // minutes before the due time
+  remind_on?: string | null
+  remind_time?: string | null
   owner: TaskOwner
   repeat?: Repeat | null
   list_id?: number | null

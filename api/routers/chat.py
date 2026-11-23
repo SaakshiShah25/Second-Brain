@@ -38,7 +38,6 @@ import moderation
 import text_utils
 from timing import step
 from api.auth import get_current_user_id
-from api.rate_limit import limiter
 from api.routers import ask as ask_router
 from api.routers import capture as capture_router
 from api.schemas import AskRequest, ChatRequest
@@ -194,7 +193,6 @@ async def _handle_command(user_id: str, body: ChatRequest, request: Request, cmd
 
 
 @router.post("")
-@limiter.limit("20/minute")
 async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_current_user_id)):
     t_start = time.perf_counter()
     with step("moderation"):
@@ -389,7 +387,6 @@ async def _chat_stream_body(body: ChatRequest, request: Request, user_id: str):
 
 
 @router.post("/stream")
-@limiter.limit("20/minute")
 async def chat_stream(body: ChatRequest, request: Request, user_id: str = Depends(get_current_user_id)):
     """Server-Sent Events version of chat() above, for the frontend's main
     send path - same moderation -> intent -> capture/ask logic (actually

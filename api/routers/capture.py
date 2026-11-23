@@ -28,7 +28,6 @@ import text_utils
 import voice
 from timing import step
 from api.auth import get_current_user_id
-from api.rate_limit import limiter
 
 from api.schemas import CaptureRequest
 from date_utils import first_occurrence, normalize_repeat, resolve_relative_phrase, to_valid_time
@@ -175,6 +174,34 @@ def _parse_items(extracted: dict) -> list:
     return items
 
 
+def _task_options(item: dict, due_date, due_time, is_list_entry: bool):
+    """(priority, remind_before, remind_on, remind_time) from what the note said, kept only when valid. A reminder always
+    comes BEFORE the due moment, so one that wouldn't is dropped; list entries have no priority or reminder."""
+    if is_list_entry:
+        return None, None, None, None
+    priority = item.get("priority") if item.get("priority") in ("high", "low") else None
+    before = item.get("remind_before_minutes")
+    before = before if isinstance(before, int) and not isinstance(before, bool) and 5 <= before <= 7 * 24 * 60 else None
+    if before and not (due_date and due_time):
+        before = None  # "before" needs a due moment to count back from
+    if before:
+        return priority, before, None, None
+    remind_on = resolve_relative_phrase(item.get("remind_on")) if item.get("remind_on") else None
+    remind_time = to_valid_time(item.get("remind_time"))
+    if remind_on and remind_on < date.today().isoformat():
+        remind_on = None  # a day that's already gone can't be reminded
+    if remind_time and not remind_on:
+        remind_on = due_date or date.today().isoformat()  # "remind me at 4pm" with no day: that task's day (or today)
+    if remind_on and due_date:
+        if remind_on > due_date or (remind_on == due_date and due_time and remind_time and remind_time >= due_time):
+            remind_on = remind_time = None
+        elif remind_on == due_date and due_time and not remind_time:
+            remind_on = None  # the default 9 AM could land after the due time
+    if not remind_on:
+        remind_time = None
+    return priority, None, remind_on, remind_time
+
+
 def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, interaction_date: str,
                              initiative_id: Optional[int] = None,
                              geo_lat: Optional[float] = None, geo_lng: Optional[float] = None,
@@ -245,13 +272,16 @@ def _finish_capture_storage(user_id: str, raw_text: str, extracted: dict, intera
         # Nothing said where it belongs: it goes to the space its list already lives in.
         item_space = initiative_id if initiative_id is not None else lists.home_space(item_list)
         item_spaces.append(item_space)
+        priority, remind_before, remind_on, remind_time = _task_options(item, due_date, due_time, bool(list_id))
         task_id = db.create_task(user_id, interaction_id, task_desc, due_date=due_date, owner=owner,
                                  due_time=due_time, initiative_id=item_space, list_id=list_id,
-                                 repeat=repeat, detail=item["detail"])
+                                 repeat=repeat, detail=item["detail"], priority=priority,
+                                 remind_before=remind_before, remind_on=remind_on, remind_time=remind_time)
         task_ids.append(task_id)
         tasks_created.append({
             "id": task_id, "description": task_desc, "due_date": due_date, "due_time": due_time, "owner": owner,
-            "repeat": repeat, "list_id": list_id,
+            "repeat": repeat, "list_id": list_id, "priority": priority or "normal",
+            "remind_before": remind_before, "remind_on": remind_on, "remind_time": remind_time,
             "list_name": item_list["name"] if item_list else None,
             "list_emoji": item_list.get("emoji") if item_list else None,
         })
@@ -470,7 +500,6 @@ async def capture_text(body: CaptureRequest, request: Request, user_id: str = De
 
 
 @router.post("/voice")
-@limiter.limit("20/minute")
 async def capture_voice(
     request: Request,
     file: UploadFile,

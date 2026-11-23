@@ -5,6 +5,7 @@ import { useUpdateInteraction } from '../../api/notes'
 import { useUpdateTaskFields } from '../../api/tasks'
 import type { CapturePart, CaptureSavedResult } from '../../api/types'
 import { dueLabel } from '../../lib/dates'
+import { reminderText } from '../../lib/items'
 import { notePoints } from '../../lib/initiativeFilter'
 import { getInitiativeStyle } from '../../lib/initiativeStyle'
 import { useOpenSpace } from '../../lib/useOpenSpace'
@@ -171,6 +172,8 @@ function Section({
                 {t.description}
                 {t.list_name && <span className="text-text-muted"> → {t.list_name}</span>}
                 {t.due_date && <span className="text-text-muted"> · due {dueLabel(t.due_date, t.due_time)}</span>}
+                {t.priority && t.priority !== 'normal' && <span className="text-text-muted"> · {t.priority} priority</span>}
+                {reminderText(t) && <span className="text-text-muted"> · {reminderText(t)}</span>}
               </>
             ))}
           />

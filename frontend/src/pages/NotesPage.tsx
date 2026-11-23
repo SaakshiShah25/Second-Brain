@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ChevronRight, Search, X } from 'lucide-react'
+import { ChevronRight, LayoutGrid, Plus, Search, X } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
 import { useNotes } from '../api/notes'
 import { useLists } from '../api/lists'
@@ -9,7 +9,10 @@ import type { Interaction, ItemList, Task } from '../api/types'
 import Button from '../components/Button'
 import EmptyState from '../components/EmptyState'
 import InitiativeBar from '../components/InitiativeBar'
-import { InitiativeBlock, InitiativeView } from '../components/InitiativePage'
+import { InitiativeView } from '../components/InitiativePage'
+import NewSpaceSheet from '../components/NewSpaceSheet'
+import SpaceGrid from '../components/SpaceGrid'
+import SpaceTile from '../components/SpaceTile'
 import ItemRow from '../components/ItemRow'
 import ItemSheet from '../components/ItemSheet'
 import InteractionCard from '../components/InteractionCard'
@@ -30,6 +33,7 @@ export default function NotesPage() {
   const connection = useConnection()
   const offline = connection.offline || connection.unreachable
   const { data: initiatives } = useInitiatives()
+  const [newSpace, setNewSpace] = useState(false)
   const { data: taskData } = useTasks('all')
   const { data: allLists } = useLists()
   const [filter, setFilter] = useInitiativeFilter()
@@ -128,7 +132,7 @@ export default function NotesPage() {
   const has = (id: number) =>
     !!groups.get(id)?.notes.length || !!itemGroups.get(id)?.some((t) => t.status === 'open' || t.list_id) || !!labelGroups.get(id)?.length
   const blocks = [
-    ...(initiatives ?? []).filter((i) => has(i.id)).map((i) => ({ id: i.id, initiative: i })),
+    ...(initiatives ?? []).map((i) => ({ id: i.id, initiative: i })),
     ...(has(0) ? [{ id: 0, initiative: null }] : []),
   ]
 
@@ -258,11 +262,21 @@ export default function NotesPage() {
           labels={labelGroups.get(focusId) ?? []}
         />
       ) : (
-        <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:items-stretch">
-          {blocks.map((b) => (
-            <InitiativeBlock
-              key={b.id}
-              id={b.id}
+        <SpaceGrid
+          blocks={blocks}
+          trailing={
+            <button
+              type="button"
+              onClick={() => setNewSpace(true)}
+              className="pressable flex aspect-square w-full flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-border-strong p-3.5 text-text-muted"
+            >
+              <Plus size={26} strokeWidth={2} />
+              <span className="text-[0.9375rem] font-semibold">New space</span>
+            </button>
+          }
+          all={initiatives ?? []}
+          renderTile={(b) => (
+            <SpaceTile
               initiative={b.initiative}
               notes={groups.get(b.id)?.notes ?? []}
               items={itemGroups.get(b.id) ?? []}
@@ -271,18 +285,36 @@ export default function NotesPage() {
                 document.getElementById('app-scroll')?.scrollTo({ top: 0 })
               }}
             />
-          ))}
-        </div>
+          )}
+        />
       )}
+
+      {newSpace && <NewSpaceSheet onClose={() => setNewSpace(false)} />}
 
       <InitiativeBar
         counts={counts}
-        hideChips={!!q}
+        hideChips
         search={
           notes && (notes.length > 0 || (initiatives?.length ?? 0) > 0 || (taskData?.tasks.length ?? 0) > 0) ? (
           // The same field as the composer on Home and Today (height, outline, rounding, shadow), so every page's box at the
           // foot of the screen looks alike.
-          <div className="flex min-h-11 items-center rounded-[1.4rem] border border-border-strong bg-bg-card shadow-card focus-within:border-accent">
+          <div className="flex items-center gap-2">
+            {/* One way back to all the tiles, shown once a space is open (or a search is under way). */}
+            {(focusId !== null || q) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilter(null)
+                  setQuery('')
+                  document.getElementById('app-scroll')?.scrollTo({ top: 0 })
+                }}
+                className="pressable flex min-h-11 flex-shrink-0 items-center gap-1.5 rounded-[1.4rem] border border-border-strong bg-bg-card px-3.5 text-[0.9375rem] font-semibold shadow-card"
+              >
+                <LayoutGrid size={16} strokeWidth={2.1} />
+                All
+              </button>
+            )}
+          <div className="flex min-h-11 min-w-0 flex-1 items-center rounded-[1.4rem] border border-border-strong bg-bg-card shadow-card focus-within:border-accent">
             <Search size={18} strokeWidth={2} className="pointer-events-none ml-4 flex-shrink-0 text-text-faint" />
             <input
               type="search"
@@ -301,6 +333,7 @@ export default function NotesPage() {
                 <X size={16} strokeWidth={2} />
               </button>
             )}
+          </div>
           </div>
           ) : null
         }
