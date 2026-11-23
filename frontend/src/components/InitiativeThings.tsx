@@ -135,9 +135,9 @@ function ListBlock({
             className="min-w-0 flex-1 rounded-lg border border-border-strong bg-bg-card px-2 py-1 text-base font-semibold focus:border-accent focus:outline-none"
           />
         ) : (
-          <h3 className="min-w-0 flex-1 truncate text-[0.8125rem] font-semibold uppercase tracking-wide text-text-faint">
+          <h3 className="min-w-0 flex-1 truncate text-[1.0625rem] font-semibold tracking-tight text-text">
             {title}
-            <span className="font-medium normal-case tracking-normal opacity-80"> · {items.length}</span>
+            <span className="text-[0.875rem] font-medium text-text-faint"> · {items.length}</span>
           </h3>
         )}
         {editing && (
@@ -325,17 +325,6 @@ function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record
       >
         <ChevronRight size={20} strokeWidth={1.8} />
       </button>
-      {/* Faint arrows toward the pages out of sight - a hint, not a button (the tab bar and the swipe do the work). */}
-      {(
-        <span aria-hidden="true" className="pointer-events-none fixed top-1/2 left-0.5 z-10 text-text-muted lg:hidden" style={{ animation: 'nudge-left 2.2s ease-in-out infinite' }}>
-          <ChevronLeft size={22} strokeWidth={1.6} />
-        </span>
-      )}
-      {(
-        <span aria-hidden="true" className="pointer-events-none fixed top-1/2 right-0.5 z-10 text-text-muted lg:hidden" style={{ animation: 'nudge-right 2.2s ease-in-out infinite' }}>
-          <ChevronRight size={22} strokeWidth={1.6} />
-        </span>
-      )}
     </div>
   )
 }

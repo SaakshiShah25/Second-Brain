@@ -6,17 +6,23 @@ import { Flag, ListChecks, NotebookText } from 'lucide-react'
 import type { AnswerSource, CaptureSavedResult, ChatMessage } from '../../api/types'
 import { friendlyDate } from '../../lib/dates'
 import CopyButton from '../CopyButton'
+import { useOpenSpace } from '../../lib/useOpenSpace'
 import CaptureReply from './CaptureReply'
 
 const SOURCE_ICON = { note: NotebookText, task: ListChecks }
 
-// Where a tap on a source chip goes: straight to the item (Today opens its sheet), Notes (Spaces) for a note.
-function sourceTarget(s: AnswerSource): string {
-  return s.kind === 'task' ? `/today?open=${s.id}` : '/notes'
-}
 
+// Where a tap on a source chip goes: a list entry or a note opens in its own space (Lists / Notes part), where it is stored;
+// a to-do opens its sheet (Today), whichever space it is in.
 function Sources({ sources }: { sources: AnswerSource[] }) {
   const navigate = useNavigate()
+  const openSpace = useOpenSpace()
+  const go = (s: AnswerSource) => {
+    if (s.kind === 'task' && s.in_list && s.space_id !== undefined) return openSpace(s.space_id ?? null, 'lists')
+    if (s.kind === 'task') return navigate(`/today?open=${s.id}`)
+    if (s.space_id !== undefined) return openSpace(s.space_id ?? null, 'notes')
+    navigate('/notes')
+  }
   return (
     <div className="no-scrollbar -mx-4 mt-2 flex gap-1.5 overflow-x-auto px-4">
       {sources.map((s) => {
@@ -26,7 +32,7 @@ function Sources({ sources }: { sources: AnswerSource[] }) {
           <button
             key={s.ref}
             type="button"
-            onClick={() => navigate(sourceTarget(s))}
+            onClick={() => go(s)}
             className="pressable flex h-8 max-w-56 flex-shrink-0 items-center gap-1.5 rounded-full border border-border bg-bg-card px-2.5 text-xs text-text-muted"
           >
             <Icon size={13} strokeWidth={2} className="flex-shrink-0" />

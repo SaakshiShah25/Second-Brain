@@ -179,7 +179,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
         onClick={onToggleRecord}
         disabled={disabled}
         aria-label="Record a voice note"
-        className="pressable flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-brand text-[#1b1a17] disabled:opacity-40"
+        className="pressable flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-border-strong bg-bg-card text-accent disabled:opacity-40"
       >
         <Mic size={21} strokeWidth={2} />
       </button>

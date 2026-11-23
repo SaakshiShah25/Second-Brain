@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, ChevronUp, FileText, NotebookText, Pencil } from 'lucide-react'
+import { Check, ChevronLeft, FileText, NotebookText, Pencil } from 'lucide-react'
 import { useUpdateInitiative } from '../api/initiatives'
 import type { Interaction, ItemList as ListLabel, Task } from '../api/types'
 import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
@@ -152,6 +152,13 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
 
   return (
     <div>
+      {/* The way back to all the spaces, where a back button is expected: top left. */}
+      {onCollapse && (
+        <button type="button" onClick={onCollapse} className="pressable -ml-1 mb-3 flex items-center gap-0.5 py-1 pr-3 text-[0.9375rem] font-medium text-accent">
+          <ChevronLeft size={20} strokeWidth={2.2} />
+          Spaces
+        </button>
+      )}
       {/* The space itself. */}
       <div className="mb-6 rounded-2xl border border-border bg-bg-card p-4">
         <div className="flex items-center gap-2">
@@ -183,16 +190,6 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
             >
               {editingSpace ? <Check size={18} strokeWidth={2.4} /> : <Pencil size={17} strokeWidth={2} />}
             </button>
-            {onCollapse && (
-              <button
-                type="button"
-                onClick={onCollapse}
-                aria-label="Collapse"
-                className="pressable flex h-9 w-9 items-center justify-center rounded-full text-text-muted"
-              >
-                <ChevronUp size={20} strokeWidth={2} />
-              </button>
-            )}
           </span>
         </div>
         <p className="mt-2 pl-[3.125rem] text-[0.8125rem] text-text-faint">

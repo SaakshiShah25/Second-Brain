@@ -34,7 +34,7 @@ export default function SpaceTile({ initiative, notes, items, onOpen }: { initia
       type="button"
       onClick={onOpen}
       aria-label={`${name}: ${s.pending} pending, ${s.overdue} overdue, ${s.urgent} urgent, ${s.dueToday} due today`}
-      className="pressable relative flex aspect-square w-full flex-col overflow-hidden rounded-3xl border border-border bg-bg-card p-3.5 text-left shadow-card"
+      className="pressable relative flex h-full min-h-[10.5rem] w-full flex-col overflow-hidden rounded-3xl border border-border bg-bg-card p-3.5 text-left shadow-card"
       style={style ? { backgroundImage: `linear-gradient(160deg, ${tint(style.color, 14)}, transparent 62%)` } : undefined}
     >
       <span
@@ -45,7 +45,7 @@ export default function SpaceTile({ initiative, notes, items, onOpen }: { initia
       </span>
       <span className="mt-2.5 line-clamp-2 text-[1.0625rem] font-semibold leading-tight tracking-tight">{name}</span>
 
-      <span className="mt-auto flex flex-col gap-1.5">
+      <span className="mt-auto flex flex-col gap-1.5 pt-3">
         {flags.slice(0, 2).map((f) => (
           <span
             key={f.label}

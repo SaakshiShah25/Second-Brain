@@ -47,3 +47,21 @@ if __name__ == "__main__":
             failed += 1
             print("FAIL", name, "->", repr(e)[:200])
     sys.exit(1 if failed else 0)
+
+
+def test_greetings_and_pleasantries_are_answered_not_saved():
+    import intent
+
+    for text in ["Hi ssup", "hi", "Hello!", "hey there", "what's up", "Whats up?", "good morning", "how are you", "thanks", "Thank you so much",
+                 "ok", "okay cool", "bye", "good night", "hi, how r u?"]:
+        assert intent.smalltalk_reply(text), text
+    assert "See you" in intent.smalltalk_reply("bye") and "Anytime" in intent.smalltalk_reply("thanks")
+    assert intent.smalltalk_reply("Hi ssup").startswith("Hi!")
+
+
+def test_real_notes_that_start_like_a_greeting_are_still_saved():
+    import intent
+
+    for text in ["Hi Priya, send the deck by Friday", "Thanks Priya for the deck", "Call you later", "Good news from Acme today",
+                 "ok to ship the release on Friday", "Met everyone at the offsite", "Hey - buy milk", "", "   "]:
+        assert intent.smalltalk_reply(text) is None, text

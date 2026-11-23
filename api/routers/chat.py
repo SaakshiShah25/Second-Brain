@@ -66,6 +66,10 @@ def _route_without_model(body: ChatRequest) -> Optional[str]:
     return None
 
 
+def _smalltalk_reply(text: str) -> dict:
+    return {"intent": "blocked", "status": "answered", "reason": "smalltalk", "answer": text}
+
+
 def _question_here_reply() -> dict:
     return {"intent": "blocked", "status": "answered", "reason": "question", "answer": _QUESTION_HERE_MESSAGE}
 
@@ -195,6 +199,9 @@ async def _handle_command(user_id: str, body: ChatRequest, request: Request, cmd
 @router.post("")
 async def chat(body: ChatRequest, request: Request, user_id: str = Depends(get_current_user_id)):
     t_start = time.perf_counter()
+    # A greeting is not a note ("Hi ssup" used to be saved under Others): answered at once, nothing saved, no model called.
+    if not body.as_note and (hello := intent.smalltalk_reply(body.text)):
+        return _smalltalk_reply(hello)
     with step("moderation"):
         moderation_result = await run_in_threadpool(moderation.check, body.text)
     if not moderation_result["safe"]:
@@ -279,6 +286,9 @@ async def _run_chat_pipeline(body: ChatRequest, request: Request, user_id: str, 
         await queue.put(("stage", name))
 
     try:
+        if not body.as_note and (hello := intent.smalltalk_reply(body.text)):
+            await queue.put(("result", _smalltalk_reply(hello)))
+            return
         await push_stage("moderating")
         moderation_result = await run_in_threadpool(moderation.check, body.text)
         if not moderation_result["safe"]:

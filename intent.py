@@ -76,6 +76,32 @@ _SELF_TODO = re.compile(
 _ADDRESSED_TO_ASSISTANT = re.compile(r"\b(me|explain|can\s+you|could\s+you|would\s+you|you)\b|\?", re.I)
 
 
+# Greetings and pleasantries ("hi", "what's up", "thanks", "ok", "good morning") are not notes: saving them filed
+# "Hi ssup" as a note under Others. Recognised by code, before any model call, so they cost no tokens either.
+_GREETING = {"hi", "hii", "hiii", "hello", "hellow", "hey", "heya", "hola", "yo", "sup", "ssup", "wassup", "whatsup", "wazzup", "howdy",
+             "namaste", "hlo", "helo", "heyy", "heyyy", "gm", "morning", "afternoon", "evening", "good", "there", "all", "everyone", "again"}
+_HOWAREYOU = {"how", "are", "r", "you", "u", "doing", "going", "it", "whats", "what's", "what", "up", "wsp", "da", "dear", "bro", "buddy", "friend"}
+_THANKS = {"thanks", "thank", "thx", "ty", "tysm", "thankyou", "much", "so", "very", "a", "lot", "you", "u", "cool", "great", "nice", "awesome",
+           "perfect", "sweet", "super", "wow", "ok", "okay", "k", "kk", "alright", "fine", "got", "it", "lol", "haha", "hmm", "hm", "yes", "yeah",
+           "yep", "no", "nope", "sure", "bye", "goodbye", "cya", "see", "later", "gn", "night", "take", "care"}
+_SMALLTALK_ALL = _GREETING | _HOWAREYOU | _THANKS
+_FAREWELL = {"bye", "goodbye", "cya", "later", "gn", "night"}
+
+
+def smalltalk_reply(text: str):
+    """A friendly reply when the whole message is just a greeting or a pleasantry, else None (it goes the usual way).
+    Strict on purpose: every word has to be one of these, so "Call you later" or "Thanks Priya for the deck" are not caught."""
+    words = [w for w in re.sub(r"[^\w\s']", " ", (text or "").lower().replace("’", "'")).split() if w]
+    if not words or len(words) > 6 or not all(w in _SMALLTALK_ALL for w in words):
+        return None
+    first = set(words)
+    if first & _FAREWELL:
+        return "See you! Whatever you want to remember, I'll be here."
+    if first & {"thanks", "thank", "thx", "ty", "tysm", "thankyou", "cool", "great", "nice", "awesome", "perfect", "ok", "okay", "alright", "fine", "sure", "k", "kk"}:
+        return "Anytime! Tell me something to remember, or ask about what you've logged."
+    return "Hi! I keep your notes and to-dos. Tell me something to remember, or ask about what you've logged."
+
+
 def fast_classify(text: str):
     """Free, deterministic routing for the obvious cases - each one skips
     an LLM call (~930 Groq tokens, measured) from a shared free-tier

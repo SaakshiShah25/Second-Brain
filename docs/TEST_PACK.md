@@ -210,6 +210,16 @@ If an answer invents details that aren't in your notes, that is a bug — please
 - **Admin → Backup AI (NVIDIA)** card: how many notes went through NVIDIA in the chosen period (and what share of all notes logged), how many times Groq turned a note away, how many times NVIDIA failed too (with the last reason), when it was last used, and notes per NVIDIA model. "Not needed in this period" means Groq took every note. NVIDIA's model is no longer listed in the AI budget against Groq's 200,000 limit, and you get one email a day the first time notes go through the backup.
 - The "≈ N more captures today" tile is a **forecast** (the day's remaining AI budget ÷ the average cost of a capture); the budget restarts at midnight UTC (5:30 AM IST).
 
+### Greetings, Spaces layout and answers (Nov 23 fixes)
+
+- **`Hi ssup`**, `hello`, `what's up`, `thanks`, `ok`, `good morning`, `bye` are **not saved**: the app replies ("Hi! I keep your notes and to-dos...") and nothing appears under Others. A real note that merely starts like a greeting (`Hi Priya, send the deck by Friday`, `Thanks Priya for the deck`) is still saved. The same in the Today box.
+- A space **tile** grows to fit: "1 overdue" / "1 urgent" never cover the space's name.
+- The **Today box** is one flat line (like Home), and the **mic** is an outlined button with an orange icon (not a filled yellow disc); it turns red only while recording.
+- On a list, the **list's name** ("📝 Borivali · 2") is bold and larger than the entries below. The two faint edge arrows on a phone are gone.
+- Inside a space there is a **‹ Spaces** back button at the top left; the up-arrow in the space card is gone.
+- **Searching in Spaces** (`IBM`) always shows from the top: the matching **Space** first, then lists, to-dos and notes.
+- An answer never quotes a database number ("note 3231") or says a value is null; it says where a note is filed ("in your Work space"). Tapping a **list entry** chip opens that space on its **Lists** part, a **note** chip opens the space's Notes, and a to-do chip opens the to-do.
+
 ### Voice, kinship words, thanks, and the Excel result columns
 
 - **Silence:** tap the mic, say nothing for ~5 seconds, tap stop → the box stays **empty** and a message says "We didn't hear anything - tap the mic and try again, or type your note." Nothing is typed for you (before, the transcriber could make up "I'm sorry" / "Thank you"). Real speech - including a recording that says "I'm sorry I missed your call…" - is transcribed as normal; Cancel (bin) still throws a recording away.

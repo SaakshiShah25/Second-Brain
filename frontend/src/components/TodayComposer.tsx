@@ -136,7 +136,7 @@ export default function TodayComposer() {
         value={text}
         onChange={setText}
         onSend={send}
-        placeholder="Add a task or note, or tap the mic…"
+        placeholder="Add a task or note…"
         disabled={(sending || transcribing) && !voice.isRecording}
         isBusy={sending || transcribing}
         isRecording={voice.isRecording}

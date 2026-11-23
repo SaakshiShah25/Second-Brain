@@ -154,6 +154,9 @@ export interface AnswerSource {
   id: number
   title: string
   date: string | null
+  // Where it lives, so a tap can open it there: the space, and whether it is a list entry (the space's Lists part).
+  space_id?: number | null
+  in_list?: boolean
 }
 
 export interface AskAnsweredResult {
@@ -201,7 +204,7 @@ export type ChatAskResult = { intent: 'ask' } & AskResult
 export interface ChatBlockedResult {
   intent: 'blocked'
   status: 'answered'
-  reason: 'unsafe' | 'out_of_scope' | 'unavailable' | 'question'
+  reason: 'unsafe' | 'out_of_scope' | 'unavailable' | 'question' | 'smalltalk'
   answer: string
 }
 // "Create a reading list in Personal" / "make a space called Health": an instruction to the app, carried out. `capture`

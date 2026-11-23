@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ChevronRight, LayoutGrid, Plus, Search, X } from 'lucide-react'
 import { useInitiatives } from '../api/initiatives'
@@ -75,6 +75,10 @@ export default function NotesPage() {
   }, [groups, itemGroups])
 
   const q = query.trim()
+  // Results are listed from the top (Spaces first); if the page was scrolled down, show them instead of the tail end.
+  useEffect(() => {
+    if (q) document.getElementById('app-scroll')?.scrollTo({ top: 0 })
+  }, [q])
   const words = tokens(query)
   const spaceName = (id: number | null | undefined) => (id ? (initiatives ?? []).find((i) => i.id === id)?.name : 'Others')
   // Everything the search looks through: space names, list names (and the space they sit in), to-dos and list
