@@ -99,6 +99,7 @@ On the Tasks tab each open task has a **flag** and a **bell**:
 - `Complete the UAT testing EOD` → a to-do due **today** (no time). Also "COB", "by tonight" (today), "EOW" (this Friday) and "EOM" (last day of the month).
 - `Create a new space IBM and add a task to it: Submit the onboarding document` → the space **and** the to-do inside it ("add a task to it:" is not part of the wording).
 - **A reminder needs no due date.** Open a to-do with no date → Due and reminder → "Remind me" shows **No reminder** and **At a date and time**; pick a day and time and it is saved (the card shows the reminder). Clearing a due date keeps a reminder you set for a day and time, and only drops a "before it is due" one.
+- **The bell is orange whenever a reminder is coming**, including the automatic one: "Remind me to call Sanket tomorrow 10am" shows a filled orange bell on the chat card, on the to-do's row and in its sheet, though no reminder was picked by hand. Once 10 AM has passed the bell is empty again.
 - A to-do's card and bell show a reminder only while it is **still to come**: once it has gone off (e.g. an 11 Nov reminder viewed on the 13th) the date disappears and the bell is empty.
 - A reminder that is more than a day and a half late is **not** sent (switching notifications on two days later no longer delivers an old reminder).
 - In the reminder sheet's "At a date and time", the **Day** field (with a calendar icon) comes first, then **Time**, then a button that says what it will do ("Remind me Sat 14 Nov, 9:00 AM").

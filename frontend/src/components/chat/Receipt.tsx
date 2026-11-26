@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, Repeat as RepeatIcon, Undo2 } from 'lucide-react'
+import { Bell, ChevronRight, Repeat as RepeatIcon, Undo2 } from 'lucide-react'
 import type { CreatedItem } from '../../api/types'
 import { datedLabel, timeLabel } from '../../lib/dates'
+import { reminderComing } from '../../lib/dueReminder'
 import { itemPath, reminderText, repeatLabel } from '../../lib/items'
 import { useOpenSpace } from '../../lib/useOpenSpace'
 import ConfirmDialog from '../ConfirmDialog'
@@ -52,6 +53,7 @@ export default function Receipt({ items, spaceId }: { items: CreatedItem[]; spac
                 )}
               </span>
             </span>
+            {reminderComing(item) && <Bell size={16} strokeWidth={1.9} fill="currentColor" className="flex-shrink-0 text-accent" aria-label="Reminder set" />}
             <ChevronRight size={16} strokeWidth={2} className="flex-shrink-0 text-text-faint" />
           </button>
         )

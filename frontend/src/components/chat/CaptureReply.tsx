@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Check, ChevronRight, MapPin, Pencil, TriangleAlert, type LucideIcon } from 'lucide-react'
+import { Bell, Check, ChevronRight, MapPin, Pencil, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { useCreateInitiative, useInitiatives } from '../../api/initiatives'
 import { useUpdateInteraction } from '../../api/notes'
 import { useUpdateTaskFields } from '../../api/tasks'
 import type { CapturePart, CaptureSavedResult } from '../../api/types'
 import { dueLabel } from '../../lib/dates'
 import { reminderText } from '../../lib/items'
+import { reminderComing } from '../../lib/dueReminder'
 import { notePoints } from '../../lib/initiativeFilter'
 import { getInitiativeStyle } from '../../lib/initiativeStyle'
 import { useOpenSpace } from '../../lib/useOpenSpace'
@@ -174,6 +175,7 @@ function Section({
                 {t.due_date && <span className="text-text-muted"> · due {dueLabel(t.due_date, t.due_time)}</span>}
                 {t.priority && t.priority !== 'normal' && <span className="text-text-muted"> · {t.priority} priority</span>}
                 {reminderText(t) && <span className="text-text-muted"> · {reminderText(t)}</span>}
+                {reminderComing(t) && <Bell size={13} strokeWidth={2} fill="currentColor" className="ml-1.5 inline align-[-1px] text-accent" aria-label="Reminder set" />}
               </>
             ))}
           />

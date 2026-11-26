@@ -27,7 +27,7 @@ function at(date: string, hhmm: string): Date {
 }
 
 /** The moment the reminder will arrive, or null when nothing is set. */
-export function reminderMoment(task: Task): Date | null {
+export function reminderMoment(task: Reminding): Date | null {
   if (task.remind_before != null && task.due_date) {
     const due = at(task.due_date, (task.due_time ?? DEFAULT_ALL_DAY_HOUR).slice(0, 5))
     return new Date(due.getTime() - task.remind_before * 60_000)
@@ -35,6 +35,19 @@ export function reminderMoment(task: Task): Date | null {
   if (task.remind_on) return at(task.remind_on, (task.remind_time ?? DEFAULT_ALL_DAY_HOUR).slice(0, 5))
   if (task.due_date && task.due_time) return at(task.due_date, task.due_time.slice(0, 5))
   return null
+}
+
+type Reminding = Pick<Task, 'due_date' | 'due_time' | 'remind_on' | 'remind_time' | 'remind_before' | 'repeat'>
+
+/** Whether a push is still to come for this item - one you set, or one it gets on its own (a due time, a yearly date,
+ *  an "every N hours" repeat). Mirrors push_notify.py, and is what lights the bell. */
+export function reminderComing(task: Reminding, now = Date.now()): boolean {
+  const set = !!task.remind_on || task.remind_before != null
+  if (task.due_date && /^hours:\d+$/.test(task.repeat ?? '') && !task.remind_on) return true // keeps nudging until done
+  // A yearly date with no time reminds the evening before, at 8 PM.
+  if (!set && task.repeat === 'yearly' && task.due_date && !task.due_time) return at(shiftDays(task.due_date, -1), '20:00').getTime() > now
+  const moment = reminderMoment(task)
+  return !!moment && moment.getTime() > now
 }
 
 /** "Fri 14 Nov, 3:30 PM" - the day and time of a moment. */

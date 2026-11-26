@@ -9,7 +9,7 @@ import type { Task } from '../api/types'
 import { dueLabel, fullDate } from '../lib/dates'
 import { notePoints } from '../lib/initiativeFilter'
 import { isOverdue, REPEAT_OPTIONS, repeatLabel } from '../lib/items'
-import { dueAndReminderSummary } from '../lib/dueReminder'
+import { dueAndReminderSummary, reminderComing } from '../lib/dueReminder'
 import { PRIORITIES, priorityOf, taskInitiativeId } from '../lib/taskOptions'
 import Button from './Button'
 import CategorySheet from './CategorySheet'
@@ -106,7 +106,7 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
           onClick={() => setChoosingReminder(true)}
           className="pressable mb-3 flex w-full items-center gap-3 rounded-2xl border border-border bg-bg-elevated px-3.5 py-3 text-left"
         >
-          <Bell size={17} strokeWidth={2} className="flex-shrink-0 text-text-muted" style={task.remind_on || task.remind_before != null ? { color: 'var(--sb-accent)' } : undefined} />
+          <Bell size={17} strokeWidth={2} className="flex-shrink-0 text-text-muted" style={reminderComing(task) ? { color: 'var(--sb-accent)' } : undefined} fill={reminderComing(task) ? 'currentColor' : 'none'} />
           {/* Set: just the dates ("Due 16 Nov · reminder 1 day before"). Not set: the words "Due and reminder". */}
           <span className="min-w-0 flex-1 text-[0.9375rem]">
             {dueSummary ? <span className="font-medium">{dueSummary}</span> : <span className="text-text-muted">Due and reminder</span>}
