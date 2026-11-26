@@ -72,7 +72,8 @@ def transcribe_audio(audio_bytes: bytes, filename: str = "note.wav") -> str:
     hesitations ("uh", "umm"): they are not part of what the person meant, so they are removed.
     """
     client = get_client()
-    kwargs = dict(file=(filename, audio_bytes), model=WHISPER_MODEL_NAME, prompt=_STYLE_PROMPT, temperature=0)
+    kwargs = dict(file=(filename, audio_bytes), model=WHISPER_MODEL_NAME, prompt=_STYLE_PROMPT, temperature=0,
+                  language="en")  # English only: left to guess, Whisper writes road noise as Polish, French...
     try:
         transcription = client.audio.transcriptions.create(response_format="verbose_json", **kwargs)
     except Exception as e:  # noqa: BLE001 - a model that does not offer verbose_json: plain text, minus the stock-phrase check

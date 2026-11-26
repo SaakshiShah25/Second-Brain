@@ -29,6 +29,15 @@ _SPACE = re.compile(
     rf"['\"“]?(?P<name>{_NAME})['\"”]?\s*[.!]?\s*$",
     re.I,
 )
+# The wordier way people say it: "create a new workspace, that is a space with the name content. In that, add a to-do ..."
+_SPACE_LOOSE = re.compile(
+    rf"{_POLITE}{_MAKE}\s+{_ART}(?:space|workspace|category|folder|area)\b[^.;!?]*?\b(?:with\s+(?:the\s+)?name|called|named|name\s+is)\s+"
+    rf"['\"“]?(?P<name>{_NAME})['\"”]?(?P<rest>(?:\s*[.,;!]|\s+and\b|\s+then\b).*)?$",
+    re.I | re.S,
+)
+# ...and what follows it must be something to add there ("in that, add a to-do ...", "then put ...")
+_LOOSE_THEN = re.compile(r"^[\s.,;!]*(?:and\s+|then\s+)?(?:(?:in|inside|into|to|under)\s+(?:that|it|there|the\s+(?:new\s+)?(?:space|workspace))\s*,?\s*)?(?:also\s+)?(?=(?:add|put)\b)", re.I)
+
 # Something more to do once the command is done: "..., and add Dune" / "then put Sapiens"
 _THEN = re.compile(r"\s*(?:,|;|\.|\band\b|\bthen\b)\s+(?=(?:also\s+)?(?:add|put)\b)", re.I)
 
@@ -75,6 +84,17 @@ def parse(text: str) -> Optional[dict]:
     split = _THEN.search(raw)
     if split:
         head, then = raw[: split.start()], raw[split.end():].strip()
+    loose = _SPACE_LOOSE.match(raw)
+    if loose:
+        name = _tidy(loose.group("name"))
+        rest = (loose.group("rest") or "").strip()
+        lead = _LOOSE_THEN.match(rest) if rest else None
+        if name and name.lower() not in _NOT_A_NAME and (not rest or lead):
+            out = {"kind": "create_space", "name": name}
+            then = rest[lead.end():].strip() if lead else ""
+            if then:
+                out["then"] = then
+            return out
     for pattern, kind in ((_LIST_CALLED, "create_list"), (_LIST_PLAIN, "create_list"), (_SPACE, "create_space")):
         m = pattern.match(head)
         if not m:

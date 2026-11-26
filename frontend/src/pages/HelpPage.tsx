@@ -38,7 +38,7 @@ const SECTIONS: { title: string; items: { q: string; a: string }[] }[] = [
       },
       {
         q: 'How do due dates, reminders and repeats work?',
-        a: 'Say them naturally: “tomorrow at 5pm”, “every Monday”, “on the 20th”. To change one later, tap the to-do: you can edit the wording, date, time and repeat, set a priority (high, normal, low) and pick a reminder. Turn on notifications in Settings to get reminders on your phone.',
+        a: 'Say them naturally: “tomorrow at 5pm”, “every Monday”, “on the 20th”. To change one later, tap the to-do: you can edit the wording, date, time and repeat, set a priority (high, normal, low) and pick a reminder (a reminder doesn’t need a due date: just choose the day and time). Turn on notifications in Settings to get reminders on your phone.',
       },
       {
         q: 'Why is a to-do on the Today tab?',

@@ -9,7 +9,7 @@ import { Toggle } from './ListGroup'
 import Sheet from './Sheet'
 import { Input } from './fields'
 
-// Due and reminder, in one place, the way a calendar does it. A reminder always comes BEFORE the due date:
+// Due and reminder, in one place, the way a calendar does it. A reminder needs no due date; when there is one it comes BEFORE it:
 //   1. When is it due?  a date (quick buttons for today / tomorrow / next week) and, if you want, a time.
 //   2. Remind me:  a few obvious choices (at the due time, 10 minutes before, an hour, a day...) or "at a date and time" of
 //      your own - and that date can never be after the due date (nor the time after the due time on that day).
@@ -101,8 +101,9 @@ export default function DueReminderSheet({ task, onClose }: { task: Task; onClos
   // Changing when it is due can leave an existing reminder after the new due moment: it is then cleared, and says so.
   function afterDueChange(next: { due_date: string | null; due_time: string | null }): ItemEdit {
     if (!next.due_date) {
-      if (moment) setNote('The reminder was removed with the due date.')
-      return { ...next, ...NONE } // no date: nothing to count a reminder from
+      // "Before the due time" has nothing to count from without a date; a reminder on its own day and time still stands.
+      if (hasBefore) setNote('The "before it is due" reminder was removed with the due date.')
+      return { ...next, ...(hasBefore ? { remind_before: null } : {}) }
     }
     if (task.remind_on && !hasBefore) {
       const [y, m, d] = next.due_date.split('-').map(Number)
@@ -192,20 +193,21 @@ export default function DueReminderSheet({ task, onClose }: { task: Task; onClos
 
         <hr className="my-4 border-border" />
 
-        {/* 2. Remind me - always before the due date */}
+        {/* 2. Remind me - with a due date it comes before it; without one it is just a day and time */}
         <section aria-label="Reminder">
           <p className="flex items-center gap-2 text-[0.9375rem] font-semibold">
             <Bell size={17} strokeWidth={2} className="text-text-muted" /> Remind me
           </p>
-          {!hasDue ? (
-            <p className="mt-1 text-[0.875rem] text-text-muted">Set a due date first. A reminder always comes before it.</p>
-          ) : (
+          {!hasDue && <p className="mt-1 text-[0.8125rem] text-text-muted">No due date needed - pick the day and time you want to be reminded.</p>}
+          {(
             <>
               <p className={`mt-1 mb-2.5 text-[0.875rem] ${moment ? 'font-medium text-accent' : 'text-text-muted'}`}>
                 {moment ? `${passed(moment) ? 'Was set for' : 'Reminds you'} ${momentLabel(moment)}` : 'No reminder'}
               </p>
               <div role="radiogroup" aria-label="Reminder" className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
-                {timed ? (
+                {!hasDue ? (
+                  <Choice selected={!task.remind_on && !customOpen} label="No reminder" onClick={() => (setCustomOpen(false), save({ ...NONE }))} />
+                ) : timed ? (
                   <Choice selected={atDueTime && !customOpen} label={`At ${timeLabel(dueTime)}`} hint="When it's due" onClick={() => (setCustomOpen(false), save({ ...NONE }))} />
                 ) : (
                   <>
@@ -213,7 +215,7 @@ export default function DueReminderSheet({ task, onClose }: { task: Task; onClos
                     <Choice selected={onTheDay && !customOpen} label="On the day, 9:00 AM" onClick={() => (setCustomOpen(false), save({ remind_before: null, remind_on: task.due_date, remind_time: null }))} />
                   </>
                 )}
-                {(timed ? PRESETS_TIMED : PRESETS_ALL_DAY).map((m) => {
+                {(!hasDue ? [] : timed ? PRESETS_TIMED : PRESETS_ALL_DAY).map((m) => {
                   const when = beforeMoment(m)
                   return (
                     <Choice
@@ -258,7 +260,7 @@ export default function DueReminderSheet({ task, onClose }: { task: Task; onClos
                     {customAt && !customProblem ? `Remind me ${momentLabel(customAt)}` : 'Set reminder'}
                   </Button>
                   <p className={`mt-2 text-[0.8125rem] ${customProblem ? 'text-danger' : 'text-text-muted'}`}>
-                    {customProblem || `Any day up to ${datedLabel(task.due_date)}${timed ? `, before ${timeLabel(dueTime)} on the day` : ''}.`}
+                    {customProblem || (hasDue ? `Any day up to ${datedLabel(task.due_date)}${timed ? `, before ${timeLabel(dueTime)} on the day` : ''}.` : 'Any day from now on.')}
                   </p>
                 </div>
               )}

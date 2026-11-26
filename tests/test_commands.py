@@ -178,3 +178,13 @@ def test_a_task_given_with_a_new_space_is_cleaned_of_its_wrapper_words():
     }
     for text, expected in cases.items():
         assert chat._WRAPPER.sub("", commands.parse(text)["then"]).strip() == expected, text
+
+
+def test_wordy_workspace_request_with_a_todo_for_it():
+    cmd = commands.parse("Create a new workspace, that is a space with the name content. In that, add a to-do that I need to check if Shultika has sent me the details.")
+    assert cmd == {"kind": "create_space", "name": "Content", "then": "add a to-do that I need to check if Shultika has sent me the details."}
+
+
+def test_space_with_the_name_is_not_part_of_the_name():
+    assert commands.parse("create a workspace with the name Content") == {"kind": "create_space", "name": "Content"}
+    assert commands.parse("Create a new space named Travel and add book flights") == {"kind": "create_space", "name": "Travel", "then": "add book flights"}
