@@ -62,8 +62,9 @@ export default function CopyButton({ text, source }: { text: string; source?: Re
     <button
       type="button"
       onClick={handleCopy}
-      title={copied ? 'Copied' : 'Copy to clipboard'}
-      className="pressable flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-text-faint"
+      aria-label={copied ? 'Copied' : 'Copy to clipboard'}
+      data-tip={copied ? 'Copied' : 'Copy to clipboard'}
+      className="tip pressable flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-text-faint"
     >
       {copied ? <Check size={14} strokeWidth={1.6} /> : <Copy size={14} strokeWidth={1.6} />}
     </button>

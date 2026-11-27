@@ -22,6 +22,7 @@ import { useInitiativeFilter } from '../lib/initiativeFilter'
 import { getInitiativeStyle } from '../lib/initiativeStyle'
 import { matchesAll, rank, tokens } from '../lib/search'
 import { taskInitiativeId } from '../lib/taskOptions'
+import { useIsDesktop } from '../lib/useIsDesktop'
 
 // Spaces: everything is organised by initiative (a "space"), not by date - its notes, to-dos and things
 // it collects. Each space reads as
@@ -30,6 +31,7 @@ import { taskInitiativeId } from '../lib/taskOptions'
 // matching notes themselves.
 export default function NotesPage() {
   const { data: notes, error, refetch, isFetching } = useNotes()
+  const desktop = useIsDesktop()
   const connection = useConnection()
   const offline = connection.offline || connection.unreachable
   const { data: initiatives } = useInitiatives()
@@ -144,9 +146,57 @@ export default function NotesPage() {
   const focusInitiative = focusId ? initiatives?.find((i) => i.id === focusId) ?? null : null
   const empty = { notes: [] as Interaction[] }
 
+  const hasSomething = !!notes && (notes.length > 0 || (initiatives?.length ?? 0) > 0 || (taskData?.tasks.length ?? 0) > 0)
+  const inSpace = filter !== null && !q
+  // At the foot of the screen on a phone (under the thumb); at the top of the page on a laptop.
+  const searchBar = hasSomething ? (
+          // The same field as the composer on Home and Today (height, outline, rounding, shadow), so every page's box at the
+          // foot of the screen looks alike.
+          <div className="flex items-center gap-2">
+            {/* One way back to all the tiles, shown once a space is open (or a search is under way). */}
+            {(focusId !== null || q) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilter(null)
+                  setQuery('')
+                  document.getElementById('app-scroll')?.scrollTo({ top: 0 })
+                }}
+                className="pressable flex min-h-11 flex-shrink-0 items-center gap-1.5 rounded-[1.4rem] border border-border-strong bg-bg-card px-3.5 text-[0.9375rem] font-semibold shadow-card lg:hidden"
+              >
+                <LayoutGrid size={16} strokeWidth={2.1} />
+                All
+              </button>
+            )}
+          <div className="flex min-h-11 min-w-0 flex-1 items-center rounded-[1.4rem] border border-border-strong bg-bg-card shadow-card focus-within:border-accent">
+            <Search size={18} strokeWidth={2} className="pointer-events-none ml-4 flex-shrink-0 text-text-faint" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search spaces, lists, to-dos and notes"
+              className="block min-w-0 flex-1 bg-transparent px-3 py-2.5 text-base leading-6 text-text placeholder:text-text-faint focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                aria-label="Clear search"
+                className="pressable mr-2 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-text-faint"
+              >
+                <X size={16} strokeWidth={2} />
+              </button>
+            )}
+          </div>
+          </div>
+  ) : null
+
   return (
     <div className="flex flex-1 flex-col">
-      <PageHeader title="Spaces" showProfile />
+      {/* Inside a space its own card is the heading, under "‹ All spaces": a "Spaces" title above that only said the same
+          thing twice. A laptop searches from the sidebar there, so the page's own search box is for the list of spaces. */}
+      {inSpace ? !desktop && <PageHeader showProfile /> : <PageHeader title="Spaces" showProfile />}
+      {desktop && !inSpace && searchBar && <div className="mb-5 lg:max-w-2xl">{searchBar}</div>}
 
       {openNote && (
         // The note's sheet floats above the page, so the card itself can stay out of sight.
@@ -272,7 +322,7 @@ export default function NotesPage() {
             <button
               type="button"
               onClick={() => setNewSpace(true)}
-              className="pressable flex aspect-square w-full flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-border-strong p-3.5 text-text-muted"
+              className="pressable flex h-full min-h-[10.5rem] w-full flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-border-strong p-3.5 text-text-muted"
             >
               <Plus size={26} strokeWidth={2} />
               <span className="text-[0.9375rem] font-semibold">New space</span>
@@ -295,53 +345,7 @@ export default function NotesPage() {
 
       {newSpace && <NewSpaceSheet onClose={() => setNewSpace(false)} />}
 
-      <InitiativeBar
-        counts={counts}
-        hideChips
-        search={
-          notes && (notes.length > 0 || (initiatives?.length ?? 0) > 0 || (taskData?.tasks.length ?? 0) > 0) ? (
-          // The same field as the composer on Home and Today (height, outline, rounding, shadow), so every page's box at the
-          // foot of the screen looks alike.
-          <div className="flex items-center gap-2">
-            {/* One way back to all the tiles, shown once a space is open (or a search is under way). */}
-            {(focusId !== null || q) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setFilter(null)
-                  setQuery('')
-                  document.getElementById('app-scroll')?.scrollTo({ top: 0 })
-                }}
-                className="pressable flex min-h-11 flex-shrink-0 items-center gap-1.5 rounded-[1.4rem] border border-border-strong bg-bg-card px-3.5 text-[0.9375rem] font-semibold shadow-card"
-              >
-                <LayoutGrid size={16} strokeWidth={2.1} />
-                All
-              </button>
-            )}
-          <div className="flex min-h-11 min-w-0 flex-1 items-center rounded-[1.4rem] border border-border-strong bg-bg-card shadow-card focus-within:border-accent">
-            <Search size={18} strokeWidth={2} className="pointer-events-none ml-4 flex-shrink-0 text-text-faint" />
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search spaces, lists, to-dos and notes"
-              className="block min-w-0 flex-1 bg-transparent px-3 py-2.5 text-base leading-6 text-text placeholder:text-text-faint focus:outline-none [&::-webkit-search-cancel-button]:hidden"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery('')}
-                aria-label="Clear search"
-                className="pressable mr-2 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-text-faint"
-              >
-                <X size={16} strokeWidth={2} />
-              </button>
-            )}
-          </div>
-          </div>
-          ) : null
-        }
-      />
+      <InitiativeBar counts={counts} hideChips search={desktop ? null : searchBar} />
     </div>
   )
 }

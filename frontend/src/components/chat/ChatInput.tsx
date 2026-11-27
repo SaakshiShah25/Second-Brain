@@ -1,6 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { ArrowUp, Loader2, MapPin, Mic, Pause, Play, Plus, Sparkles, Square, Trash2 } from 'lucide-react'
 import CategoryBubbles from '../CategoryBubbles'
+import VoiceAlert from './VoiceAlert'
+import type { VoiceProblem } from '../../lib/useVoiceInput'
 import Sheet from '../Sheet'
 import { ListGroup, ListRow, Toggle } from '../ListGroup'
 import type { Initiative } from '../../api/types'
@@ -29,6 +31,9 @@ interface ChatInputProps {
   onPauseRecord?: () => void
   onResumeRecord?: () => void
   onCancelRecord?: () => void
+  // The last recording failed or had no speech in it: shown as a card above the box until dealt with.
+  voiceProblem?: VoiceProblem | null
+  onDismissVoiceProblem?: () => void
   // Opt-in device location - undefined `onToggleLocation` hides the option.
   locationAttached?: boolean
   locationLoading?: boolean
@@ -64,6 +69,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
     onPauseRecord,
     onResumeRecord,
     onCancelRecord,
+    voiceProblem = null,
+    onDismissVoiceProblem,
     locationAttached = false,
     locationLoading = false,
     onToggleLocation,
@@ -188,6 +195,17 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
 
   return (
     <>
+      {voiceProblem && !isRecording && (
+        <VoiceAlert
+          problem={voiceProblem}
+          onRetry={onToggleRecord}
+          onType={() => {
+            onDismissVoiceProblem?.()
+            textareaRef.current?.focus()
+          }}
+          onClose={() => onDismissVoiceProblem?.()}
+        />
+      )}
       <div className="flex items-end gap-2">
         {isRecording && onCancelRecord && (
           <button
@@ -260,7 +278,10 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
               rows={1}
               value={value}
               disabled={disabled}
-              onChange={(e) => onChange(e.target.value)}
+              onChange={(e) => {
+                if (voiceProblem) onDismissVoiceProblem?.() // typing is the answer to it
+                onChange(e.target.value)
+              }}
               onKeyDown={handleKeyDown}
               placeholder={placeholder}
               enterKeyHint="enter"

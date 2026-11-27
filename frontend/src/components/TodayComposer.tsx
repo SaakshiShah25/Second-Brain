@@ -36,7 +36,6 @@ export default function TodayComposer() {
       setText(transcript) // to review before it is saved - never saved on its own
       inputRef.current?.focus()
     },
-    onError: setNotice,
     onBusyChange: setTranscribing,
   })
 
@@ -145,6 +144,8 @@ export default function TodayComposer() {
         onPauseRecord={voice.pause}
         onResumeRecord={voice.resume}
         onCancelRecord={voice.cancel}
+        voiceProblem={voice.problem}
+        onDismissVoiceProblem={voice.clearProblem}
         initiatives={initiatives}
         selectedInitiativeId={spaceId}
         onSelectInitiative={setSpaceId}

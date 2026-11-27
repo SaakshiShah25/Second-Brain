@@ -61,6 +61,7 @@ export default function InitiativeBar({ counts, search, hideChips = false, scope
   return (
     <>
       {/* mt-auto pushes it to the foot of a short page; sticky keeps it on screen while a long page scrolls. */}
+      {(search || !hideChips) && (
       <div ref={bar} className="sticky bottom-0 z-10 -mx-4 -mb-6 mt-auto border-t border-border bg-bg/95 pt-2.5 pb-2.5 backdrop-blur-xl">
       {/* On a laptop the box and chips stay one readable, centred width under the wider page. */}
       <div className="w-full">
@@ -100,6 +101,7 @@ export default function InitiativeBar({ counts, search, hideChips = false, scope
       )}
       </div>
       </div>
+      )}
 
       {picking && (
         <Sheet

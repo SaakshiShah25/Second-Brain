@@ -9,6 +9,7 @@ import Segmented from './Segmented'
 import InteractionCard from './InteractionCard'
 import InitiativeThings, { SectionHeader, thingCounts } from './InitiativeThings'
 import { noteCounts, noteSections } from '../lib/noteSections'
+import { COLUMN, COLUMN_BODY, COLUMN_EMPTY, COLUMN_FLAT } from '../lib/spaceColumn'
 import { shortDate } from '../lib/dates'
 import { useSectionOrder } from '../lib/useSectionOrder'
 
@@ -65,7 +66,7 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
   const { order, move } = useSectionOrder(initiative?.id ?? null)
 
   const notesSection = (mover?: { canUp: boolean; canDown: boolean; onUp: () => void; onDown: () => void }) => (
-        <section key="notes" className="mb-6" aria-label="Notes">
+        <section key="notes" className={COLUMN} aria-label="Notes">
     <SectionHeader
       icon={NotebookText}
       title="Notes"
@@ -73,6 +74,7 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
       add={<AddToSpace spaceId={initiative?.id ?? null} spaceName={spaceName} kind="note" />}
       mover={mover}
     />
+    <div className={COLUMN_BODY}>
     {notes.length > 0 && (
       <Segmented
         className="mb-2.5"
@@ -85,7 +87,7 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
       />
     )}
     {noteView === 'points' && (
-      <div className="rounded-2xl border border-border bg-bg-card p-4">
+      <div className={`rounded-2xl border border-border bg-bg-card p-4 ${COLUMN_FLAT} lg:px-2 lg:py-2 ${sections.length === 0 ? 'lg:flex lg:flex-1 lg:flex-col' : ''}`}>
         {sections.map((s, n) => (
           <div key={s.key} className={n === 0 ? '' : 'mt-3'}>
             {s.title && (
@@ -120,16 +122,16 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
           </div>
         ))}
         {sections.length === 0 && (
-          <p className="text-[0.9375rem] text-text-muted">
+          <p className={`${COLUMN_EMPTY} !text-[0.9375rem] !text-text-muted lg:!text-[0.875rem] lg:!text-text-faint`}>
             {notes.length === 0 ? (
-              'No notes here yet - tap + to write one.'
+              'No notes here yet - use + to write one.'
             ) : (
-              <>
+              <span>
                 No key points were extracted from {notes.length === 1 ? 'this note' : 'these notes'}.{' '}
                 <button type="button" onClick={() => setNoteView('source')} className="pressable font-medium text-accent">
                   See the notes as written
                 </button>
-              </>
+              </span>
             )}
           </p>
         )}
@@ -147,6 +149,7 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
         </div>
       </>
     )}
+    </div>
   </section>
   )
 
@@ -156,7 +159,7 @@ export function InitiativeView({ initiative, notes, items = [], labels = [], onC
       {onCollapse && (
         <button type="button" onClick={onCollapse} className="pressable -ml-1 mb-3 flex items-center gap-0.5 py-1 pr-3 text-[0.9375rem] font-medium text-accent">
           <ChevronLeft size={20} strokeWidth={2.2} />
-          Spaces
+          All spaces
         </button>
       )}
       {/* The space itself. */}

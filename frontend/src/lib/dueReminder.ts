@@ -50,6 +50,16 @@ export function reminderComing(task: Reminding, now = Date.now()): boolean {
   return !!moment && moment.getTime() > now
 }
 
+/** What the bell on a row says when pointed at: when the reminder will arrive - the one place a row gives that date. */
+export function bellLabel(task: Task): string {
+  if (!reminderComing(task)) return 'Set a reminder'
+  const hours = /^hours:(\d+)$/.exec(task.repeat ?? '')
+  if (hours && !task.remind_on) return `Reminds you every ${hours[1]} hours`
+  if (!task.remind_on && task.remind_before == null && task.repeat === 'yearly' && !task.due_time) return 'Reminds you the evening before'
+  const moment = reminderMoment(task)
+  return moment ? `Reminds you ${momentLabel(moment)}` : 'Reminder set'
+}
+
 /** "Fri 14 Nov, 3:30 PM" - the day and time of a moment. */
 export function momentLabel(d: Date): string {
   const day = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })

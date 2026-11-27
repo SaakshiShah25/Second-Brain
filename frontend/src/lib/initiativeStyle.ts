@@ -9,6 +9,7 @@ import {
   Layers,
   Plane,
   Rocket,
+  ShoppingBag,
   Sparkles,
   Star,
   Target,
@@ -36,6 +37,7 @@ const KEYWORD_STYLES: { keywords: string[]; icon: LucideIcon; color: string }[] 
   { keywords: ['study', 'learn', 'course', 'school', 'university', 'exam', 'gre', 'class'], icon: GraduationCap, color: '#7c5cd8' },
   { keywords: ['food', 'diet', 'nutrition', 'cook', 'recipe'], icon: UtensilsCrossed, color: '#d9731f' },
   { keywords: ['personal'], icon: User, color: '#1f9bb0' },
+  { keywords: ['shop', 'grocer'], icon: ShoppingBag, color: '#d9731f' },
 ]
 
 // The deterministic fallback for a name that matches no keyword above.

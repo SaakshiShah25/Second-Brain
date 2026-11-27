@@ -7,6 +7,7 @@ import { DEFAULT_ALL_DAY_HOUR, EARLY_ALL_DAY, minutesLabel, momentLabel, reminde
 import Button from './Button'
 import { Toggle } from './ListGroup'
 import Sheet from './Sheet'
+import SheetStatusClose from './SheetStatusClose'
 import { Input } from './fields'
 
 // Due and reminder, in one place, the way a calendar does it. A reminder needs no due date; when there is one it comes BEFORE it:
@@ -122,7 +123,11 @@ export default function DueReminderSheet({ task, onClose }: { task: Task; onClos
 
   return (
     <Sheet onClose={onClose} tall>
-      <h3 className="text-lg font-semibold tracking-tight">Due and reminder</h3>
+      {/* Stays at the top while the sheet scrolls, so the way out is always in reach. */}
+      <div className="sticky -top-2 z-10 -mt-2 flex items-center justify-between gap-3 bg-bg-card pt-2 pb-0.5 lg:-top-5 lg:-mt-5 lg:pt-5">
+        <h3 className="text-lg font-semibold tracking-tight">Due and reminder</h3>
+        <SheetStatusClose saving={edit.isPending} saved={edit.isSuccess} failed={edit.isError} onClose={onClose} />
+      </div>
       <p className="mt-0.5 mb-4 line-clamp-2 text-[0.9375rem] text-text-muted">{task.description}</p>
 
       <div className="mb-4 rounded-2xl bg-bg-elevated p-3.5">
@@ -271,9 +276,6 @@ export default function DueReminderSheet({ task, onClose }: { task: Task; onClos
 
       {note && <p className="mb-3 text-[0.8125rem] text-text-muted">{note}</p>}
       {edit.isError && <p className="mb-3 text-[0.8125rem] text-danger">{edit.error instanceof Error ? edit.error.message : "Couldn't save that - please try again."}</p>}
-      <Button variant="primary" size="lg" block onClick={onClose}>
-        Done
-      </Button>
     </Sheet>
   )
 }

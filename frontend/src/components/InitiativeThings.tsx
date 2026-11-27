@@ -12,6 +12,8 @@ import ItemRow from './ItemRow'
 import ItemSheet from './ItemSheet'
 import AddToSpace from './AddToSpace'
 import QuickAdd from './QuickAdd'
+import { COLUMN, COLUMN_BODY, COLUMN_EMPTY, COLUMN_FLAT } from '../lib/spaceColumn'
+import { useIsDesktop } from '../lib/useIsDesktop'
 
 /** "2 to-dos · 3 in lists" - the open non-note things in an initiative, for its summary line. */
 export function thingCounts(items: Task[]): string {
@@ -54,7 +56,7 @@ export function SectionHeader({
   mover?: { canUp: boolean; canDown: boolean; onUp: () => void; onDown: () => void }
 }) {
   return (
-    <div className="mb-2 flex items-center gap-2 px-1">
+    <div className="mb-2 flex items-center gap-2 px-1 lg:mb-0 lg:h-14 lg:flex-shrink-0 lg:border-b lg:border-border lg:pr-3 lg:pl-4">
       <Icon size={17} strokeWidth={2.2} className="flex-shrink-0 text-text-muted" />
       <h2 className="min-w-0 flex-1 truncate text-base font-semibold tracking-tight">
         {title}
@@ -70,14 +72,15 @@ export function SectionHeader({
           </button>
         </span>
       )}
-      {add}
+      {/* On a laptop the pencil comes first, so every column's + sits in the same corner. */}
+      {add && <span className="flex lg:order-2">{add}</span>}
       {onEdit && (
         <button
           type="button"
           onClick={onEdit}
           aria-label={editing ? `Done editing ${title.toLowerCase()}` : (editLabel ?? `Edit ${title.toLowerCase()}`)}
           aria-pressed={editing}
-          className={`pressable flex h-9 w-9 items-center justify-center rounded-full ${editing ? 'bg-accent-soft text-accent' : 'text-text-muted'}`}
+          className={`pressable flex h-9 w-9 items-center justify-center rounded-full lg:order-1 lg:h-8 lg:w-8 ${editing ? 'bg-accent-soft text-accent' : 'text-text-muted lg:hover:bg-bg-hover'}`}
         >
           {editing ? <Check size={18} strokeWidth={2.4} /> : <Pencil size={16} strokeWidth={2} />}
         </button>
@@ -93,7 +96,7 @@ export function PlusButton({ onClick, label, open = false }: { onClick: () => vo
       onClick={onClick}
       aria-label={label}
       aria-expanded={open}
-      className="pressable flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-contrast"
+      className="pressable flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-contrast lg:h-8 lg:w-8"
     >
       {open ? <X size={18} strokeWidth={2.4} /> : <Plus size={19} strokeWidth={2.4} />}
     </button>
@@ -121,7 +124,7 @@ function ListBlock({
   const [adding, setAdding] = useState(false)
   const updateList = useUpdateList()
   return (
-    <section className="mb-4" aria-label={title}>
+    <section className="mb-4 lg:mb-2 lg:pt-1" aria-label={title}>
       <div className="mb-2 flex items-center gap-2 px-1">
         {editing ? (
           <input
@@ -173,12 +176,10 @@ function ListBlock({
 
 const SECTION_LABEL: Record<SpaceSection, string> = { notes: 'Notes', todos: 'To-dos', lists: 'Lists' }
 
-// The three parts of a space, as pages side by side that you move between - one fills the whole space at a time.
-// On a phone you swipe (CSS scroll-snap, so it feels native, and it goes round too) with faint arrows at both edges. On a
-// laptop there are round arrow buttons in the margins, with soft shadows at both edges to say "there is more this way";
-// they go round in a circle (after Lists comes Notes again), and the left / right arrow keys do the same.
-// A tab bar on both shows where you are and jumps straight to a part. The strip is only as tall as the page you are
-// on, so a short page never leaves a long blank scroll under it.
+// The three parts of a space on a phone, as pages side by side that you move between - one fills the screen at a time.
+// You swipe (CSS scroll-snap, so it feels native, and it goes round too), with a tab bar that shows where you are and
+// jumps straight to a part. The strip is only as tall as the page you are on, so a short page never leaves a long blank
+// scroll under it. A laptop has room for all three at once and uses Columns below instead.
 function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record<SpaceSection, number>; panes: Record<SpaceSection, ReactNode> }) {
   const strip = useRef<HTMLDivElement>(null)
   const paneRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -219,30 +220,7 @@ function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record
     const el = strip.current
     el?.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' })
   }
-  // The laptop's arrows (and arrow keys) wrap around: one past the last is the first.
   const n = order.length
-  const step = useCallback(
-    (by: 1 | -1) => {
-      const el = strip.current
-      if (!el) return
-      const next = (Math.round(el.scrollLeft / Math.max(1, el.clientWidth)) + by + n) % n
-      el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' })
-    },
-    [n],
-  )
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.metaKey || e.ctrlKey || e.altKey) return
-      const el = e.target
-      if (el instanceof HTMLElement && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return
-      if (!window.matchMedia('(min-width: 1024px)').matches || document.querySelector('[role="dialog"]')) return
-      e.preventDefault()
-      step(e.key === 'ArrowRight' ? 1 : -1)
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [step])
-  const nameAt = (i: number) => SECTION_LABEL[order[(i + n) % n]]
 
   // A phone's swipe goes round too: a scroll strip stops at its ends, so a swipe that tries to go past the last page
   // (or before the first) is caught when the finger lifts and sent round to the other end.
@@ -265,9 +243,9 @@ function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record
   }
 
   return (
-    <div className="relative lg:px-14">
+    <div className="relative">
       {/* Tab bar: shows where you are, and jumps to a part. */}
-      <div role="tablist" className="mb-3 flex rounded-full bg-bg-elevated p-1 lg:mx-auto lg:max-w-md">
+      <div role="tablist" className="mb-3 flex rounded-full bg-bg-elevated p-1">
         {order.map((section, i) => (
           <button
             key={section}
@@ -289,7 +267,7 @@ function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record
         onScroll={onScroll}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
-        className="no-scrollbar -mx-4 flex snap-x snap-mandatory items-start overflow-x-auto overflow-y-hidden overscroll-x-contain transition-[height] duration-200 lg:mx-0"
+        className="no-scrollbar -mx-4 flex snap-x snap-mandatory items-start overflow-x-auto overflow-y-hidden overscroll-x-contain transition-[height] duration-200"
         style={height !== undefined ? { height } : undefined}
       >
         {order.map((section, i) => (
@@ -298,33 +276,30 @@ function Pages({ order, counts, panes }: { order: SpaceSection[]; counts: Record
             ref={(el) => {
               paneRefs.current[i] = el
             }}
-            className="w-full flex-shrink-0 snap-center px-4 lg:px-0"
+            className="w-full flex-shrink-0 snap-center px-4"
           >
             {panes[section]}
           </div>
         ))}
       </div>
-      {/* Laptop: soft shadows at both edges, and round arrows in the margins (they wrap around). */}
-      <span aria-hidden="true" className="pointer-events-none absolute top-14 bottom-0 left-14 z-10 hidden w-8 bg-gradient-to-r from-black/[0.04] to-transparent lg:block" />
-      <span aria-hidden="true" className="pointer-events-none absolute top-14 right-14 bottom-0 z-10 hidden w-8 bg-gradient-to-l from-black/[0.04] to-transparent lg:block" />
-      <button
-        type="button"
-        onClick={() => step(-1)}
-        aria-label={`Previous: ${nameAt(active - 1)}`}
-        title={`Previous: ${nameAt(active - 1)}`}
-        className="pressable absolute top-28 left-0 z-20 hidden h-9 w-9 items-center justify-center rounded-full text-text-faint hover:bg-bg-hover hover:text-text lg:flex"
-      >
-        <ChevronLeft size={20} strokeWidth={1.8} />
-      </button>
-      <button
-        type="button"
-        onClick={() => step(1)}
-        aria-label={`Next: ${nameAt(active + 1)}`}
-        title={`Next: ${nameAt(active + 1)}`}
-        className="pressable absolute top-28 right-0 z-20 hidden h-9 w-9 items-center justify-center rounded-full text-text-faint hover:bg-bg-hover hover:text-text lg:flex"
-      >
-        <ChevronRight size={20} strokeWidth={1.8} />
-      </button>
+    </div>
+  )
+}
+
+// A laptop: the three parts as matching panels (lib/spaceColumn), all in view - side by side on a wide window, one under
+// another (full width) on a narrower one, never two and a stray third.
+function Columns({ order, panes }: { order: SpaceSection[]; panes: Record<SpaceSection, ReactNode> }) {
+  // Said once, read once (lib/useOpenSpace): nothing to jump to here, as every part is already on screen.
+  useEffect(() => {
+    takeSpaceSection()
+  }, [])
+  return (
+    <div className="grid items-stretch gap-4 xl:grid-cols-3">
+      {order.map((section) => (
+        <div key={section} className="min-w-0">
+          {panes[section]}
+        </div>
+      ))}
     </div>
   )
 }
@@ -355,6 +330,7 @@ export default function InitiativeThings({
 }) {
   const moverFor = (section: SpaceSection) =>
     onMove ? { canUp: order.indexOf(section) > 0, canDown: order.indexOf(section) < order.length - 1, onUp: () => onMove(section, -1), onDown: () => onMove(section, 1) } : undefined
+  const desktop = useIsDesktop()
   const updateStatus = useUpdateTaskStatus()
   const deleteItem = useDeleteItem()
   const deleteList = useDeleteList()
@@ -388,7 +364,7 @@ export default function InitiativeThings({
     onSwipeRemove: (t) => deleteItem.mutate(t.id),
   }
   const todosNode = (
-  <section key="todos" className="mb-6" aria-label="To-dos">
+  <section key="todos" className={COLUMN} aria-label="To-dos">
     <SectionHeader
       icon={ListTodo}
       title="To-dos"
@@ -399,9 +375,10 @@ export default function InitiativeThings({
       editLabel="Edit to-dos"
           mover={moverFor('todos')}
     />
+    <div className={COLUMN_BODY}>
     {addingTodo && <QuickAdd listId={null} initiativeId={spaceId} placeholder="Add a to-do" autoFocus />}
     {todos.length > 0 ? (
-      <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card">
+      <div className={`divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg-card ${COLUMN_FLAT}`}>
         {todos.map((t) => (
           <Draggable key={t.id} task={t}>
             <ItemRow task={t} compactDate onToggle={row.onToggle} onOpen={row.onOpen} onDelete={editTodos ? row.onDelete : undefined} onSwipeRemove={row.onSwipeRemove} swipe={false} />
@@ -409,12 +386,13 @@ export default function InitiativeThings({
         ))}
       </div>
     ) : (
-      <p className="px-1 text-[0.875rem] text-text-faint">No to-dos here yet - tap + to add one.</p>
+      <p className={COLUMN_EMPTY}>No to-dos here yet - use + to add one.</p>
     )}
+    </div>
   </section>
   )
   const listsNode = (
-  <section key="lists" className="mb-6" aria-label="Lists">
+  <section key="lists" className={COLUMN} aria-label="Lists">
     <SectionHeader
       icon={ListChecks}
       title="Lists"
@@ -425,8 +403,9 @@ export default function InitiativeThings({
       editLabel="Edit lists"
           mover={moverFor('lists')}
     />
+    <div className={COLUMN_BODY}>
     {lists.size === 0 && (
-      <p className="px-1 text-[0.875rem] text-text-faint">No lists yet - tap + to start one (a reading list, say), then add to it as you go.</p>
+      <p className={COLUMN_EMPTY}>No lists yet - use + to start one (a reading list, say), then add to it as you go.</p>
     )}
     {[...lists.entries()].map(([id, l]) => (
       <ListBlock
@@ -440,22 +419,27 @@ export default function InitiativeThings({
         {...row}
       />
     ))}
+    </div>
   </section>
   )
   return (
     <DragToSpace tasks={items}>
       <div className="mb-4">
-        {/* A phone: Notes, To-dos and Lists are three pages you swipe between (a tab bar and faint arrows show it).
-            A laptop: the same three side by side. Either way in the order chosen while editing the space. */}
-        <Pages
-          order={order}
-          counts={{ notes: notesCount, todos: todos.length, lists: lists.size }}
-          panes={{
-            notes: notesSection(moverFor('notes')),
-            todos: todosNode,
-            lists: listsNode,
-          }}
-        />
+        {/* Notes, To-dos and Lists, in the order chosen while editing the space: a phone swipes between them, a laptop
+            shows them side by side. */}
+        {desktop ? (
+          <Columns order={order} panes={{ notes: notesSection(moverFor('notes')), todos: todosNode, lists: listsNode }} />
+        ) : (
+          <Pages
+            order={order}
+            counts={{ notes: notesCount, todos: todos.length, lists: lists.size }}
+            panes={{
+              notes: notesSection(moverFor('notes')),
+              todos: todosNode,
+              lists: listsNode,
+            }}
+          />
+        )}
         {editTodos && <p className="mt-2 px-1 text-[0.8125rem] text-text-muted">Editing to-dos: tap one to change it, tap the bin to remove it. Tap ✓ when done.</p>}
         {editLists && <p className="mt-2 px-1 text-[0.8125rem] text-text-muted">Editing lists: rename a list, remove a list or its entries. Tap ✓ when done.</p>}
         {active && <ItemSheet task={active} onClose={() => setOpenId(null)} />}

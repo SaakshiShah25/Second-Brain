@@ -9,6 +9,8 @@ interface SheetProps {
   title?: ReactNode
   // Full-height-capped sheet with its own scrolling body (long text).
   tall?: boolean
+  // On a laptop: a full-height panel on the right, so the list it came from stays in view. A phone is unchanged.
+  drawer?: boolean
   zIndex?: number
 }
 
@@ -20,7 +22,7 @@ const openSheets: symbol[] = []
 // from where the thumb already is, instead of a desktop-style dialog
 // centered in the middle of the screen. Constrained to the same phone
 // column as Layout so it lines up on a wider screen too.
-export default function Sheet({ children, onClose, title, tall = false, zIndex = 50 }: SheetProps) {
+export default function Sheet({ children, onClose, title, tall = false, drawer = false, zIndex = 50 }: SheetProps) {
   const id = useRef(Symbol('sheet'))
   const closeRef = useRef(onClose)
   closeRef.current = onClose
@@ -45,7 +47,7 @@ export default function Sheet({ children, onClose, title, tall = false, zIndex =
   }, [])
 
   return createPortal(
-    <div className="fixed inset-0 flex items-end justify-center lg:items-center" style={{ zIndex }}>
+    <div className={`fixed inset-0 flex items-end justify-center ${drawer ? 'lg:items-stretch lg:justify-end' : 'lg:items-center'}`} style={{ zIndex }}>
       <div
         className="absolute inset-0 bg-[var(--sb-scrim)]"
         style={{ animation: 'scrim-in 0.2s ease-out' }}
@@ -54,10 +56,11 @@ export default function Sheet({ children, onClose, title, tall = false, zIndex =
       <div
         role="dialog"
         aria-modal="true"
-        className={`pb-safe relative flex w-full max-w-[480px] flex-col rounded-t-[1.75rem] bg-bg-card shadow-card lg:rounded-[1.75rem] ${
-          tall ? 'max-h-[88dvh] lg:max-w-2xl' : 'max-h-[92dvh] lg:max-w-lg'
+        className={`sheet-panel pb-safe relative flex w-full max-w-[480px] flex-col rounded-t-[1.75rem] bg-bg-card shadow-card ${
+          drawer
+            ? 'sheet-drawer max-h-[92dvh] lg:max-h-none lg:max-w-[30rem] lg:rounded-none lg:border-l lg:border-border'
+            : `lg:rounded-[1.75rem] ${tall ? 'max-h-[88dvh] lg:max-w-2xl' : 'max-h-[92dvh] lg:max-w-lg'}`
         }`}
-        style={{ animation: 'sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1)' }}
       >
         <div className="flex justify-center pt-2.5 pb-1 lg:hidden">
           <span className="h-1.5 w-10 rounded-full bg-border-strong" />

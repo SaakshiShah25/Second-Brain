@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ListTodo, MapPin, MessageCircleQuestion, Mic, SquarePen, X } from 'lucide-react'
+import { Eraser, ListTodo, MapPin, MessageCircleQuestion, Mic, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useChat } from '../api/chat'
 import { useRatingPrompt } from '../api/feedback'
@@ -23,6 +23,7 @@ import { dueLabel } from '../lib/dates'
 import { notePoints } from '../lib/initiativeFilter'
 import { isOffline } from '../lib/connection'
 import { useUsageMode } from '../lib/usageMode'
+import { groupChatByDay } from '../lib/chatDays'
 
 // One shared soft tint for every Home starter tile - the tiles are
 // equal-weight shortcuts, so a different hue on each only added noise.
@@ -108,7 +109,6 @@ export default function ChatPage() {
       setInputText(transcript)
       chatInputRef.current?.focus()
     },
-    onError: (message) => appendMessage('assistant', message, { status: true }),
     onBusyChange: setIsBusy,
   })
   const { isRecording, isPaused } = voice
@@ -124,7 +124,7 @@ export default function ChatPage() {
   }, [messages, isBusy])
 
   function appendMessage(role: 'user' | 'assistant', content: string, extras: Partial<ChatMessage> = {}) {
-    setMessages((prev) => [...prev, { role, content, ...extras }])
+    setMessages((prev) => [...prev, { role, content, at: new Date().toISOString(), ...extras }])
   }
 
   function toggleLocation() {
@@ -295,16 +295,18 @@ export default function ChatPage() {
             type="button"
             onClick={() => setConfirmingClear(true)}
             disabled={isBusy}
-            aria-label="New conversation"
-            className="pressable flex h-9 w-9 items-center justify-center rounded-full text-text-muted disabled:opacity-40"
+            className="pressable flex h-8 flex-shrink-0 items-center gap-1.5 rounded-full border border-border-strong bg-bg-card px-3 text-[0.8125rem] font-medium whitespace-nowrap text-text-muted disabled:opacity-40 lg:hover:text-text"
           >
-            <SquarePen size={20} strokeWidth={1.8} />
+            <Eraser size={15} strokeWidth={2} />
+            Clear chat
           </button>
         )}
         <ProfileButton />
       </header>
 
-      <div className="flex flex-1 flex-col gap-5 pt-4 pb-4">
+      {/* On a laptop the chat starts inside the header's row, so its first date sits level with "Clear chat" instead of
+          leaving that row empty. */}
+      <div className={`flex flex-1 flex-col gap-5 pt-4 pb-4 ${messages.length > 0 ? 'lg:-mt-[3.25rem]' : ''}`}>
         {isEmpty && (
           <div className="flex flex-1 flex-col justify-end pb-2 lg:justify-center lg:pb-16">
             <Greeting />
@@ -320,14 +322,14 @@ export default function ChatPage() {
                   type="button"
                   onClick={onClick}
                   disabled={isBusy}
-                  className="pressable flex items-center gap-3.5 rounded-2xl border border-border bg-bg-card p-3.5 text-left shadow-card disabled:opacity-50"
+                  className="pressable flex items-center gap-3.5 rounded-2xl border border-border bg-bg-card p-3.5 text-left shadow-card disabled:opacity-50 lg:flex-col lg:items-start lg:gap-3 lg:p-4"
                 >
                   <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${STARTER_TINT}`}>
                     <Icon size={21} strokeWidth={2} />
                   </span>
                   <span className="min-w-0">
                     <span className="block text-[0.9375rem] font-semibold">{title}</span>
-                    <span className="block truncate text-sm text-text-muted">{body}</span>
+                    <span className="block truncate text-sm text-text-muted lg:whitespace-normal lg:leading-snug">{body}</span>
                   </span>
                 </button>
               ))}
@@ -335,17 +337,25 @@ export default function ChatPage() {
           </div>
         )}
 
-        {messages.map((m, i) => (
-          <ChatBubble
-            key={i}
-            message={m}
-            onSaveAsNote={i === messages.length - 1 && !isBusy ? (t) => submitText(t, true) : undefined}
-            onCaptureChange={(capture) => setMessages((prev) => prev.map((msg, idx) => (idx === i ? { ...msg, capture } : msg)))}
-            onUndo={m.capture && !m.undone ? () => undoCapture(i) : undefined}
-            onConfirm={m.confirm ? () => confirmDelete(i) : undefined}
-            onDecline={m.confirm ? () => declineDelete(i) : undefined}
-            onReport={() => setReporting({ about: m.capture ? 'a saved note' : 'an answer', reply: m.content, tag: m.capture ? 'wrong_space' : 'wrong_answer' })}
-          />
+        {groupChatByDay(messages).map((day) => (
+          <section key={day.key} aria-label={day.label} className="flex flex-col gap-5">
+            {/* Stays at the top while that day's messages scroll under it; the next day's pushes it away. */}
+            <h2 className="pointer-events-none sticky top-14 z-30 flex justify-center lg:top-4">
+              <span className="rounded-full border border-border bg-bg-card px-3 py-1 text-[0.75rem] font-semibold text-text-muted shadow-card">{day.label}</span>
+            </h2>
+            {day.items.map(({ message: m, index: i }) => (
+              <ChatBubble
+                key={i}
+                message={m}
+                onSaveAsNote={i === messages.length - 1 && !isBusy ? (t) => submitText(t, true) : undefined}
+                onCaptureChange={(capture) => setMessages((prev) => prev.map((msg, idx) => (idx === i ? { ...msg, capture } : msg)))}
+                onUndo={m.capture && !m.undone ? () => undoCapture(i) : undefined}
+                onConfirm={m.confirm ? () => confirmDelete(i) : undefined}
+                onDecline={m.confirm ? () => declineDelete(i) : undefined}
+                onReport={() => setReporting({ about: m.capture ? 'a saved note' : 'an answer', reply: m.content, tag: m.capture ? 'wrong_space' : 'wrong_answer' })}
+              />
+            ))}
+          </section>
         ))}
 
         {/* After a successful save, once they've logged a few notes (the server decides) - never after an error. */}
@@ -423,6 +433,8 @@ export default function ChatPage() {
             onPauseRecord={voice.pause}
             onResumeRecord={voice.resume}
             onCancelRecord={voice.cancel}
+            voiceProblem={voice.problem}
+            onDismissVoiceProblem={voice.clearProblem}
             initiatives={initiativeList}
             selectedInitiativeId={selectedInitiativeId}
             onSelectInitiative={setSelectedInitiativeId}
@@ -437,9 +449,9 @@ export default function ChatPage() {
 
       {confirmingClear && (
         <ConfirmDialog
-          title="Start a new conversation?"
-          message="This clears the chat on this device. Everything you logged stays saved in Notes and Today."
-          confirmLabel="Clear conversation"
+          title="Clear this chat?"
+          message="This clears the chat on this device. Everything you logged stays saved in Today and Spaces."
+          confirmLabel="Clear chat"
           onConfirm={() => {
             setMessages([])
             setConfirmingClear(false)

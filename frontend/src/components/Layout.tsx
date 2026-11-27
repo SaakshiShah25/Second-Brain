@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { CalendarCheck, Home, Keyboard, LayoutGrid, Settings as SettingsIcon, type LucideIcon } from 'lucide-react'
+import { CalendarCheck, FileText, Home, Keyboard, LayoutGrid, Search, Settings as SettingsIcon, type LucideIcon } from 'lucide-react'
 import ConfiaLogo from './ConfiaLogo'
 import Toaster from './Toast'
 import ConnectionBanner from './ConnectionBanner'
@@ -9,9 +9,22 @@ import NotificationPrompt from './NotificationPrompt'
 import AlarmOverlay from './AlarmOverlay'
 import Sheet from './Sheet'
 import { useInitiatives } from '../api/initiatives'
-import { getInitiativeStyle } from '../lib/initiativeStyle'
+import { getInitiativeStyle, initiativeBadgeStyle } from '../lib/initiativeStyle'
 import { setInitiativeFilter, useInitiativeFilter } from '../lib/initiativeFilter'
 import { useOpenSpace } from '../lib/useOpenSpace'
+import SearchPalette from './SearchPalette'
+import { useAuth } from '../auth/AuthContext'
+import { useTasks } from '../api/tasks'
+import { openCountsByInitiative } from '../lib/items'
+import { openOnToday } from '../lib/timeline'
+import { savedName } from '../lib/displayName'
+import { isDesktopNow, useIsDesktop } from '../lib/useIsDesktop'
+
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.userAgent)
+const SEARCH_KEYS = IS_MAC ? '⌘ K' : 'Ctrl K'
+
+// Pages that use a laptop's width; the rest (the chat, Settings, Help) stay a readable column.
+const WIDE = [/^\/today$/, /^\/notes$/, /^\/admin$/]
 
 // Each tab has its own hue (index.css --sb-fun-*), shown when it's the
 // active tab - full class strings so Tailwind can see them.
@@ -96,7 +109,7 @@ function useHoverLabels() {
     function onOver(e: PointerEvent) {
       if (e.pointerType !== 'mouse') return
       const el = (e.target as Element | null)?.closest?.('button[aria-label], a[aria-label]')
-      if (el && !el.hasAttribute('title')) el.setAttribute('title', el.getAttribute('aria-label') ?? '')
+      if (el && !el.hasAttribute('title') && !el.hasAttribute('data-tip')) el.setAttribute('title', el.getAttribute('aria-label') ?? '')
     }
     document.addEventListener('pointerover', onOver)
     return () => document.removeEventListener('pointerover', onOver)
@@ -106,6 +119,7 @@ function useHoverLabels() {
 // Keyboard shortcuts for a laptop (ignored while typing in a field, and on a phone-sized window):
 //   g then t / h / s   go to Today / Home / Spaces      / or n   jump to the add / search box      ?   this list
 const SHORTCUTS: { keys: string; does: string }[] = [
+  { keys: SEARCH_KEYS, does: 'Search everything' },
   { keys: 'g  then  t', does: 'Go to Today' },
   { keys: 'g  then  h', does: 'Go to Home' },
   { keys: 'g  then  s', does: 'Go to Spaces' },
@@ -162,23 +176,35 @@ function SidebarSpaces() {
   const [filter] = useInitiativeFilter()
   const openSpace = useOpenSpace()
   const { pathname } = useLocation()
+  const { data: taskData } = useTasks('all')
+  const counts = openCountsByInitiative(taskData?.tasks ?? [])
   if (!initiatives || initiatives.length === 0) return null
   const rows = [...initiatives.map((i) => ({ id: i.id as number | null, name: i.name, style: getInitiativeStyle(i), key: i.id })), { id: null, name: 'Others', style: null, key: -1 }]
   return (
-    <div className="mt-1 mb-1 ml-5 flex flex-col gap-0.5 border-l border-border pl-2">
+    // Each row lines up with the menu above it: its icon sits under the menu's icons, its name under the menu's names,
+    // and its count under Today's badge. Every row has an icon tile (Others too), so no name floats on its own.
+    <div className="mt-0.5 mb-1 flex flex-col gap-px">
       {rows.map((r) => {
         const active = pathname.startsWith('/notes') && filter === (r.id === null ? -1 : r.id)
+        const count = counts.get(r.id ?? -1)
         return (
           <button
             key={r.key}
             type="button"
             onClick={() => openSpace(r.id)}
-            className={`pressable flex h-8 items-center gap-2 rounded-lg px-2.5 text-left text-[0.8125rem] ${
-              active ? 'bg-bg-hover font-semibold text-text' : 'text-text-muted hover:bg-bg-hover'
+            aria-current={active ? 'true' : undefined}
+            className={`pressable flex h-9 flex-shrink-0 items-center gap-2.5 rounded-xl pr-3 pl-2.5 text-left text-[0.875rem] ${
+              active ? 'bg-bg-hover font-semibold text-text' : 'text-text-muted hover:bg-bg-hover hover:text-text'
             }`}
           >
-            {r.style ? <r.style.Icon size={14} strokeWidth={2} style={{ color: r.style.color }} className="flex-shrink-0" /> : <span className="h-3.5 w-3.5 flex-shrink-0" />}
-            <span className="truncate">{r.name}</span>
+            <span
+              className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-[0.45rem] ${r.style ? '' : 'bg-bg-elevated text-text-muted'}`}
+              style={r.style ? initiativeBadgeStyle(r.style.color) : undefined}
+            >
+              {r.style ? <r.style.Icon size={14} strokeWidth={2.2} /> : <FileText size={14} strokeWidth={2.2} />}
+            </span>
+            <span className="min-w-0 flex-1 truncate">{r.name}</span>
+            {!!count && <span className="min-w-6 flex-shrink-0 text-center text-[0.75rem] tabular-nums text-text-faint">{count}</span>}
           </button>
         )
       })}
@@ -186,8 +212,30 @@ function SidebarSpaces() {
   )
 }
 
+// Beside "Today" in the sidebar: how many are on the Today view (the same count the page shows).
+function TodayBadge() {
+  const { data } = useTasks('all')
+  const n = openOnToday(data?.tasks ?? [])
+  if (!n) return null
+  return <span className="ml-auto min-w-6 rounded-full bg-bg-elevated px-1.5 py-0.5 text-center text-[0.75rem] font-semibold tabular-nums text-text-muted">{n}</span>
+}
+
 export default function Layout() {
   useHoverLabels()
+  const desktop = useIsDesktop()
+  const { user } = useAuth()
+  const [searching, setSearching] = useState(false)
+  // Ctrl/⌘ K searches from anywhere on a laptop, even while typing in a box.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || !isDesktopNow()) return
+      if (document.querySelector('[role="dialog"]:not([aria-label="Search"])')) return // finish the open pop-up first
+      e.preventDefault()
+      setSearching((v) => !v)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
   const { pathname, search } = useLocation()
   const navigate = useNavigate()
   const [help, setHelp] = useState(false)
@@ -196,7 +244,10 @@ export default function Layout() {
   // bare tab address is sent Home; a link that opens something specific (a notification, ?open=<id>) is left alone.
   useEffect(() => {
     setInitiativeFilter(null, 'spaces')
-    if ((pathname === '/today' || pathname === '/notes') && !search) navigate('/', { replace: true })
+    // A laptop opens on Today, its overview of everything; a phone opens on Home, ready to type or talk.
+    if (isDesktopNow()) {
+      if ((pathname === '/' || pathname === '/notes') && !search) navigate('/today', { replace: true })
+    } else if ((pathname === '/today' || pathname === '/notes') && !search) navigate('/', { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   // If task reminders are on, tell the server this device's current time zone each time the app opens.
@@ -218,12 +269,22 @@ export default function Layout() {
     // position:fixed, so content can never end up hidden underneath it.
     <div className="bg-bg text-text lg:flex lg:h-dvh">
       {/* Sidebar: web only. */}
-      <aside className="hidden w-60 flex-shrink-0 flex-col border-r border-border px-3 py-6 lg:flex">
-        <div className="mb-8 flex items-center gap-2.5 px-3">
+      <aside className="hidden w-60 flex-shrink-0 flex-col border-r border-border px-3 py-5 lg:flex">
+        <div className="mb-5 flex items-center gap-2.5 px-3">
           <ConfiaLogo size={30} className="text-accent" />
           <span className="font-display text-xl font-semibold tracking-tight">MyConfía</span>
         </div>
-        <nav className="flex flex-col gap-1" aria-label="Main">
+        <button
+          type="button"
+          onClick={() => setSearching(true)}
+          className="pressable mb-3 flex h-10 flex-shrink-0 items-center gap-2.5 rounded-xl border border-border-strong bg-bg-card px-3 text-left text-[0.875rem] text-text-faint hover:text-text-muted"
+        >
+          <Search size={16} strokeWidth={2} />
+          <span className="flex-1">Search</span>
+          <kbd className="rounded-md border border-border px-1.5 text-[0.6875rem]">{SEARCH_KEYS}</kbd>
+        </button>
+        {/* Scrolls on its own when there are many spaces, so Settings never drops off the screen. */}
+        <nav className="no-scrollbar flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto" aria-label="Main">
           {tabs.map((tab) => (
             <div key={tab.to}>
               <NavLink
@@ -237,34 +298,42 @@ export default function Layout() {
               >
                 <tab.icon size={20} strokeWidth={1.9} />
                 {tab.label}
+                {tab.to === '/today' && <TodayBadge />}
               </NavLink>
               {tab.to === '/notes' && <SidebarSpaces />}
             </div>
           ))}
         </nav>
-        <span className="flex-1" />
-        <button type="button" onClick={() => setHelp(true)} className="pressable mb-2 flex h-9 items-center gap-2 rounded-lg px-3 text-left text-[0.8125rem] text-text-faint hover:bg-bg-hover">
+        <button type="button" onClick={() => setHelp(true)} className="pressable mt-2 mb-1 flex-shrink-0 flex h-9 items-center gap-2 rounded-lg px-3 text-left text-[0.8125rem] text-text-faint hover:bg-bg-hover">
           <Keyboard size={18} strokeWidth={1.8} className="flex-shrink-0" />
           Keyboard shortcuts
         </button>
         <NavLink
           to="/settings"
-          className={({ isActive }) =>
-            `pressable flex h-11 items-center gap-3 rounded-xl px-3 text-[0.9375rem] ${isActive ? 'bg-bg-hover font-semibold' : 'text-text-muted hover:bg-bg-hover'}`
-          }
+          data-tour-nav="/settings"
+          aria-label="Settings and profile"
+          title="Settings and profile"
+          className={({ isActive }) => `pressable flex flex-shrink-0 items-center gap-2.5 rounded-xl border-t border-border px-2.5 py-2.5 ${isActive ? 'bg-bg-hover' : 'hover:bg-bg-hover'}`}
         >
-          <SettingsIcon size={20} strokeWidth={1.9} />
-          Settings
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-brand-soft text-sm font-semibold text-brand-ink ring-1 ring-brand/40">
+            {(savedName(user) || user?.email || '?')[0].toUpperCase()}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[0.875rem] font-semibold">{savedName(user) || 'Settings'}</span>
+            <span className="block truncate text-[0.75rem] text-text-faint">{user?.email}</span>
+          </span>
+          <SettingsIcon size={17} strokeWidth={1.9} className="flex-shrink-0 text-text-muted" />
         </NavLink>
       </aside>
       <div className="pt-safe relative mx-auto flex h-dvh max-w-[480px] flex-col bg-bg min-[481px]:border-x min-[481px]:border-border lg:max-w-none lg:min-w-0 lg:flex-1 lg:border-x-0">
         <ConnectionBanner />
         <main id="app-scroll" className="flex-1 overflow-y-auto overscroll-contain">
-          <div className="mx-auto flex min-h-full w-full flex-col px-4 pt-2 pb-6 lg:max-w-4xl lg:pt-6">
+          <div className={`mx-auto flex min-h-full w-full flex-col px-4 pt-2 pb-6 lg:pt-6 ${WIDE.some((re) => re.test(pathname)) ? 'lg:max-w-7xl lg:px-8' : 'lg:max-w-3xl'}`}>
             <Outlet />
           </div>
         </main>
 
+        {searching && desktop && <SearchPalette onClose={() => setSearching(false)} />}
         <Toaster />
         <NotificationPrompt />
         <AlarmOverlay />

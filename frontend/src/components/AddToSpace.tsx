@@ -58,7 +58,7 @@ export default function AddToSpace({ spaceId, spaceName, kind: fixedKind }: { sp
         type="button"
         onClick={() => setOpen(true)}
         aria-label={fixedKind ? `${TITLE[fixedKind]} in ${spaceName}` : `Add to ${spaceName}`}
-        className="pressable flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-contrast"
+        className="pressable flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-contrast lg:h-8 lg:w-8"
       >
         <Plus size={19} strokeWidth={2.4} />
       </button>

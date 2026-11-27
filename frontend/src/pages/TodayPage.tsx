@@ -18,6 +18,10 @@ import { matchesInitiative, useInitiativeFilter } from '../lib/initiativeFilter'
 import { byDue, isOverdue, openCountsByInitiative, todayIso } from '../lib/items'
 import { PRIORITY_RANK, priorityOf, taskInitiativeId } from '../lib/taskOptions'
 import { useOpenItem } from '../lib/useOpenItem'
+import { STAT_ICONS, SpaceFilter, StatCards, TodaySide } from '../components/TodayOverview'
+import { useIsDesktop } from '../lib/useIsDesktop'
+import UpNext from '../components/UpNext'
+import { byTimeToday, pickUpNext } from '../lib/timeline'
 
 const UPCOMING_DAYS = 7
 type View = 'today' | 'upcoming' | 'anytime'
@@ -38,6 +42,8 @@ const SORTS: { id: SortMode; label: string; hint: string }[] = [
 function Section({ title, tasks, tone, ...rowProps }: {
   title: string
   tasks: Task[]
+  // Today's sections: each row's time in a column on the right.
+  timeline?: boolean
   tone?: 'danger'
   onToggle: (t: Task) => void
   onOpen: (t: Task) => void
@@ -80,6 +86,7 @@ function Empty({ title, hint }: { title: string; hint: string }) {
 // any view to one space.
 export default function TodayPage() {
   const { data, error, refetch, isFetching } = useTasks('all')
+  const desktop = useIsDesktop()
   const connection = useConnection()
   const offline = connection.offline || connection.unreachable
   const updateStatus = useUpdateTaskStatus()
@@ -103,12 +110,13 @@ export default function TodayPage() {
     }
   }, [view])
   const [showDone, setShowDone] = useState(false)
+  // By due date unless you have chosen otherwise: Today reads as a day, earliest first.
   const [sortMode, setSortMode] = useState<SortMode>(() => {
     try {
       const saved = localStorage.getItem('confia.todaySort')
-      return saved === 'low' || saved === 'date' ? saved : 'high'
+      return saved === 'low' || saved === 'high' ? saved : 'date'
     } catch {
-      return 'high'
+      return 'date'
     }
   })
   const [pickingSort, setPickingSort] = useState(false)
@@ -154,12 +162,15 @@ export default function TodayPage() {
   const remindedToday = open
     .filter((t) => !t.list_id && t.remind_on === today && !(t.due_date && t.due_date <= today))
     .sort(cmp)
-  const todayItems = [...dueToday, ...remindedToday].sort(cmp)
+  const todayItems = [...dueToday, ...remindedToday].sort(sortMode === 'date' ? byTimeToday(today) : cmp)
   // High-priority to-dos wherever they are in time (undated, or dated later) are pinned to Today; the ones already
   // overdue or due/reminded today are in those sections, so nothing shows twice.
   const shown = new Set([...overdue, ...todayItems].map((t) => t.id))
   const important = open.filter((t) => !t.list_id && priorityOf(t) === 'high' && !shown.has(t.id)).sort(cmp)
   const done = all.filter((t) => t.status === 'done' && !t.list_id && !justDone.has(t.id)).sort((a, b) => b.id - a.id).slice(0, 30)
+  // For the summary at the top: what is still open on Today (one just ticked doesn't count), and what comes after.
+  const stillOpen = [...overdue, ...todayItems, ...important].filter((t) => t.status === 'open')
+  const upNext = pickUpNext(stillOpen, [...soon, ...later].filter((t) => t.status === 'open').sort(byDue), now)
   const rowProps = {
     onToggle: (t: Task) => {
       const finishing = t.status !== 'done'
@@ -182,6 +193,30 @@ export default function TodayPage() {
     <div className="flex flex-1 flex-col">
       <PageHeader title="Today" subtitle={subtitle} showProfile />
 
+      {desktop && data && (
+        <StatCards
+          stats={[
+            { key: 'overdue', label: 'Overdue', value: overdue.length, Icon: STAT_ICONS.overdue, color: 'var(--sb-danger)', onClick: () => setView('today') },
+            { key: 'today', label: 'Due today', value: todayItems.length, Icon: STAT_ICONS.today, color: 'var(--sb-accent)', onClick: () => setView('today') },
+            { key: 'week', label: 'Next 7 days', value: soon.length, Icon: STAT_ICONS.week, color: 'var(--sb-link)', onClick: () => setView('upcoming') },
+            {
+              key: 'done',
+              label: 'Completed',
+              value: all.filter((t) => t.status === 'done' && !t.list_id).length,
+              Icon: STAT_ICONS.done,
+              color: 'var(--sb-success)',
+              onClick: () => {
+                setView('anytime')
+                setShowDone(true)
+              },
+            },
+          ]}
+        />
+      )}
+
+      {/* A laptop: the to-dos, with what was added lately beside them. */}
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start lg:gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="min-w-0">
       <ChipRow className="mb-4">
         {VIEWS.map((v) => (
           <Chip key={v.id} active={view === v.id} onClick={() => setView(v.id)}>
@@ -191,7 +226,12 @@ export default function TodayPage() {
         ))}
       </ChipRow>
 
-      <div className="-mt-2 mb-3 flex justify-end">
+      <div className="-mt-2 mb-3 flex items-center justify-end gap-2">
+        {desktop && (
+          <div className="mr-auto">
+            <SpaceFilter tasks={everything} />
+          </div>
+        )}
         <button
           type="button"
           onClick={() => setPickingSort(true)}
@@ -246,12 +286,15 @@ export default function TodayPage() {
 
       {data && view === 'today' && (
         <div>
-          {overdue.length + todayItems.length + important.length === 0 && (
+          {upNext && (
+            <UpNext count={stillOpen.length} overdue={stillOpen.filter((t) => overdueIds.has(t.id)).length} next={upNext} now={now} onOpen={sheet.open} />
+          )}
+          {!upNext && overdue.length + todayItems.length + important.length === 0 && (
             <Empty title="Nothing on your plate." hint="Say “remind me to…” or “every night…” on Home and it shows up here on its day." />
           )}
-          <Section title="Overdue" tasks={overdue} tone="danger" {...rowProps} />
-          <Section title="Today" tasks={todayItems} {...rowProps} />
-          <Section title="High priority" tasks={important} {...rowProps} />
+          <Section title="Overdue" tasks={overdue} tone="danger" timeline {...rowProps} />
+          <Section title="Today" tasks={todayItems} timeline {...rowProps} />
+          <Section title="High priority" tasks={important} timeline {...rowProps} />
         </div>
       )}
 
@@ -293,9 +336,14 @@ export default function TodayPage() {
         </div>
       )}
 
+      </div>
+      {desktop && data && <TodaySide tasks={everything} onOpenTask={sheet.open} />}
+      </div>
+
       {sheet.active && <ItemSheet task={sheet.active} onClose={sheet.close} />}
 
-      <InitiativeBar counts={openCountsByInitiative(everything)} scope="today" search={<TodayComposer />} />
+      {/* The space chips are the phone's way to narrow the page; a laptop has the "Show" menu instead. */}
+      <InitiativeBar counts={openCountsByInitiative(everything)} scope="today" hideChips={desktop} search={<TodayComposer />} />
     </div>
     </DragToSpace>
   )

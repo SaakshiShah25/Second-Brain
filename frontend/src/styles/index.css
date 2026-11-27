@@ -378,6 +378,112 @@ body {
     transform: translateY(0);
   }
 }
+/* A sheet rises from the bottom. On a laptop a details panel (.sheet-drawer, Sheet.tsx) slides in from the right. */
+.sheet-panel {
+  animation: sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@media (min-width: 1024px) {
+  .sheet-drawer {
+    animation-name: drawer-in;
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* A label that shows the moment a mouse is over an icon button (the browser's own tooltip waits a second and is easy to
+   miss). Above the button and lined up with its left edge, so it is never cut off at the foot or the left of the chat. */
+.tip {
+  position: relative;
+}
+
+@media (hover: hover) {
+  .tip:hover::after,
+  .tip:focus-visible::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 0.25rem);
+    left: 0;
+    z-index: 20;
+    white-space: nowrap;
+    border-radius: 0.5rem;
+    padding: 0.3rem 0.55rem;
+    background: var(--sb-text);
+    color: var(--sb-bg);
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.2;
+    pointer-events: none;
+  }
+}
+
+/* The "we didn't catch that" card (chat/VoiceAlert): slides up with a short shake, and its mic pulses a few times. */
+.voice-alert {
+  animation: voice-alert-in 0.55s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.voice-alert-icon {
+  animation: voice-alert-ring 1.1s ease-out 0.45s 3;
+}
+
+@keyframes voice-alert-in {
+  0% {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+  45% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  60% {
+    transform: translateX(-0.4rem);
+  }
+  75% {
+    transform: translateX(0.35rem);
+  }
+  88% {
+    transform: translateX(-0.15rem);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes voice-alert-ring {
+  from {
+    box-shadow: 0 0 0 0 var(--sb-accent);
+  }
+  to {
+    box-shadow: 0 0 0 0.75rem transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-alert,
+  .voice-alert-icon {
+    animation: none;
+  }
+}
+
+/* The same label to the LEFT of the button, level with it (the bell at the end of a row). */
+@media (hover: hover) {
+  .tip-left:hover::after,
+  .tip-left:focus-visible::after {
+    top: 50%;
+    bottom: auto;
+    left: auto;
+    right: calc(100% - 0.25rem);
+    transform: translateY(-50%);
+  }
+}
+
 @keyframes scrim-in {
   from {
     opacity: 0;

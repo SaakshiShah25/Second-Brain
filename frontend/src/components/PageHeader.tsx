@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
+import { useIsDesktop } from '../lib/useIsDesktop'
 
 interface PageHeaderProps {
   title?: ReactNode
@@ -25,7 +26,7 @@ export function ProfileButton() {
       aria-label="Settings and profile"
       // Read by Tour.tsx to spotlight this button on its Settings step.
       data-tour-nav="/settings"
-      className="pressable flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-brand-soft text-sm font-semibold text-brand-ink ring-1 ring-brand/40"
+      className="pressable flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-brand-soft text-sm font-semibold text-brand-ink ring-1 ring-brand/40 lg:hidden"
     >
       {initial}
     </Link>
@@ -38,7 +39,9 @@ export function ProfileButton() {
 // desktop-style toolbar.
 export default function PageHeader({ title, subtitle, backTo, backLabel = 'Back', actions, showProfile = false }: PageHeaderProps) {
   const navigate = useNavigate()
-  const hasTopRow = backTo || actions || showProfile
+  const desktop = useIsDesktop()
+  // On a laptop the profile button is in the sidebar, so a row holding only that would be a blank strip.
+  const hasTopRow = backTo || actions || (showProfile && !desktop)
   return (
     <header className="mb-4">
       {hasTopRow && (

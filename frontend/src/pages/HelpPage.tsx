@@ -42,7 +42,7 @@ const SECTIONS: { title: string; items: { q: string; a: string }[] }[] = [
       },
       {
         q: 'Why is a to-do on the Today tab?',
-        a: 'Today shows only three kinds: overdue, due today (or reminded today), and high priority. Anything dated tomorrow or later is under Upcoming; undated ones are under Anytime.',
+        a: 'At the top, Today says how many things are on your list and shows the one to do next - tap it to open it. In the lists, when each to-do is due is in a column on the right, earliest first (change the order with Sort). A date on a to-do is always its due date; the bell is its reminder - orange when one is coming, and you can point at it or tap it to see when. Today shows only three kinds: overdue, due today (or reminded today), and high priority. Anything dated tomorrow or later is under Upcoming; undated ones are under Anytime.',
       },
       {
         q: 'What is the box at the bottom of Today?',
@@ -51,6 +51,14 @@ const SECTIONS: { title: string; items: { q: string; a: string }[] }[] = [
       {
         q: 'Can I create or delete a space by typing?',
         a: 'Yes, on the Home tab. “Create a workspace called IBM and add this task: send the deck tomorrow” makes the space and files the task in it. “Delete the space Work” asks you to confirm first; its notes, to-dos and lists move to Others rather than being deleted. You can also manage spaces from the sliders button on Today and Spaces.',
+      },
+      {
+        q: 'What is different on a laptop or desktop?',
+        a: 'It opens on Today, with a slim line of counts across the top, your to-dos below them, and what you added lately on the right. “Show” beside Sort narrows the page to one space. Press ⌘K (Ctrl+K on Windows) or use Search in the sidebar to find any space, list, to-do or note. Inside a space, Notes, To-dos and Lists sit side by side, and details open in a panel on the right. Press ? to see the keyboard shortcuts.',
+      },
+      {
+        q: 'What does “Clear chat” do?',
+        a: 'It empties the conversation on the Home screen of this device, after asking you to confirm. Your notes and to-dos are not touched - they stay in Today and Spaces. The chat shows a date wherever a new day starts; messages from before dates were recorded appear under “Earlier”.',
       },
       {
         q: 'What are lists?',

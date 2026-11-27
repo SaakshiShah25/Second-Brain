@@ -186,7 +186,7 @@ export default function InteractionCard({
       </div>
 
       {open && (
-        <Sheet onClose={updateInteraction.isPending ? undefined : close} tall>
+        <Sheet onClose={updateInteraction.isPending ? undefined : close} tall drawer>
           {!editing ? (
             <>
               <div className="mb-3 flex flex-wrap items-center gap-2 text-[0.8125rem]">

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
 import { useTranscribe } from '../api/voice'
 import { useLiveTranscript } from './useLiveTranscript'
@@ -8,8 +8,21 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+// What went wrong with a recording, shown as a card above the mic (components/chat/VoiceAlert.tsx).
+export interface VoiceProblem {
+  title: string
+  detail: string
+}
+
 // Nothing was said: the box stays empty and the person is told so - never text they did not speak.
-export const NOTHING_HEARD = "We didn't hear anything - tap the mic and try again, or type your note."
+export const NOTHING_HEARD: VoiceProblem = {
+  title: "We didn't catch that",
+  detail: 'Nothing was heard, so nothing was saved. Speak a little closer to the mic, or type your note.',
+}
+const NO_MICROPHONE: VoiceProblem = {
+  title: "Can't use your microphone",
+  detail: 'Allow microphone access for this app in your browser or phone settings, then try again.',
+}
 
 // The recording counts as speech once the microphone level is clearly above room noise for a moment.
 const SPEECH_LEVEL = 0.02 // RMS of the waveform, 0-1 (quiet room noise is well under 0.01; speaking is 0.05+)
@@ -20,15 +33,14 @@ interface Options {
   setText: (text: string) => void
   // Whisper's final transcript. It is put in the box for the user to review - never sent on its own.
   onTranscript: (transcript: string) => void
-  // The microphone was refused / transcription failed: a sentence for the user.
-  onError: (message: string) => void
   // True while the recording is being turned into text (the caller can lock its send button).
   onBusyChange?: (busy: boolean) => void
 }
 
 // Record, pause, resume, cancel and transcribe - the voice half of the composer, shared by the Home chat and the
 // Today box so both behave exactly the same.
-export function useVoiceInput({ setText, onTranscript, onError, onBusyChange }: Options) {
+export function useVoiceInput({ setText, onTranscript, onBusyChange }: Options) {
+  const [problem, setProblem] = useState<VoiceProblem | null>(null)
   const [isRecording, setIsRecording] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const cancelledRef = useRef(false) // set when the user discards a recording instead of finishing it
@@ -42,13 +54,14 @@ export function useVoiceInput({ setText, onTranscript, onError, onBusyChange }: 
   const liveTranscript = useLiveTranscript(setText)
 
   async function start() {
+    setProblem(null)
     let stream: MediaStream
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch {
       // Mic permission denied, no microphone, or the OS blocked it (e.g. Android's system dialog was dismissed).
       // A clear message matters doubly on the Android TWA wrapper, where a denied permission is easy to run into.
-      onError("Couldn't access your microphone - check that this app has microphone permission, then try again.")
+      setProblem(NO_MICROPHONE)
       return
     }
     const recorder = new MediaRecorder(stream)
@@ -72,7 +85,7 @@ export function useVoiceInput({ setText, onTranscript, onError, onBusyChange }: 
       // The level meter heard nothing but silence: don't send it (the transcriber would invent words for it).
       if (metered?.reliable() && loudFramesRef.current < SPEECH_FRAMES) {
         setText('')
-        onError(NOTHING_HEARD)
+        setProblem(NOTHING_HEARD)
         return
       }
       const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
@@ -82,7 +95,7 @@ export function useVoiceInput({ setText, onTranscript, onError, onBusyChange }: 
         onTranscript(transcript)
       } catch (err) {
         // The server found no speech in it (422): say so plainly, not as a failure.
-        onError(err instanceof ApiError && err.status === 422 ? NOTHING_HEARD : `Voice transcription failed: ${errorText(err)}`)
+        setProblem(err instanceof ApiError && err.status === 422 ? NOTHING_HEARD : { title: "Voice didn't work", detail: `Nothing was saved. ${errorText(err)}` })
       } finally {
         onBusyChange?.(false)
       }
@@ -123,7 +136,9 @@ export function useVoiceInput({ setText, onTranscript, onError, onBusyChange }: 
     setText('')
   }
 
-  return { isRecording, isPaused, isTranscribing: transcribe.isPending, start, stop, pause, resume, cancel }
+  const clearProblem = useCallback(() => setProblem(null), [])
+
+  return { isRecording, isPaused, isTranscribing: transcribe.isPending, problem, clearProblem, start, stop, pause, resume, cancel }
 }
 
 // Watches the microphone level while recording and calls `onLoud` for every ~100 ms reading that is clearly speech-loud.

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, Check, ChevronRight, FolderInput, NotebookText, Trash2 } from 'lucide-react'
+import { Bell, CheckCircle2, ChevronRight, FolderInput, NotebookText, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import { useDeleteItem, useEditTask, useUpdateTaskFields, useUpdateTaskStatus } from '../api/tasks'
 import { useMoveItem } from '../lib/useMoveItem'
 import { useInitiatives } from '../api/initiatives'
@@ -17,6 +17,8 @@ import DueReminderSheet from './DueReminderSheet'
 import { PriorityMark, priorityOptionStyle } from './TaskOptions'
 import ConfirmDialog from './ConfirmDialog'
 import Sheet from './Sheet'
+import SheetStatusClose from './SheetStatusClose'
+import { toast } from './Toast'
 import { Input, Label, Select, Textarea } from './fields'
 
 // One item, opened from any list or from Today: what it is, where it came from, and everything
@@ -41,6 +43,37 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
   const [form, setForm] = useState({ description: '', repeat: '', listId: '', detail: '' })
   const list = task.item_list
   const isTodo = !list
+
+  // Priority, date, reminder and space save the moment they are tapped, and the top corner says "Saved" - so there is no
+  // Save button, and nobody reaches for "Mark as completed" thinking it means "save". What the to-do was when the panel
+  // opened tells whether anything has changed since.
+  const signature = JSON.stringify([
+    task.priority ?? 'normal', task.due_date, task.due_time, task.remind_on, task.remind_time, task.remind_before,
+    task.initiative_id, task.description, task.repeat, task.list_id, task.detail,
+  ])
+  const [opened] = useState(signature)
+  const changed = signature !== opened
+  const saving = updateFields.isPending || editTask.isPending
+  const failed = updateFields.isError || editTask.isError
+
+  const done = task.status === 'done'
+  function toggleDone() {
+    updateStatus.mutate(
+      { taskId: task.id, status: done ? 'open' : 'done', repeats: !!task.repeat },
+      {
+        onSuccess: () => {
+          onClose()
+          // A repeating item moves on to its next date, which can't simply be taken back; the rest can.
+          if (task.repeat && !done) toast('Done for now - it will come back on its next date')
+          else
+            toast(done ? 'Reopened' : 'Marked as completed', 6000, {
+              label: 'Undo',
+              run: () => updateStatus.mutate({ taskId: task.id, status: done ? 'done' : 'open' }),
+            })
+        },
+      },
+    )
+  }
 
   function startEditing() {
     setForm({
@@ -73,8 +106,11 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
 
   return (
     <>
-      <Sheet onClose={onClose}>
-        <p className="mb-1 text-[0.8125rem] font-medium uppercase tracking-wide text-text-faint">{isTodo ? 'Task' : 'Item'}</p>
+      <Sheet onClose={onClose} drawer>
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <p className="text-[0.8125rem] font-medium uppercase tracking-wide text-text-faint">{isTodo ? 'Task' : 'Item'}</p>
+          <SheetStatusClose saving={saving} saved={changed} failed={failed} onClose={onClose} />
+        </div>
         <p className="mb-1 text-lg leading-snug font-semibold">{task.description}</p>
         <p className="mb-4 text-[0.9375rem] text-text-muted">{meta.join(' · ')}</p>
         {task.detail && !editing && <p className="mb-4 whitespace-pre-wrap text-[0.9375rem] leading-relaxed">{task.detail}</p>}
@@ -83,6 +119,7 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
         {!task.list_id && (
           <>
         {/* How much it matters, and when to be nudged - the same two for every kind of item. */}
+        <p className="mb-1.5 text-[0.8125rem] font-medium text-text-muted">Priority</p>
         <div className="mb-3 flex gap-1.5" role="group" aria-label="Priority">
           {PRIORITIES.map((p) => {
             const active = priority === p.value
@@ -121,7 +158,7 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
         <button
           type="button"
           onClick={() => setChoosingCategory(true)}
-          className="pressable mb-4 flex w-full items-center gap-3 rounded-2xl border border-border bg-bg-elevated px-3.5 py-3 text-left"
+          className="pressable mb-3 flex w-full items-center gap-3 rounded-2xl border border-border bg-bg-elevated px-3.5 py-3 text-left"
         >
           <FolderInput size={17} strokeWidth={2} className="flex-shrink-0 text-text-muted" />
           <span className="min-w-0 flex-1 text-[0.9375rem]">
@@ -203,32 +240,34 @@ export default function ItemSheet({ task, onClose }: { task: Task; onClose: () =
             </div>
           </div>
         ) : (
-          <button type="button" onClick={startEditing} className="pressable mb-4 text-[0.9375rem] font-medium text-link">
-            Edit, set a date or a repeat, or move it
+          <button
+            type="button"
+            onClick={startEditing}
+            className="pressable mb-3 flex w-full items-center gap-3 rounded-2xl border border-border bg-bg-elevated px-3.5 py-3 text-left"
+          >
+            <Pencil size={16} strokeWidth={2} className="flex-shrink-0 text-text-muted" />
+            <span className="min-w-0 flex-1 text-[0.9375rem] text-text-muted">Edit text, repeat, list or details</span>
+            <ChevronRight size={16} strokeWidth={2} className="flex-shrink-0 text-text-faint" />
           </button>
         )}
 
-        <div className="flex flex-col gap-2">
-          <Button
-            variant="primary"
-            size="lg"
-            block
-            disabled={updateStatus.isPending}
-            onClick={() =>
-              updateStatus.mutate(
-                { taskId: task.id, status: task.status === 'open' ? 'done' : 'open', repeats: !!task.repeat },
-                { onSuccess: onClose },
-              )
-            }
-          >
-            <Check size={18} strokeWidth={2.4} />
-            {task.status === 'done' ? 'Reopen' : task.repeat ? 'Done for now' : 'Mark done'}
-          </Button>
-          <Button variant="ghost" size="lg" block onClick={() => setConfirmDelete(true)}>
-            <Trash2 size={17} strokeWidth={2} />
-            Delete
-          </Button>
-        </div>
+        {/* While the form above is open, its own Cancel and Save are the only buttons. */}
+        {!editing && (
+          <div className="mt-2">
+            {failed && <p className="mb-2 text-[0.8125rem] text-danger">Couldn't save that change - please try again.</p>}
+            {/* Closing is the ✕ (or a tap outside); these two do something to the to-do itself. */}
+            <div className="flex gap-2 border-t border-border pt-4">
+              <Button className={`flex-1 ${done ? '' : '!border-success/50 !text-success'}`} disabled={updateStatus.isPending} onClick={toggleDone}>
+                {done ? <RotateCcw size={16} strokeWidth={2.2} /> : <CheckCircle2 size={17} strokeWidth={2.2} />}
+                {done ? 'Reopen' : task.repeat ? 'Done for now' : 'Mark as completed'}
+              </Button>
+              <Button variant="danger" onClick={() => setConfirmDelete(true)}>
+                <Trash2 size={16} strokeWidth={2} />
+                Delete
+              </Button>
+            </div>
+          </div>
+        )}
       </Sheet>
 
       {choosingReminder && <DueReminderSheet task={task} onClose={() => setChoosingReminder(false)} />}

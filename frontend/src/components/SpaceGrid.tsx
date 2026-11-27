@@ -34,7 +34,7 @@ function Slot({ id, children }: { id: number; children: ReactNode }) {
         drop.setNodeRef(node)
       }}
       {...drag.listeners}
-      className="rounded-3xl outline-none transition-shadow select-none [-webkit-touch-callout:none]"
+      className="h-full rounded-3xl outline-none transition-shadow select-none [-webkit-touch-callout:none]"
       style={{
         opacity: drag.isDragging ? 0.35 : 1,
         touchAction: 'manipulation',
@@ -94,7 +94,7 @@ export default function SpaceGrid<T extends { id: number }>({
 
   return (
     <DndContext sensors={sensors} collisionDetection={collide} onDragStart={(e) => setDraggingId(Number(e.active.id))} onDragEnd={onDragEnd} onDragCancel={() => setDraggingId(null)}>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:auto-rows-fr lg:grid-cols-3 xl:grid-cols-4">
         {blocks.map((b) => (
           <Slot key={b.id} id={b.id}>
             {renderTile(b)}
@@ -103,7 +103,8 @@ export default function SpaceGrid<T extends { id: number }>({
         {trailing}
       </div>
       {blocks.filter((b) => b.id !== 0).length > 1 && (
-        <p className="mt-3 px-1 text-center text-[0.8125rem] text-text-faint">Press and hold a space, then drop it on another to put it where you want.</p>
+        <p className="mt-3 px-1 text-center text-[0.8125rem] text-text-faint"><span className="lg:hidden">Press and hold a space, then drop it on another to put it where you want.</span>
+          <span className="hidden lg:inline">Drag a space onto another to change the order.</span></p>
       )}
       <DragOverlay dropAnimation={null}>{dragging && <div className="scale-[1.04] opacity-95 shadow-card">{renderTile(dragging)}</div>}</DragOverlay>
     </DndContext>

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bell, ChevronRight, Repeat as RepeatIcon, Undo2 } from 'lucide-react'
 import type { CreatedItem } from '../../api/types'
-import { datedLabel, timeLabel } from '../../lib/dates'
+import { datedLabel, midSentence, timeLabel } from '../../lib/dates'
 import { reminderComing } from '../../lib/dueReminder'
 import { itemPath, reminderText, repeatLabel } from '../../lib/items'
 import { useOpenSpace } from '../../lib/useOpenSpace'
@@ -39,7 +39,7 @@ export default function Receipt({ items, spaceId }: { items: CreatedItem[]; spac
               <span className="block truncate text-[0.9375rem]">{item.description}</span>
               <span className="flex items-center gap-1.5 text-[0.8125rem] text-text-muted">
                 <span className="truncate">{item.list_name ?? 'Tasks'}</span>
-                {when && <span className="flex-shrink-0">· {when}</span>}
+                {when && <span className="flex-shrink-0">· Due {midSentence(when)}</span>}
                 {item.priority && item.priority !== 'normal' && (
                   <span className="flex-shrink-0" style={{ color: item.priority === 'high' ? 'var(--sb-prio-high)' : 'var(--sb-prio-low)' }}>
                     · {item.priority === 'high' ? 'Urgent' : 'Low'}

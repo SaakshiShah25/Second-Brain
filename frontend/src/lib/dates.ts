@@ -56,6 +56,11 @@ export function datedLabel(iso: string | null | undefined): string {
   return `${d.toLocaleDateString('en-GB', { weekday: 'short' })}, ${exact}`
 }
 
+/** A day label in the middle of a sentence: "Due today, 27 Nov", not "Due Today". Weekdays keep their capital. */
+export function midSentence(label: string): string {
+  return label.replace(/^(Today|Yesterday|Tomorrow)\b/, (word) => word.toLowerCase())
+}
+
 /** The full calendar date for a due date: "Fri 30-Oct-2026". A to-do keeps its
  * own wording ("by Friday"); this is the exact day underneath it. */
 export function fullDate(iso: string | null | undefined): string {

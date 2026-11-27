@@ -100,7 +100,7 @@ On the Tasks tab each open task has a **flag** and a **bell**:
 - `Create a new space IBM and add a task to it: Submit the onboarding document` → the space **and** the to-do inside it ("add a task to it:" is not part of the wording).
 - **A reminder needs no due date.** Open a to-do with no date → Due and reminder → "Remind me" shows **No reminder** and **At a date and time**; pick a day and time and it is saved (the card shows the reminder). Clearing a due date keeps a reminder you set for a day and time, and only drops a "before it is due" one.
 - **The bell is orange whenever a reminder is coming**, including the automatic one: "Remind me to call Sanket tomorrow 10am" shows a filled orange bell on the chat card, on the to-do's row and in its sheet, though no reminder was picked by hand. Once 10 AM has passed the bell is empty again.
-- A to-do's card and bell show a reminder only while it is **still to come**: once it has gone off (e.g. an 11 Nov reminder viewed on the 13th) the date disappears and the bell is empty.
+- A to-do's bell shows a reminder only while it is **still to come**: once it has gone off (e.g. an 11 Nov reminder viewed on the 13th) the bell is empty.
 - A reminder that is more than a day and a half late is **not** sent (switching notifications on two days later no longer delivers an old reminder).
 - In the reminder sheet's "At a date and time", the **Day** field (with a calendar icon) comes first, then **Time**, then a button that says what it will do ("Remind me Sat 14 Nov, 9:00 AM").
 - The morning/evening summary notification shows a coloured square and count per space, then one bullet per to-do.
@@ -218,13 +218,13 @@ If an answer invents details that aren't in your notes, that is a bug — please
 - A space **tile** grows to fit: "1 overdue" / "1 urgent" never cover the space's name.
 - The **Today box** is one flat line (like Home), and the **mic** is an outlined button with an orange icon (not a filled yellow disc); it turns red only while recording.
 - On a list, the **list's name** ("📝 Borivali · 2") is bold and larger than the entries below. The two faint edge arrows on a phone are gone.
-- Inside a space there is a **‹ Spaces** back button at the top left; the up-arrow in the space card is gone.
+- Inside a space there is a **‹ All spaces** back button at the top left and no "Spaces" title above it (the space's card is the heading); the up-arrow in the space card is gone. On a laptop the page's search box is only on the list of spaces (⌘K searches from inside a space).
 - **Searching in Spaces** (`IBM`) always shows from the top: the matching **Space** first, then lists, to-dos and notes.
 - An answer never quotes a database number ("note 3231") or says a value is null; it says where a note is filed ("in your Work space"). Tapping a **list entry** chip opens that space on its **Lists** part, a **note** chip opens the space's Notes, and a to-do chip opens the to-do.
 
 ### Voice, kinship words, thanks, and the Excel result columns
 
-- **Silence:** tap the mic, say nothing for ~5 seconds, tap stop → the box stays **empty** and a message says "We didn't hear anything - tap the mic and try again, or type your note." Nothing is typed for you (before, the transcriber could make up "I'm sorry" / "Thank you"). Real speech - including a recording that says "I'm sorry I missed your call…" - is transcribed as normal; Cancel (bin) still throws a recording away.
+- **Silence:** tap the mic, say nothing for ~5 seconds, tap stop → the box stays **empty** and an alert card appears **above the mic** (on Home and Today alike): **"We didn't catch that"**, with **Try again** (records again), **Type instead** (puts the cursor in the box) and ✕. It slides in with a short shake, is not added to the chat, and goes away when you type or record again. A blocked microphone shows the same card as "Can't use your microphone". Nothing is typed for you (before, the transcriber could make up "I'm sorry" / "Thank you"). Real speech - including a recording that says "I'm sorry I missed your call…" - is transcribed as normal; Cancel (bin) still throws a recording away.
 - **`Apply for 4th and 5th January leave since mama is coming to my home from Canada`** keeps **"Mama is coming to my home from Canada"** (not "Mother…"). Kinship words (mama, mami, mausi, chacha, bua, nana, dada…) stay exactly as written.
 - After sending a rating or a report the sheet says **"Thanks for your feedback"** with a Done button (it closes by itself after a few seconds). The admin rating line reads "4.0 average out of 4 · 1 rating" with a line saying 4 = Loving it … 1 = Poor.
 - **Excel, notes columns:** "Notes sent (last 30 days)" is split into **sent before result tracking began** (result unknown), **sent since** that, and of those **saved / did not go through / no result**. An extra sheet, **About these columns**, says when tracking began and what each column means. "Days since last use" is never blank for someone who used the app.
@@ -251,3 +251,31 @@ If an answer invents details that aren't in your notes, that is a bug — please
 
 People/contact profiles and birthdays, documents and files, a calendar view, the morning brief, answering general-knowledge
 questions, and reminders timed to an individual task's own due time (reminders are the fixed 9 AM / 5 PM list).
+
+### Laptop and desktop layout (a window 1024px or wider)
+
+- **Opening the app** lands on Today. On a phone it still lands on Home.
+- **Today:** a slim line of four counts (each switches the view), to-dos on the left; on the right Recently added (a click opens the to-do or note). **Show: All spaces**, beside Sort, narrows the page and the counts to one space (Esc or a click outside closes the menu; Manage spaces is at its foot). There is no second list of spaces and no space chips at the foot; the add box stays.
+- **Search:** ⌘K / Ctrl+K from any page, or Search in the sidebar. Type, use ↑ ↓ and Enter; a space opens, a to-do or note opens in the side panel. Esc closes. It does not open over another pop-up.
+- **Sidebar:** Today shows how many are overdue or due today; each space shows its open count; your name at the bottom opens Settings. With many spaces the list scrolls and Settings stays visible.
+- **A space:** Notes, To-dos and Lists are three matching panels side by side (stacked full width in a window narrower than 1280px): same header height, the + in each panel's top-right corner with the pencil to its left, empty messages centred. Reordering them from the space's pencil still works.
+- **Space tiles:** every tile, including New space, is the same height in every row.
+- **Details:** tapping a to-do or note opens a panel on the right; Esc or clicking outside closes it.
+- **Phone check:** at phone width nothing changed - bottom tabs, space chips, swipeable Notes / To-dos / Lists, sheets from the bottom.
+- **Questions without a "?"** (typed or by voice) are answered, not saved: "To whom had I assigned the scheduler task.", "which tasks are pending", "did I send the invoice to Ravi". Notes that only start with those words are still saved: "When I reach, call Bob", "What we decided: ship Friday", "Have to call mom". On Today's box such a question is pointed to Home. A phrase that is sorted wrongly goes into `tests/test_intent_phrases.py`.
+- **Hover labels in the chat:** resting the mouse on the icons under a reply shows "Copy to clipboard" (then "Copied") and "Report this reply" straight away. A phone shows none.
+- **Space tile tags** (overdue, urgent, due today) sit side by side; on a very narrow phone tile they wrap only if they do not fit.
+- **Sidebar spaces** line up with the menu above: every row has an icon tile (Others too), names start where "Spaces" starts, and counts sit under Today's badge.
+- **To-do panel:** tapping a priority (or changing date, reminder or space) saves at once and **✓ Saved** appears at the top right beside the ✕ ("Saving…" while it goes, "Not saved" with a message if it fails). There is **no Save or Close button**: the ✕, a tap outside or Esc closes it. At the foot are only **Mark as completed** and **Delete**; completing shows "Marked as completed" with **Undo**, which puts the to-do back. A repeating to-do says "Done for now" (no Undo). While the edit form is open only its Cancel and Save show (that Save is needed: typed changes are not saved until then). The **Due and reminder** sheet works the same way - ✓ Saved and ✕ at the top (they stay while it scrolls); its "Set reminder" button, for a date and time you typed, remains.
+
+### Today: "Up next" and the day timeline (laptop and phone)
+
+- **Summary:** the Today view opens with "N things on your list today" (plus "· N overdue"). N equals the number on the Today tab and the sidebar's Today badge.
+- **Up next:** the soonest to-do today whose time (due time, or today's reminder time) is still ahead, with "in 2 hr"; tapping it opens it. With nothing timed ahead it says **Start with** (the first on the list, an overdue one first). With nothing left today but something later: "Nothing left for today" and **Coming up**. With nothing at all: "Nothing on your plate."
+- **Time column:** in Overdue, Today and High priority each time sits on the right in one column and is always about when it is **due**: a bare time or "All day" means today; any other day is written **"Due 30 Nov"** / **"Due yesterday"** (with its hour below); overdue in red. A to-do there only because of a reminder also says **"Reminds you today, 9:00 AM"** in orange under the wording. Upcoming, Anytime and space pages are unchanged in layout.
+- **Order:** with no Sort chosen before, it is by due date, so Today reads earliest first. A sort you chose earlier is kept.
+- **Ticking** a to-do updates the count and moves Up next on; the space filter narrows the summary too.
+- **Row icons (laptop):** the bell and the bin show on every open to-do without hovering (grey bell with no reminder, orange filled when one is coming); the time sits level with the first line of the title and in the same column on every row.
+- **Chat dates:** each day in the Home chat starts with a date ("Today · Fri 27 Nov", "Yesterday · Thu 26 Nov", then plain dates). On a laptop the date sits level with **Clear chat** and stays there as that day scrolls; on a phone it stays just under the top bar. Messages sent before this change sit under **Earlier** (their date was never recorded).
+- **Clear chat** is a labelled button (it was an icon), shown once there are messages. It asks "Clear this chat?" first; clearing removes only the chat on that device, never notes or to-dos.
+- **One date per row:** a row never shows the reminder's date beside the due date. Everywhere (Today, Upcoming, spaces, search, the chat's saved card) a due date starts with **"Due"**. The reminder is the bell: orange when one is coming; resting the mouse on it says "Reminds you Sun 29 Nov, 9:00 AM" (grey: "Set a reminder"), and tapping it shows the same in the Due and reminder sheet. Example: due 30 Nov with a reminder on the 29th shows only "Due 30 Nov" and an orange bell.

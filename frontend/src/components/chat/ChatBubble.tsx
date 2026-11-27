@@ -140,9 +140,9 @@ export default function ChatBubble({
             <button
               type="button"
               onClick={onReport}
-              aria-label="Report a problem with this reply"
-              title="Something wrong?"
-              className="pressable flex h-8 w-8 items-center justify-center rounded-full text-text-faint"
+              aria-label="Report this reply"
+              data-tip="Report this reply"
+              className="tip pressable flex h-8 w-8 items-center justify-center rounded-full text-text-faint"
             >
               <Flag size={15} strokeWidth={1.9} />
             </button>

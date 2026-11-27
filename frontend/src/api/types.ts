@@ -170,6 +170,8 @@ export type AskResult = AskAnsweredResult
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  // When it was sent (ISO time), for the date headings in the chat. Missing on messages saved before this was recorded.
+  at?: string
   sources?: AnswerSource[]
   // A short status line from the app itself ("Added X and tagged this note", an error) -
   // nothing worth copying, so it gets no copy button.

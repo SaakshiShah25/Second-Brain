@@ -46,15 +46,20 @@ export default function SpaceTile({ initiative, notes, items, onOpen }: { initia
       <span className="mt-2.5 line-clamp-2 text-[1.0625rem] font-semibold leading-tight tracking-tight">{name}</span>
 
       <span className="mt-auto flex flex-col gap-1.5 pt-3">
-        {flags.slice(0, 2).map((f) => (
-          <span
-            key={f.label}
-            className="inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[0.75rem] font-semibold"
-            style={{ background: tint(f.color, 16), color: f.color }}
-          >
-            {f.n} {f.label.toLowerCase()}
+        {/* Side by side; on a narrow phone tile they wrap only if they truly don't fit. */}
+        {flags.length > 0 && (
+          <span className="flex flex-wrap gap-1">
+            {flags.slice(0, 2).map((f) => (
+              <span
+                key={f.label}
+                className="inline-flex items-center whitespace-nowrap rounded-full px-1.5 py-0.5 text-[0.6875rem] font-semibold lg:px-2 lg:text-[0.75rem]"
+                style={{ background: tint(f.color, 16), color: f.color }}
+              >
+                {f.n} {f.label.toLowerCase()}
+              </span>
+            ))}
           </span>
-        ))}
+        )}
         <span className="flex items-end justify-between gap-2">
           <span className="leading-none">
             <span className="text-[1.75rem] font-bold tracking-tight">{s.pending}</span>
