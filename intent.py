@@ -44,8 +44,12 @@ _SYSTEM_PROMPT = """You classify a message sent to a personal notes-and-tasks ch
 
 Return ONLY valid JSON: {"intent": "capture" or "ask" or "out_of_scope"}
 
+Many messages are voice transcripts: they often have NO question mark, end with a full stop, or are
+slightly garbled. Judge by the wording, never by the punctuation: "To whom had I assigned the
+scheduler.", "which tasks are pending", "did I send the invoice to Ravi" are all "ask", not to-dos.
+
 If genuinely ambiguous between capture and ask, default to "capture" - a plain factual statement
-with no question is more likely a note being logged than a question being asked. If it is
+with no question word or question word order is more likely a note being logged than a question being asked. If it is
 ambiguous between capture and out_of_scope, ALWAYS choose "capture": saving a note the user
 didn't want is harmless, refusing something they meant as a to-do loses their input. Only
 classify as "out_of_scope" when the message is plainly a request to the assistant itself."""
@@ -63,6 +67,40 @@ _ASSISTANT_REQUEST = re.compile(
 )
 
 _QUESTION = re.compile(r"^\s*(what|who|when|where|which|why|how|whom|whose)\b.*\?\s*$", re.I | re.S)
+
+# A question recognised by its WORDING, because voice transcripts and quick typing often end without a "?" ("To whom
+# had I assigned the scheduler task." was saved as a to-do). Each shape needs a question word together with what only a
+# question does with it - an auxiliary verb after it, or "did I / is there" up front - so notes that merely start with
+# those words ("When I reach, call Bob", "What we decided: ship Friday", "Have to call mom") are not caught.
+_AUX = r"(?:did|do|does|is|are|was|were|am|have|has|had|will|would|should|can|could|shall)"
+_LEAD_IN = re.compile(r"^(?:(?:hey|hi|ok|okay|so|and|also|um|uh|please|can you tell me|could you tell me|tell me|do you know|i want to know)\b[\s,]*)+", re.I)
+_QUESTION_SHAPES = [re.compile(p, re.I) for p in (
+    r"^(?:to|from|with|by|for|about)\s+whom\b(?!\s+it may)",                                                     # to whom had I...
+    rf"^(?:to|from|with|by|for|about|on|at|in|of|since|till|until)\s+(?!what it\b)(?:what|which)\b(?:\s+\w+){{0,3}}?\s+{_AUX}\b",
+    rf"^(?:who|whom|what|when|where|which|why|how)(?:\s+(?:all|else|exactly))?\s+(?!is why\b){_AUX}\b",   # when did I...
+    r"^(?:what's|who's|when's|where's|how's|whats|whos)\b",
+    rf"^(?:what|which|whose)(?:\s+[\w-]+){{1,2}}\s+{_AUX}\s+(?:i|we|my|there|due|pending|overdue|left|assigned)\b",  # which tasks are pending
+    r"^who\s+(?:owns|handles|got|gets|took|takes|asked|said|sent|told|needs|owes)\b",
+    r"^how\s+(?:many|much|long|often)\b",
+    r"^(?:did|do|have|has|had|am|was|were|should|will)\s+(?:i|we)\b",                                  # did I assign...
+    r"^(?:is|are|was|were)\s+(?:there|any|anything|my)\b",
+    r"^(?:any|anything)\s+(?:tasks?|to-?dos?|pending|due|overdue|meetings?|reminders?)\b",
+    r"^(?:show|list|read out|give me|find)(?:\s+me)?\s+(?:all\s+)?(?:of\s+)?(?:my|the\s+pending|pending|overdue)\b.*\b(?:tasks?|to-?dos?|notes?|reminders?|items?)\b",
+)]
+
+
+def asks_something(text: str) -> bool:
+    """True when the message is worded as a question, with or without a question mark. Only a single sentence with no
+    "label: detail" in it: anything longer or mixed is left to the model."""
+    t = " ".join((text or "").replace("’", "'").split()).rstrip(" .?!")
+    if not t or re.search(r"[.?!;]\s|:\s", t):
+        return False
+    stripped = _LEAD_IN.sub("", t)
+    if stripped != t and re.search(r"(?i)\b(?:tell me|do you know|i want to know)\b", t[: len(t) - len(stripped)]):
+        if re.match(r"(?i)(?:who|whom|what|when|where|which|how (?:many|much)|if|whether)\b", stripped):
+            return True
+    return any(shape.match(stripped) for shape in _QUESTION_SHAPES)
+
 
 # A bare to-do verb at the start ("Understand how mutual funds work", "Call the bank by 5pm") is the
 # user talking to themselves - a task or a goal - even when the topic sounds like general knowledge.
@@ -110,7 +148,7 @@ def fast_classify(text: str):
     t = (text or "").strip()
     if not t or len(t) > 300:
         return None
-    if _QUESTION.match(t):
+    if _QUESTION.match(t) or asks_something(t):
         return "ask"
     if _SELF_TODO.match(t) and not _ADDRESSED_TO_ASSISTANT.search(t):
         return "capture"
